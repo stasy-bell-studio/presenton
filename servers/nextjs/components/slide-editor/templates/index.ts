@@ -1,7 +1,6 @@
 import type { Deck } from "../lib/slide-schema";
 import type { ComponentTemplate } from "../componentTemplates";
 import type { GenerationLayoutMetadata } from "../lib/slide-generation-layout-metadata";
-import { layoutKitDeck } from "./layout-kit";
 import { neoGeneralDeck, neoGeneralGenerationLayouts } from "./neo-general";
 import { reportDeck, reportGenerationLayouts } from "./report";
 
@@ -15,13 +14,6 @@ export type TemplateDescriptor = {
 };
 
 export const TEMPLATES: ReadonlyArray<TemplateDescriptor> = [
-  {
-    id: "layout-kit",
-    label: "Editor Showcase",
-    description:
-      "Guided editor feature tour built from editable layout elements.",
-    deck: layoutKitDeck,
-  },
   {
     id: "neo-general",
     label: "Neo General",
@@ -41,7 +33,6 @@ export const TEMPLATES: ReadonlyArray<TemplateDescriptor> = [
 ];
 
 export {
-  layoutKitDeck,
   neoGeneralDeck,
   neoGeneralGenerationLayouts,
   reportDeck,

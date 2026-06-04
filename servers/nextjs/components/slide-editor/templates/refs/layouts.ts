@@ -11,7 +11,7 @@ import {
   type Slide,
   type SlideElement,
   type Stroke,
-} from "../lib/slide-schema";
+} from "../../lib/slide-schema";
 
 const SOURCE_W = 1280;
 const SOURCE_H = 720;

@@ -999,7 +999,7 @@ function isStructuralTemplateText(element: TextElement, original: string) {
   ) {
     return true;
   }
-  return Boolean(element.fixed && raw.length <= 2);
+  return Boolean(element.fixed);
 }
 
 function compactTextValues(values: Array<string | undefined>) {

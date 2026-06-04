@@ -13,7 +13,7 @@ import {
 } from "react";
 import type { Deck } from "./lib/slide-schema";
 import { importPptxFile } from "./lib/pptx-import";
-import { TEMPLATES, layoutKitDeck } from "./templates";
+import { TEMPLATES, neoGeneralDeck } from "./templates";
 import {
   createSlideTemplatesFromDeck,
   type ComponentTemplate,
@@ -61,7 +61,7 @@ const IMPORTED_TEMPLATE_ID = "__imported-pptx";
 
 export function SlideEditor({
   componentTemplates,
-  initialDeck = layoutKitDeck,
+  initialDeck = neoGeneralDeck,
   slideTemplates,
   toolbarLeading,
 }: {

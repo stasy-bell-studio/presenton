@@ -10,7 +10,7 @@ import {
 } from "../lib/element-path";
 import { resolveSlideLayout } from "../lib/layout-resolver";
 import { textElementOverflows } from "../lib/textMeasure";
-import { layoutKitDeck } from "../templates/layout-kit";
+import { neoGeneralDeck } from "../templates/neo-general";
 
 export type ExportMode = "native" | "keynote" | "raster";
 export type TextSlideElement = Extract<SlideElement, { type: "text" }>;
@@ -34,7 +34,7 @@ export type TableCellSelection = {
 
 // Immer-backed: writers receive a draft of the Deck they can mutate
 // directly. SlideEditor seeds the real deck via `useHydrateAtoms`.
-export const deckAtom = atomWithImmer(layoutKitDeck);
+export const deckAtom = atomWithImmer(neoGeneralDeck);
 export const activeSlideIndexAtom = atom(0);
 export const selectedAtom = atom(-1);
 export const selectedPathAtom = atom<ElementPath | null>(null);
