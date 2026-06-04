@@ -7,8 +7,8 @@ the Electron app while keeping Presenton Apache-2.0.
 
 - Bundle Chrome for Testing with the Electron package (including Microsoft APPX)
   for export rendering.
-- Bundle ImageMagick under `resources/imagemagick/` when present; the app prefers
-  that path before PATH or first-run download.
+- Bundle ImageMagick under `resources/imagemagick/` for each platform build; the
+  packaged app validates that bundle during `afterPack`.
 - Use **LibreOffice only** for PPTX/office conversion and custom template rendering
   on all platforms (Windows, macOS, Linux). Do not detect or automate Microsoft
   PowerPoint.
@@ -44,6 +44,7 @@ Bundled Chromium:
 
 ```text
 electron/resources/chromium/
+  presenton-runtime.json
   chrome/<platform-build-id>/...
 ```
 
@@ -59,36 +60,56 @@ Set `SKIP_BUNDLED_CHROMIUM=1` to keep the old first-run download behavior.
 Bundled ImageMagick:
 
 ```text
-electron/resources/imagemagick/<platform>-<arch>/bin/magick(.exe)
+electron/resources/imagemagick/<platform>-<arch>/
+  presenton-runtime.json
+  ...
 ```
 
 Examples:
 
 ```text
-electron/resources/imagemagick/win32-x64/bin/magick.exe
+electron/resources/imagemagick/win32-x64/magick.exe
 electron/resources/imagemagick/darwin-arm64/bin/magick
 electron/resources/imagemagick/linux-x64/bin/magick
 ```
 
-The app checks this location before PATH, Homebrew, package-manager installs, or
-the Windows per-user runtime install directory.
+Populate it with:
+
+```bash
+cd electron
+npm run prepare:imagemagick
+```
+
+Platform behavior:
+
+- Windows downloads and validates the official portable `.7z` runtime.
+- Linux downloads and validates the official AppImage, then writes a `bin/magick`
+  wrapper with `APPIMAGE_EXTRACT_AND_RUN=1` so it works without a host FUSE setup.
+- macOS vendors a build-host ImageMagick prefix (`magick` on PATH, or
+  `IMAGEMAGICK_VENDOR_DIR`) and rewrites non-system dylib references into the
+  packaged runtime with `otool` and `install_name_tool`.
+
+The app checks the manifest-backed bundle before PATH, Homebrew, MacPorts, or
+other system installs.
 
 ## Current Behavior
 
-- `checkDependenciesBeforeWindow()` requires LibreOffice, ImageMagick, and export
-  Chromium (bundled or installed).
 - FastAPI receives `SOFFICE_PATH` and `PRESENTON_OFFICE_RENDERER=libreoffice` when
   LibreOffice is detected at startup.
+- FastAPI receives `IMAGEMAGICK_BINARY`, `MAGICK_HOME`, and
+  `MAGICK_CONFIGURE_PATH` when the bundled or system ImageMagick runtime is
+  detected at startup.
 - PPTX-to-PDF and office document conversion use LibreOffice (`soffice`) only.
-- Export Chromium resolution checks the bundled app runtime before the user
-  Puppeteer cache.
+- Export Chromium and ImageMagick resolution check manifest-backed bundled app
+  runtimes before user or system locations.
 
 ## APPX / Store builds
 
 Before `npm run build:electron`:
 
 1. Run `npm run prepare:export-chromium` so Chromium is under `resources/chromium/`.
-2. Place a portable ImageMagick build under `resources/imagemagick/win32-x64/`.
+2. Run `npm run prepare:imagemagick` so ImageMagick is under
+   `resources/imagemagick/<platform>-<arch>/`.
 3. LibreOffice is **not** included in the package; the unified setup installer
    downloads or guides installation on first launch.
 

@@ -16,6 +16,16 @@ import { safeError, safeLog } from "./safe-console";
 /** Must match the Chrome revision expected by the bundled presentation-export runtime. */
 const EXPORT_CHROME_BUILD_ID =
   process.env.EXPORT_CHROME_BUILD_ID?.trim() || "146.0.7680.76";
+const BUNDLED_CHROMIUM_MANIFEST = "presenton-runtime.json";
+
+type BundledChromiumManifest = {
+  browser?: string;
+  buildId?: string;
+  platform?: string;
+  nodePlatform?: string;
+  arch?: string;
+  executable?: string;
+};
 
 export type ChromiumInstallProgress = {
   phase: "downloading" | "installing" | "done" | "error";
@@ -33,6 +43,40 @@ function resolvePuppeteerCacheRoot(): string {
 
 export function getBundledExportChromiumCacheRoot(): string {
   return path.join(baseDir, "resources", "chromium");
+}
+
+function readBundledChromiumManifest(): BundledChromiumManifest | null {
+  const manifestPath = path.join(getBundledExportChromiumCacheRoot(), BUNDLED_CHROMIUM_MANIFEST);
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as BundledChromiumManifest;
+    if (manifest.browser && manifest.browser !== Browser.CHROME) {
+      return null;
+    }
+    if (manifest.buildId && manifest.buildId !== EXPORT_CHROME_BUILD_ID) {
+      return null;
+    }
+    if (manifest.nodePlatform && manifest.nodePlatform !== process.platform) {
+      return null;
+    }
+    if (manifest.arch && manifest.arch !== process.arch) {
+      return null;
+    }
+    if (!manifest.executable) {
+      return null;
+    }
+    return manifest;
+  } catch {
+    return null;
+  }
+}
+
+function resolveManifestBundledExportChromiumPath(): string | null {
+  const manifest = readBundledChromiumManifest();
+  if (!manifest?.executable) {
+    return null;
+  }
+  const executablePath = path.join(getBundledExportChromiumCacheRoot(), manifest.executable);
+  return isMaterializedChromiumComplete(executablePath) ? executablePath : null;
 }
 
 function resolveExportChromeInstallOptions(cacheDir = resolvePuppeteerCacheRoot()):
@@ -93,6 +137,11 @@ function resolveLegacyInstalledExportChromiumPath(): string | null {
 }
 
 export function resolveInstalledExportChromiumPath(): string | null {
+  const manifestBundledPath = resolveManifestBundledExportChromiumPath();
+  if (manifestBundledPath) {
+    return manifestBundledPath;
+  }
+
   const bundledOptions = resolveExportChromeInstallOptions(getBundledExportChromiumCacheRoot());
   if (bundledOptions) {
     const bundledExpectedPath = computeExecutablePath(bundledOptions);

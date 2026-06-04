@@ -137,6 +137,11 @@ function resolveExportConverterPath(appRoot: string): string | undefined {
   return candidates.find((candidate) => fs.existsSync(candidate));
 }
 
+function isDisableAuthEnabledValue(value?: string): boolean {
+  const raw = value?.trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+}
+
 function resolveElectronDisableAuth(): string {
   const raw = (
     process.env.ELECTRON_DISABLE_AUTH ?? process.env.DISABLE_AUTH
@@ -147,7 +152,7 @@ function resolveElectronDisableAuth(): string {
   if (["0", "false", "no", "off"].includes(raw)) {
     return "false";
   }
-  if (["1", "true", "yes", "on"].includes(raw)) {
+  if (isDisableAuthEnabledValue(raw)) {
     return "true";
   }
   return "true";
@@ -449,6 +454,10 @@ async function forceQuitApp(exitCode = 0) {
 
 if (gotSingleInstanceLock) {
 app.whenReady().then(async () => {
+  const disableAuthForElectron = resolveElectronDisableAuth();
+  process.env.DISABLE_AUTH = disableAuthForElectron;
+  process.env.ELECTRON_DISABLE_AUTH = disableAuthForElectron;
+
   // Ensure all required directories exist before starting
   ensureDirectoriesExist();
 
@@ -546,7 +555,10 @@ app.whenReady().then(async () => {
   }
 
   try {
-    await mainWindow.loadURL(`${localhost}:${nextjsPort}`);
+    const appPath = isDisableAuthEnabledValue(process.env.DISABLE_AUTH)
+      ? "/upload"
+      : "";
+    await mainWindow.loadURL(`${localhost}:${nextjsPort}${appPath}`);
   } catch (error) {
     if (mainWindow.isDestroyed()) {
       return;

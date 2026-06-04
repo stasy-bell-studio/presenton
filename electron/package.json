@@ -28,11 +28,11 @@
     "start": "electron . --no-sandbox",
     "dist": "electron-builder",
     "postinstall": "electron-builder install-app-deps",
-    "dev": "rm -rf app_dist && tsc && electron . --no-sandbox",
+    "dev": "node -e \"fs.rmSync('app_dist',{recursive:true,force:true})\" && tsc && electron . --no-sandbox",
     "setup:env": "npm install && cd ../servers/fastapi && uv sync && cd ../nextjs && npm install && cd ../../electron && npm run setup:export-runtime && npm run prepare:imagemagick",
     "install:pyinstaller": "cd ../servers/fastapi && echo 'pyinstaller will be installed via uv run --with when building'",
     "typecheck": "tsc --noEmit",
-    "build:ts": "rm -rf app_dist && tsc",
+    "build:ts": "node -e \"fs.rmSync('app_dist',{recursive:true,force:true})\" && tsc",
     "check:main-no-undef": "node scripts/check-main-no-undef.cjs",
     "lint:main": "npm run build:ts && npm run check:main-no-undef",
     "build:css": "tailwindcss -i ./resources/ui/assets/css/tailwind.import.css -o ./resources/ui/assets/css/tailwind.css --watch",
@@ -44,7 +44,7 @@
     "prepare:export-chromium": "node scripts/prepare-export-chromium.cjs",
     "prepare:imagemagick": "node scripts/prepare-imagemagick.cjs",
     "build:nextjs": "node build_nextjs_resources.js",
-    "build:fastapi": "rm -rf resources/fastapi && npm run build:vectorstore && cross-env MEM0_SPACY_STRICT=true node ensure_spacy_model.js && cd ../servers/fastapi && uv run --with pyinstaller python -m PyInstaller --distpath ../../electron/resources server.spec && cd ../../electron && node copy_fastapi_assets.js",
+    "build:fastapi": "node -e \"fs.rmSync('resources/fastapi',{recursive:true,force:true})\" && npm run build:vectorstore && cross-env MEM0_SPACY_STRICT=true node ensure_spacy_model.js && cd ../servers/fastapi && uv run --with pyinstaller python -m PyInstaller --distpath ../../electron/resources server.spec && cd ../../electron && node copy_fastapi_assets.js",
     "generate:version": "node generate_update.js",
     "upload:sourcemaps": "node scripts/upload-sourcemaps.cjs",
     "build:electron": "npm run generate:version && npm run build:export-runtime && npm run prepare:export-chromium && npm run prepare:imagemagick && npm run typecheck && npm run build:ts && npm run check:main-no-undef && node build.js",
@@ -52,7 +52,7 @@
     "dist:mac:mas-dev": "cross-env PRESENTON_MAC_TARGET=mas-dev node build.js",
     "build:all": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron",
     "build:all:mas-dev": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron:mas-dev",
-    "clean:build": "rm -rf resources/nextjs && rm -rf resources/fastapi && rm -rf app_dist"
+    "clean:build": "node -e \"for (const p of ['resources/nextjs','resources/fastapi','app_dist']) fs.rmSync(p,{recursive:true,force:true})\""
   },
   "author": {
     "name": "Presenton",
@@ -73,6 +73,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "7zip-bin": "^5.2.0",
     "cross-env": "^7.0.3",
     "electron": "42.2.0",
     "electron-builder": "^26.8.1",

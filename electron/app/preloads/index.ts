@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('env', {
   TEMP_DIRECTORY: process.env.TEMP_DIRECTORY || '',
   NEXT_PUBLIC_USER_CONFIG_PATH: process.env.NEXT_PUBLIC_USER_CONFIG_PATH || '',
   APP_VERSION: process.env.APP_VERSION || '',
+  DISABLE_AUTH: process.env.DISABLE_AUTH || '',
 });
 
 

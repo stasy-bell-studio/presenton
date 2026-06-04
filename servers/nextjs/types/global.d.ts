@@ -66,5 +66,6 @@ interface Window {
     TEMP_DIRECTORY: string;
     NEXT_PUBLIC_USER_CONFIG_PATH: string;
     APP_VERSION: string;
+    DISABLE_AUTH: string;
   };
 }

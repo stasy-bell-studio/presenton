@@ -11,17 +11,28 @@ export type ImageMagickRuntime = {
   source: "bundled" | "system";
 };
 
-function runVersion(command: string): string | null {
+type ImageMagickRuntimeManifest = {
+  version?: string;
+  platform?: string;
+  arch?: string;
+  binary?: string;
+  kind?: string;
+};
+
+const RUNTIME_MANIFEST_NAME = "presenton-runtime.json";
+
+function runVersion(command: string, homeDir = path.dirname(command)): string | null {
   const result = spawnSync(command, ["-version"], {
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
     timeout: 15000,
     env: {
       ...process.env,
-      MAGICK_HOME: path.dirname(command),
-      MAGICK_CONFIGURE_PATH: path.dirname(command),
-      MAGICK_TEMPORARY_PATH: process.env.TEMP || path.dirname(command),
+      MAGICK_HOME: homeDir,
+      MAGICK_CONFIGURE_PATH: homeDir,
+      MAGICK_TEMPORARY_PATH: process.env.TEMP || process.env.TMPDIR || homeDir,
       MAGICK_OCL_DEVICE: "OFF",
+      APPIMAGE_EXTRACT_AND_RUN: "1",
     },
     windowsHide: true,
   });
@@ -85,10 +96,34 @@ export function getBundledImageMagickDir(): string {
   return path.join(getBundledImageMagickRoot(), `${process.platform}-${process.arch}`);
 }
 
+function readBundledRuntimeManifest(): ImageMagickRuntimeManifest | null {
+  const manifestPath = path.join(getBundledImageMagickDir(), RUNTIME_MANIFEST_NAME);
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as ImageMagickRuntimeManifest;
+    if (
+      manifest.platform &&
+      manifest.platform !== process.platform
+    ) {
+      return null;
+    }
+    if (manifest.arch && manifest.arch !== process.arch) {
+      return null;
+    }
+    return manifest;
+  } catch {
+    return null;
+  }
+}
+
 function bundledBinaryCandidates(): string[] {
   const runtimeDir = getBundledImageMagickDir();
   const executable = process.platform === "win32" ? "magick.exe" : "magick";
+  const manifest = readBundledRuntimeManifest();
+  const manifestBinary = manifest?.binary
+    ? [path.join(runtimeDir, manifest.binary)]
+    : [];
   return [
+    ...manifestBinary,
     path.join(runtimeDir, executable),
     path.join(runtimeDir, "bin", executable),
     path.join(getBundledImageMagickRoot(), executable),
@@ -117,15 +152,18 @@ function runtimeFromBinary(
   source: ImageMagickRuntime["source"],
 ): ImageMagickRuntime | null {
   const resolvedBinaryPath = resolveCommandPath(binaryPath) ?? binaryPath;
-  const version = runVersion(resolvedBinaryPath);
+  const binDir = path.dirname(resolvedBinaryPath);
+  const manifest = source === "bundled" ? readBundledRuntimeManifest() : null;
+  const manifestRuntimeDir = getBundledImageMagickDir();
+  const homeDir = source === "bundled" && manifest?.binary
+    ? manifestRuntimeDir
+    : path.basename(binDir).toLowerCase() === "bin"
+    ? path.dirname(binDir)
+    : binDir;
+  const version = runVersion(resolvedBinaryPath, homeDir);
   if (!version) {
     return null;
   }
-
-  const binDir = path.dirname(resolvedBinaryPath);
-  const homeDir = path.basename(binDir).toLowerCase() === "bin"
-    ? path.dirname(binDir)
-    : binDir;
 
   return {
     binaryPath: resolvedBinaryPath,
