@@ -4,6 +4,12 @@
 
 import React, { useEffect, useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ArrowLeft, Download, Loader2, RefreshCw, Wrench, X } from "lucide-react";
+import { notify } from "@/components/ui/sonner";
+import {
+    PPTX_IMPORT_QUERY_PARAM,
+    stagePptxImport,
+} from "@/components/slide-editor/lib/pptx-import-handoff";
 
 
 
@@ -25,11 +31,143 @@ import { FileUploadSection } from "./components/FileUploadSection";
 import { useFontLoader } from "../hooks/useFontLoad";
 import Header from "@/app/(presentation-generator)/(dashboard)/dashboard/components/Header";
 
-const CustomTemplatePage = () => {
+type LibreOfficeGateState = "checking" | "ready" | "missing" | "installing" | "error";
+
+const LibreOfficeGate = ({
+    status,
+    message,
+    progress,
+    onInstall,
+    onCancel,
+    onRecheck,
+    onExit,
+}: {
+    status: LibreOfficeGateState;
+    message: string;
+    progress?: number;
+    onInstall: () => void;
+    onCancel: () => void;
+    onRecheck: () => void;
+    onExit: () => void;
+}) => {
+    if (status === "ready") return null;
+
+    const isChecking = status === "checking";
+    const isInstalling = status === "installing";
+    const isBusy = isChecking || isInstalling;
+    const percent = typeof progress === "number" ? Math.max(0, Math.min(100, progress)) : undefined;
+
+    return (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#101323]/30 px-4 backdrop-blur-[5px]">
+            <div className="relative w-full max-w-[460px] rounded-lg border border-[#E5E7EB] bg-white p-6 shadow-2xl">
+                <button
+                    type="button"
+                    onClick={isInstalling ? onCancel : onExit}
+                    className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#6B7280] transition hover:bg-[#F3F4F6] hover:text-[#101323]"
+                    aria-label={isInstalling ? "Cancel LibreOffice installation" : "Go back"}
+                    title={isInstalling ? "Cancel install" : "Go back"}
+                >
+                    <X className="h-4 w-4" />
+                </button>
+                <div className="flex items-start gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#EBE9FE] text-[#6D5BD0]">
+                        {isBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Wrench className="h-5 w-5" />}
+                    </div>
+                    <div>
+                        <h2 className="text-lg font-semibold text-[#101323]">Install LibreOffice to continue</h2>
+                        <p className="mt-1 text-sm leading-6 text-[#5D6375]">
+                            Template Studio uses LibreOffice to convert uploaded PPTX files before generating reusable templates.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="mt-5 rounded-lg border border-[#EEF0F4] bg-[#FAFAFF] px-4 py-3 text-sm text-[#3A4054]">
+                    {message}
+                </div>
+
+                {isInstalling && (
+                    <div className="mt-4">
+                        <div className="h-2 overflow-hidden rounded-full bg-[#EDEEF5]">
+                            <div
+                                className={`h-full rounded-full bg-[#6D5BD0] transition-all ${percent === undefined ? "w-1/2 animate-pulse" : ""}`}
+                                style={percent === undefined ? undefined : { width: `${percent}%` }}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {isInstalling ? (
+                    <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                        <button
+                            type="button"
+                            disabled
+                            className="inline-flex h-11 flex-1 cursor-not-allowed items-center justify-center gap-2 rounded-lg bg-[#B8BDCB] px-4 text-sm font-semibold text-white"
+                        >
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Installing...
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onCancel}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#D9DCE7] px-4 text-sm font-semibold text-[#101323] transition hover:bg-[#F6F7FB]"
+                        >
+                            <X className="h-4 w-4" />
+                            Cancel
+                        </button>
+                    </div>
+                ) : (
+                    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <button
+                            type="button"
+                            onClick={onInstall}
+                            disabled={isChecking}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#101323] px-4 text-sm font-semibold text-white transition hover:bg-[#252A3F] disabled:cursor-not-allowed disabled:bg-[#B8BDCB] sm:col-span-2"
+                        >
+                            {isChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            Install LibreOffice
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onRecheck}
+                            disabled={isChecking}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#D9DCE7] px-4 text-sm font-semibold text-[#101323] transition hover:bg-[#F6F7FB] disabled:cursor-not-allowed disabled:text-[#9AA1B5]"
+                        >
+                            <RefreshCw className="h-4 w-4" />
+                            Recheck
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onExit}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-[#D9DCE7] px-4 text-sm font-semibold text-[#101323] transition hover:bg-[#F6F7FB]"
+                        >
+                            <ArrowLeft className="h-4 w-4" />
+                            Go back
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+
+
+
+type CustomTemplatePageProps = {
+    useSlideEditorImport?: boolean;
+};
+
+const CustomTemplatePage = ({
+    useSlideEditorImport = false,
+}: CustomTemplatePageProps) => {
     const router = useRouter();
 
     const [schemaEditorSlideIndex, setSchemaEditorSlideIndex] = useState<number | null>(null);
     const [schemaPreviewData, setSchemaPreviewData] = useState<Record<number, Record<string, any>>>({});
+    const [libreStatus, setLibreStatus] = useState<LibreOfficeGateState>("checking");
+    const [libreMessage, setLibreMessage] = useState("Checking LibreOffice availability...");
+    const [libreProgress, setLibreProgress] = useState<number | undefined>();
+    const [isOpeningSlideEditor, setIsOpeningSlideEditor] = useState(false);
 
     const { selectedFile, handleFileSelect, removeFile } = useFileUpload();
 
@@ -105,6 +243,38 @@ const CustomTemplatePage = () => {
         }
         return id;
     }, [saveLayout, router]);
+
+    const handleOpenEditorWithPptx = useCallback(async (pptxFile: File) => {
+        const lowerName = pptxFile.name.toLowerCase();
+        if (!lowerName.endsWith(".pptx")) {
+            notify.error("Invalid file", "Please select a valid PPTX file.");
+            return;
+        }
+
+        const maxSize = 100 * 1024 * 1024;
+        if (pptxFile.size > maxSize) {
+            notify.error("File too large", "File size must be less than 100MB.");
+            return;
+        }
+
+        setIsOpeningSlideEditor(true);
+        try {
+            const importId = await stagePptxImport(pptxFile);
+            const params = new URLSearchParams({
+                [PPTX_IMPORT_QUERY_PARAM]: importId,
+            });
+            router.push(`/slide-editor?${params.toString()}`);
+        } catch (error) {
+            console.error("Could not open PPTX in slide editor:", error);
+            notify.error(
+                "Import failed",
+                error instanceof Error
+                    ? error.message
+                    : "Could not open this PPTX in the editor."
+            );
+            setIsOpeningSlideEditor(false);
+        }
+    }, [router]);
 
     /**
      * Update a specific slide's data
@@ -182,7 +352,7 @@ const CustomTemplatePage = () => {
     return (
         <div className="relative min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
 
-            <div>
+            <div className={libreStatus === "ready" ? "" : "pointer-events-none select-none blur-[3px]"}>
                 <Header />
                 <TemplateStudioHeader />
                 {showFileUpload ? (
@@ -192,7 +362,18 @@ const CustomTemplatePage = () => {
                             handleFileSelect={handleFileSelect}
                             removeFile={removeFile}
                             CheckFonts={handleCheckFonts}
-                            isProcessingPptx={state.isLoading}
+                            isProcessingPptx={
+                                state.isLoading ||
+                                (useSlideEditorImport && isOpeningSlideEditor)
+                            }
+                            processingLabel={
+                                useSlideEditorImport && isOpeningSlideEditor
+                                    ? "Opening editor..."
+                                    : undefined
+                            }
+                            onPptxFileSelect={
+                                useSlideEditorImport ? handleOpenEditorWithPptx : undefined
+                            }
                             slides={[]}
                             completedSlides={0}
                         />
@@ -265,6 +446,16 @@ const CustomTemplatePage = () => {
                     </div>
                 )}
             </div>
+            <LibreOfficeGate
+                status={libreStatus}
+                message={libreMessage}
+                progress={libreProgress}
+                onInstall={installLibreOffice}
+                onCancel={cancelLibreOfficeInstall}
+                onRecheck={checkLibreOffice}
+                onExit={leaveTemplateStudio}
+            />
+
         </div>
     );
 };

@@ -1,6 +1,11 @@
 import { useAtom, useAtomValue } from "jotai";
 import { FileUp, Palette, Play, Save } from "lucide-react";
-import { useRef, type ChangeEvent, type ReactNode } from "react";
+import {
+  useRef,
+  type CSSProperties,
+  type ChangeEvent,
+  type ReactNode,
+} from "react";
 import { styles } from "../editorStyles";
 import { truncateWords } from "../editorUtils";
 import { ExportPptxButton } from "../shared/ExportPptxButton";
@@ -21,6 +26,10 @@ type EditorTopbarProps = {
   onImportPptx: (file: File) => void;
   onOpenTheme: () => void;
   importingPptx?: boolean;
+  saveLabel?: string;
+  saveStyle?: CSSProperties;
+  showImportPptx?: boolean;
+  showTheme?: boolean;
   toolbarLeading?: ReactNode;
 };
 
@@ -31,6 +40,10 @@ export function EditorTopbar({
   onPdfExport,
   onImportPptx,
   onOpenTheme,
+  saveLabel,
+  saveStyle,
+  showImportPptx = true,
+  showTheme = true,
   toolbarLeading,
 }: EditorTopbarProps) {
   const deck = useAtomValue(deckAtom);
@@ -70,38 +83,45 @@ export function EditorTopbar({
           <button
             type="button"
             onClick={handleSave}
-            style={styles.toolbarIconButton}
+            style={saveStyle ?? styles.toolbarIconButton}
             title="Log current deck JSON"
-            aria-label="Save deck"
+            aria-label={saveLabel ?? "Save deck"}
           >
             <Save size={16} aria-hidden="true" />
+            {saveLabel ? <span>{saveLabel}</span> : null}
           </button>
-          <input
-            ref={pptxInputRef}
-            type="file"
-            accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
-            onChange={handleImportChange}
-            style={{ display: "none" }}
-          />
-          <button
-            type="button"
-            disabled={importingPptx}
-            onClick={() => pptxInputRef.current?.click()}
-            style={styles.toolbarIconButton}
-            title={importingPptx ? "Importing PPTX" : "Import PPTX"}
-            aria-label={importingPptx ? "Importing PPTX" : "Import PPTX"}
-          >
-            <FileUp size={16} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={onOpenTheme}
-            style={styles.toolbarIconButton}
-            title="Configure deck theme"
-            aria-label="Configure deck theme"
-          >
-            <Palette size={16} aria-hidden="true" />
-          </button>
+          {showImportPptx ? (
+            <>
+              <input
+                ref={pptxInputRef}
+                type="file"
+                accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                onChange={handleImportChange}
+                style={{ display: "none" }}
+              />
+              <button
+                type="button"
+                disabled={importingPptx}
+                onClick={() => pptxInputRef.current?.click()}
+                style={styles.toolbarIconButton}
+                title={importingPptx ? "Importing PPTX" : "Import PPTX"}
+                aria-label={importingPptx ? "Importing PPTX" : "Import PPTX"}
+              >
+                <FileUp size={16} aria-hidden="true" />
+              </button>
+            </>
+          ) : null}
+          {showTheme ? (
+            <button
+              type="button"
+              onClick={onOpenTheme}
+              style={styles.toolbarIconButton}
+              title="Configure deck theme"
+              aria-label="Configure deck theme"
+            >
+              <Palette size={16} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
         <div style={layoutStyles.toolbarGroup}>
           <button

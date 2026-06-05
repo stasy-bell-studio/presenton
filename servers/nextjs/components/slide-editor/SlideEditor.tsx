@@ -65,11 +65,13 @@ const IMPORTED_TEMPLATE_ID = "__imported-pptx";
 
 export function SlideEditor({
   componentTemplates,
+  importTemplateMode = false,
   initialDeck = neoGeneralDeck,
   slideTemplates,
   toolbarLeading,
 }: {
   componentTemplates?: ReadonlyArray<ComponentTemplate>;
+  importTemplateMode?: boolean;
   initialDeck?: Deck;
   slideTemplates?: ReadonlyArray<SlideTemplate>;
   toolbarLeading?: ReactNode;
@@ -83,6 +85,7 @@ export function SlideEditor({
     <Provider>
       <SlideEditorBody
         componentTemplates={componentTemplates}
+        importTemplateMode={importTemplateMode}
         initialDeck={initialDeck}
         initialTemplateId={initialTemplateId}
         slideTemplates={slideTemplates}
@@ -94,12 +97,14 @@ export function SlideEditor({
 
 function SlideEditorBody({
   componentTemplates,
+  importTemplateMode,
   initialDeck,
   initialTemplateId,
   slideTemplates,
   toolbarLeading,
 }: {
   componentTemplates?: ReadonlyArray<ComponentTemplate>;
+  importTemplateMode: boolean;
   initialDeck: Deck;
   initialTemplateId: string;
   slideTemplates?: ReadonlyArray<SlideTemplate>;
@@ -151,6 +156,7 @@ function SlideEditorBody({
     isDeckBackedTemplateId(selectedTemplateId)
       ? TEMPLATES[0].id
       : selectedTemplateId;
+  const showTemplateToolbar = !importTemplateMode;
 
   const resetEditorState = (nextTemplateId: string, nextDeck: Deck) => {
     setSelectedTemplateId(nextTemplateId);
@@ -240,7 +246,14 @@ function SlideEditorBody({
           onPdfExport={handlePdfExport}
           onImportPptx={handlePptxImport}
           onOpenTheme={() => setThemeOpen(true)}
+          saveLabel={importTemplateMode ? "Save Template" : undefined}
+          saveStyle={
+            importTemplateMode ? styles.toolbarSaveTemplateButton : undefined
+          }
+          showImportPptx={!importTemplateMode}
+          showTheme={!importTemplateMode}
           toolbarLeading={
+            showTemplateToolbar ? (
             <>
               <TemplateSelect
                 importedLabel={
@@ -267,6 +280,9 @@ function SlideEditorBody({
               </button>
               {toolbarLeading}
             </>
+            ) : (
+              toolbarLeading
+            )
           }
         />
 
@@ -414,7 +430,7 @@ function getTemplateIdForDeck(deck: Deck) {
   return (
     TEMPLATES.find((template) => template.deck === deck)?.id ??
     TEMPLATES.find((template) => template.deck.title === deck.title)?.id ??
-    TEMPLATES[0].id
+    IMPORTED_TEMPLATE_ID
   );
 }
 
