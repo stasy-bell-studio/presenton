@@ -1,7 +1,9 @@
+const fs = require("fs");
 const path = require("path");
 const { spawnSync } = require("child_process");
 
-const fastapiDir = path.join(__dirname, "..", "servers", "fastapi");
+const electronRoot = path.join(__dirname, "..");
+const fastapiDir = path.join(electronRoot, "..", "servers", "fastapi");
 const uvCmd = process.platform === "win32" ? "uv.exe" : "uv";
 const requiredModel = process.env.MEM0_SPACY_MODEL || "en_core_web_sm";
 const strictMode =
@@ -26,7 +28,7 @@ function runUvPython(args, description) {
 }
 
 function ensureVenv() {
-  if (require("fs").existsSync(venvDir)) {
+  if (fs.existsSync(venvDir)) {
     return true;
   }
   console.log(`[spacy-setup] Creating uv venv at ${venvDir}`);

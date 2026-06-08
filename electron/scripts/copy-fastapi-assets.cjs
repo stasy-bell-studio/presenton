@@ -1,8 +1,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const fastapiDir = path.join(__dirname, "..", "servers", "fastapi");
-const resourcesFastapiDir = path.join(__dirname, "resources", "fastapi");
+const electronRoot = path.join(__dirname, "..");
+const fastapiDir = path.join(electronRoot, "..", "servers", "fastapi");
+const resourcesFastapiDir = path.join(electronRoot, "resources", "fastapi");
 
 const sources = [
   { name: "static", src: path.join(fastapiDir, "static"), dest: path.join(resourcesFastapiDir, "static") },
