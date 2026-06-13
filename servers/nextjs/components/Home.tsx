@@ -33,10 +33,27 @@ interface ButtonState {
 export default function Home() {
   const router = useRouter();
   const [step, setStep] = useState<number>(1)
+  const [providerStep, setProviderStep] = useState<number>(1)
   const [selectedMode, setSelectedMode] = useState<string>("presenton")
   const config = useSelector((state: RootState) => state.userConfig);
 
   const canChangeKeys = config.can_change_keys;
+
+  useEffect(() => {
+    const stepName = step === 1
+      ? "mode"
+      : step === 3
+        ? "finish"
+        : providerStep === 1
+          ? "text_provider"
+          : providerStep === 2
+            ? "image_provider"
+            : "web_search";
+    trackEvent(MixpanelEvent.Onboarding_Step_Viewed, {
+      step_name: stepName,
+      step_number: step === 1 ? 1 : step === 3 ? 5 : providerStep + 1,
+    });
+  }, [step, providerStep]);
 
 
   useEffect(() => {
@@ -55,9 +72,9 @@ export default function Home() {
       <OnBoardingSlidebar step={step} />
       <main className="w-full pl-20 pr-8 max-w-[1440px] mx-auto relative z-10">
 
-        <OnBoardingHeader currentStep={step} setStep={setStep} />
+        <OnBoardingHeader currentStep={step} providerStep={providerStep} setStep={setStep} setProviderStep={setProviderStep} />
         {step === 1 && <ModeSelectStep selectedMode={selectedMode} setStep={setStep} setSelectedMode={setSelectedMode} />}
-        {step === 2 && selectedMode === "presenton" && <PresentonMode currentStep={step} setStep={setStep} />}
+        {step === 2 && selectedMode === "presenton" && <PresentonMode currentStep={step} providerStep={providerStep} setStep={setStep} setProviderStep={setProviderStep} />}
         {step === 2 && selectedMode === "image" && <GenerationWithImage />}
         {step === 3 && <FinalStep />}
       </main>

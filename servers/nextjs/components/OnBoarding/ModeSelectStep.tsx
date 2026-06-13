@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import React from 'react'
+import { MixpanelEvent, trackEvent } from '@/utils/mixpanel'
 
 const ModeSelectStep = ({ selectedMode, setStep, setSelectedMode }: { selectedMode: string, setStep: (step: number) => void, setSelectedMode: (mode: string) => void }) => {
     return (
@@ -12,6 +13,7 @@ const ModeSelectStep = ({ selectedMode, setStep, setSelectedMode }: { selectedMo
             <div className='space-y-5'>
                 <div onClick={() => {
                     setSelectedMode("presenton")
+                    trackEvent(MixpanelEvent.Onboarding_Mode_Selected, { mode: "presenton" });
 
                 }} className={`border font-syne  rounded-[11px] p-3  flex items-center  justify-between gap-6 cursor-pointer ${selectedMode === "presenton" ? "border-[#a49cfc]" : "border-[#EDEEEF]"}`}>
                     <div className='flex items-center gap-6'>
@@ -24,7 +26,7 @@ const ModeSelectStep = ({ selectedMode, setStep, setSelectedMode }: { selectedMo
                                 <h3 className='text-black text-[18px] font-medium font-syne'>Template Presentation Mode</h3>
                                 <p className='bg-[#F4F3FF] px-3 py-1.5 rounded-[30px] text-[#7A5AF8] text-[9px] absolute left-[260px] top-[-10px]'>PPTX Export </p>
                             </div>
-                            <p className='text-[#999999] text-[14px] font-normal font-syne'>Best for structured decks, editing, and PPTX export. Requires text and image providers.</p>
+                            <p className='text-[#999999] text-[14px] font-normal font-syne'>Best for structured decks, editing, and PPTX export. Image generation and web search are optional.</p>
                         </div>
                     </div>
                     <ChevronRight className='w-6 h-6 text-[#B3B3B3]' />
@@ -53,6 +55,11 @@ const ModeSelectStep = ({ selectedMode, setStep, setSelectedMode }: { selectedMo
 
                 <button
                     onClick={() => {
+                        trackEvent(MixpanelEvent.Onboarding_Step_Continued, {
+                            from_step: "mode",
+                            to_step: "text_provider",
+                            selected_mode: selectedMode,
+                        });
                         setStep(2);
                     }}
                     className='border font-syne border-[#EDEEEF] bg-[#7C51F8]  rounded-[58px] px-5 py-2.5 text-white text-xs  font-semibold'>

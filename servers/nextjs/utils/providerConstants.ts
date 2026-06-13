@@ -259,7 +259,7 @@ export const LLM_PROVIDERS: Record<string, LLMProviderOption> = {
     label: "LM Studio",
     description: "Local LM Studio OpenAI-compatible server",
     url: "http://localhost:1234/v1",
-    icon: "/providers/custom.svg",
+    icon: "/providers/lm-studio.svg",
   },
   anthropic: {
     value: "anthropic",

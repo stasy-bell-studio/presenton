@@ -14,6 +14,7 @@ import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 interface CodexConfigProps {
   codexModel: string;
   onInputChange: (value: string | boolean, field: string) => void;
+  onAuthStatusChange?: (authenticated: boolean) => void;
 }
 
 type AuthStatus = "checking" | "unauthenticated" | "polling" | "authenticated";
@@ -46,6 +47,7 @@ export const DEFAULT_CODEX_MODEL = "gpt-5.2";
 export default function CodexConfig({
   codexModel,
   onInputChange,
+  onAuthStatusChange,
 }: CodexConfigProps) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>("checking");
   const [accountId, setAccountId] = useState<string | null>(null);
@@ -69,6 +71,10 @@ export default function CodexConfig({
     checkCurrentAuthStatus();
     return () => stopPolling();
   }, []);
+
+  useEffect(() => {
+    onAuthStatusChange?.(authStatus === "authenticated");
+  }, [authStatus, onAuthStatusChange]);
 
   const applyProfile = (data: Partial<StatusResponse>) => {
     setAccountId(data.account_id ?? null);
@@ -126,6 +132,7 @@ export default function CodexConfig({
           const pollData: StatusResponse = await pollRes.json();
 
           if (pollData.status === "success") {
+            trackEvent(MixpanelEvent.Codex_SignIn_Completed, { method: "browser_poll" });
             stopPolling();
             setAuthStatus("authenticated");
             applyProfile(pollData);
@@ -138,6 +145,7 @@ export default function CodexConfig({
               "Your ChatGPT account is connected and ready to use."
             );
           } else if (pollData.status === "failed") {
+            trackEvent(MixpanelEvent.Codex_SignIn_Failed, { method: "browser_poll" });
             stopPolling();
             setAuthStatus("unauthenticated");
             applyProfile({});
@@ -151,6 +159,7 @@ export default function CodexConfig({
         }
       }, 2000);
     } catch (err) {
+      trackEvent(MixpanelEvent.Codex_SignIn_Failed, { method: "initiate" });
       notify.error(
         "Sign-in failed",
         "Could not start the sign-in flow. Please try again."
@@ -174,6 +183,7 @@ export default function CodexConfig({
         throw new Error(err.detail || "Exchange failed");
       }
       const data = await res.json();
+      trackEvent(MixpanelEvent.Codex_SignIn_Completed, { method: "manual_exchange" });
       stopPolling();
       setAuthStatus("authenticated");
       applyProfile(data);
@@ -187,6 +197,7 @@ export default function CodexConfig({
         "Your ChatGPT account is connected and ready to use."
       );
     } catch (err: any) {
+      trackEvent(MixpanelEvent.Codex_SignIn_Failed, { method: "manual_exchange" });
       notify.error(
         "Sign-in failed",
         err.message || "The verification code could not be accepted. Please try again."
@@ -197,6 +208,7 @@ export default function CodexConfig({
   };
 
   const handleCancelPolling = () => {
+    trackEvent(MixpanelEvent.Codex_SignIn_Cancelled);
     stopPolling();
     setSessionId(null);
     setManualCode("");
@@ -207,6 +219,7 @@ export default function CodexConfig({
     setIsLoggingOut(true);
     try {
       await fetch(getApiUrl("/api/v1/ppt/codex/auth/logout"), { method: "POST" });
+      trackEvent(MixpanelEvent.Codex_Signed_Out);
       setAuthStatus("unauthenticated");
       setAccountId(null);
       setUsername(null);

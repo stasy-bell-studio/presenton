@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Button } from '../ui/button';
-import { ArrowUpRight, Check, CheckCircle, ChevronLeft, ChevronUp, Download, Eye, EyeOff, Info, Loader2 } from 'lucide-react';
+import { ArrowUpRight, Check, CheckCircle, ChevronLeft, ChevronUp, Download, Eye, EyeOff, Info, Loader2, Search } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../ui/command';
-import { DALLE_3_QUALITY_OPTIONS, GPT_IMAGE_1_5_QUALITY_OPTIONS, IMAGE_PROVIDERS, LLM_PROVIDERS } from '@/utils/providerConstants';
+import { DALLE_3_QUALITY_OPTIONS, GPT_IMAGE_1_5_QUALITY_OPTIONS, IMAGE_PROVIDERS, LLM_PROVIDERS, WEB_SEARCH_PROVIDERS } from '@/utils/providerConstants';
 import { cn } from '@/lib/utils';
 import { LLMConfig } from '@/types/llm_config';
 import { RootState } from '@/store/store';
@@ -21,13 +21,38 @@ import CodexConfig, { CHATGPT_MODELS } from '../CodexConfig';
 import VertexAzureManualFields from '@/components/VertexAzureManualFields';
 import BedrockManualFields from '@/components/BedrockManualFields';
 import OpenAICompatibleImageFields from '@/components/OpenAICompatibleImageFields';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 
 const MANUAL_MODEL_PROVIDERS = new Set(["vertex", "azure", "bedrock"]);
+const LOCAL_PROVIDERS = ["ollama", "lmstudio"];
+const OTHER_PROVIDERS = Object.values(LLM_PROVIDERS).filter(
+    (provider) => provider.value !== "codex" && !LOCAL_PROVIDERS.includes(provider.value)
+);
+const WEB_SEARCH_PROVIDER_OPTIONS = [
+    WEB_SEARCH_PROVIDERS.auto,
+    WEB_SEARCH_PROVIDERS.searxng,
+    WEB_SEARCH_PROVIDERS.tavily,
+    WEB_SEARCH_PROVIDERS.exa,
+    WEB_SEARCH_PROVIDERS.brave,
+];
 
-const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep: (step: number) => void }) => {
+const PresentonMode = ({
+    currentStep,
+    providerStep,
+    setStep,
+    setProviderStep,
+}: {
+    currentStep: number,
+    providerStep: number,
+    setStep: (step: number) => void,
+    setProviderStep: (step: number) => void,
+}) => {
     const pathname = usePathname();
     const [openProviderSelect, setOpenProviderSelect] = useState(false);
     const [openImageProviderSelect, setOpenImageProviderSelect] = useState(false);
+    const [openWebProviderSelect, setOpenWebProviderSelect] = useState(false);
+    const [textProviderTab, setTextProviderTab] = useState("chatgpt");
+    const [chatGptAuthenticated, setChatGptAuthenticated] = useState(false);
     const userConfigState = useSelector((state: RootState) => state.userConfig);
 
     const [showApiKey, setShowApiKey] = useState(false);
@@ -50,6 +75,11 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
     const isManualModelProvider = MANUAL_MODEL_PROVIDERS.has(llmConfig.LLM || "");
 
     const handleProviderChange = (provider: string) => {
+        trackEvent(MixpanelEvent.Onboarding_Text_Provider_Selected, {
+            provider,
+            provider_label: LLM_PROVIDERS[provider]?.label || provider,
+            provider_group: LOCAL_PROVIDERS.includes(provider) ? "local" : "other",
+        });
         setLlmConfig(prev => ({
             ...prev,
             LLM: provider
@@ -348,10 +378,16 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                         DALL·E 3 Image Quality
                     </label>
                     <div className="">
-                        <Select value={llmConfig.DALL_E_3_QUALITY || 'standard'} onValueChange={(value) => setLlmConfig((prev) => ({
-                            ...prev,
-                            DALL_E_3_QUALITY: value
-                        }))}>
+                        <Select value={llmConfig.DALL_E_3_QUALITY || 'standard'} onValueChange={(value) => {
+                            trackEvent(MixpanelEvent.Onboarding_Image_Quality_Selected, {
+                                image_provider: "dall-e-3",
+                                quality: value,
+                            });
+                            setLlmConfig((prev) => ({
+                                ...prev,
+                                DALL_E_3_QUALITY: value
+                            }));
+                        }}>
                             <SelectTrigger className="w-full h-12 px-4 py-4 outline-none border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors hover:border-gray-400 justify-between">
                                 <SelectValue placeholder="Select a quality" />
                             </SelectTrigger>
@@ -376,10 +412,16 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                     <div className="">
                         <Select
                             value={llmConfig.GPT_IMAGE_1_5_QUALITY || 'low'}
-                            onValueChange={(value) => setLlmConfig((prev) => ({
-                                ...prev,
-                                GPT_IMAGE_1_5_QUALITY: value
-                            }))}
+                            onValueChange={(value) => {
+                                trackEvent(MixpanelEvent.Onboarding_Image_Quality_Selected, {
+                                    image_provider: "gpt-image-1.5",
+                                    quality: value,
+                                });
+                                setLlmConfig((prev) => ({
+                                    ...prev,
+                                    GPT_IMAGE_1_5_QUALITY: value
+                                }));
+                            }}
                         >
                             <SelectTrigger
 
@@ -430,18 +472,36 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
             if (llmConfig.LLM === 'codex') {
                 const isAuthenticated = await checkCurrentAuthStatus();
                 if (!isAuthenticated) {
+                    trackEvent(MixpanelEvent.Onboarding_Validation_Failed, {
+                        step_name: "text_provider",
+                        provider: "codex",
+                        validation_error: "Please sign in to ChatGPT to continue.",
+                    });
                     notify.error("Sign in required", "Please sign in to ChatGPT to continue.");
                     return;
                 }
             }
             const validationError = getLLMConfigValidationError(llmConfig);
             if (validationError) {
+                trackEvent(MixpanelEvent.Onboarding_Validation_Failed, {
+                    step_name: "web_search",
+                    web_search_enabled: !!llmConfig.WEB_GROUNDING,
+                    web_search_provider: llmConfig.WEB_SEARCH_PROVIDER || "auto",
+                    validation_error: validationError,
+                });
                 notify.warning("Cannot save yet", validationError);
                 return;
             }
             setSavingConfig(true);
 
             await handleSaveLLMConfig(llmConfig);
+            trackEvent(MixpanelEvent.Onboarding_Configuration_Saved, {
+                text_provider: llmConfig.LLM || "",
+                image_generation_enabled: !llmConfig.DISABLE_IMAGE_GENERATION,
+                image_provider: llmConfig.DISABLE_IMAGE_GENERATION ? "disabled" : llmConfig.IMAGE_PROVIDER || "",
+                web_search_enabled: !!llmConfig.WEB_GROUNDING,
+                web_search_provider: llmConfig.WEB_GROUNDING ? llmConfig.WEB_SEARCH_PROVIDER || "auto" : "disabled",
+            });
 
             if (llmConfig.LLM === "ollama" && llmConfig.OLLAMA_MODEL) {
                 const isPulled = await checkIfSelectedOllamaModelIsPulled(llmConfig.OLLAMA_MODEL);
@@ -461,16 +521,24 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                 text_provider: textProvider,
                 text_provider_label: LLM_PROVIDERS[textProvider]?.label || textProvider || '',
                 text_model: textModel,
-                uses_chatgpt_login: textProvider === 'chatgpt',
+                uses_chatgpt_login: textProvider === 'chatgpt' || textProvider === 'codex',
                 image_generation_enabled: imageGenerationEnabled,
                 image_provider: imageProvider,
                 image_provider_label: imageGenerationEnabled
                     ? (IMAGE_PROVIDERS[imageProvider]?.label || imageProvider || '')
                     : 'Image generation disabled',
-                image_quality: imageGenerationEnabled ? getSelectedImageQuality(llmConfig) : ''
+                image_quality: imageGenerationEnabled ? getSelectedImageQuality(llmConfig) : '',
+                web_search_enabled: !!llmConfig.WEB_GROUNDING,
+                web_search_provider: llmConfig.WEB_GROUNDING ? (llmConfig.WEB_SEARCH_PROVIDER || "auto") : "disabled",
             });
 
             notify.success("Configuration saved", "Your configuration was saved successfully.");
+            trackEvent(MixpanelEvent.Onboarding_Step_Continued, {
+                from_step: "web_search",
+                to_step: "finish",
+                web_search_enabled: !!llmConfig.WEB_GROUNDING,
+                web_search_provider: llmConfig.WEB_GROUNDING ? llmConfig.WEB_SEARCH_PROVIDER || "auto" : "disabled",
+            });
             setStep(3)
             // router.push("/upload");
         } catch (error) {
@@ -481,6 +549,84 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
             setSavingConfig(false);
         }
     };
+
+    const validateTextProvider = async () => {
+        if (llmConfig.LLM === 'codex') {
+            const isAuthenticated = await checkCurrentAuthStatus();
+            if (!isAuthenticated) {
+                notify.error("Sign in required", "Please sign in to ChatGPT to continue.");
+                return false;
+            }
+        }
+        const validationError = getLLMConfigValidationError({
+            ...llmConfig,
+            DISABLE_IMAGE_GENERATION: true,
+            WEB_GROUNDING: false,
+        });
+        if (validationError) {
+            trackEvent(MixpanelEvent.Onboarding_Validation_Failed, {
+                step_name: "text_provider",
+                provider: llmConfig.LLM || "",
+                validation_error: validationError,
+            });
+            notify.warning("Cannot continue yet", validationError);
+            return false;
+        }
+        return true;
+    };
+
+    const handleContinue = async () => {
+        if (providerStep === 1) {
+            if (await validateTextProvider()) {
+                trackEvent(MixpanelEvent.Onboarding_Step_Continued, {
+                    from_step: "text_provider",
+                    to_step: "image_provider",
+                    provider: llmConfig.LLM || "",
+                });
+                setProviderStep(2);
+            }
+            return;
+        }
+        if (providerStep === 2) {
+            const validationError = getLLMConfigValidationError({ ...llmConfig, WEB_GROUNDING: false });
+            if (validationError) {
+                trackEvent(MixpanelEvent.Onboarding_Validation_Failed, {
+                    step_name: "image_provider",
+                    image_generation_enabled: !llmConfig.DISABLE_IMAGE_GENERATION,
+                    image_provider: llmConfig.IMAGE_PROVIDER || "",
+                    validation_error: validationError,
+                });
+                notify.warning("Cannot continue yet", validationError);
+                return;
+            }
+            trackEvent(MixpanelEvent.Onboarding_Step_Continued, {
+                from_step: "image_provider",
+                to_step: "web_search",
+                image_generation_enabled: !llmConfig.DISABLE_IMAGE_GENERATION,
+                image_provider: llmConfig.DISABLE_IMAGE_GENERATION ? "disabled" : llmConfig.IMAGE_PROVIDER || "",
+            });
+            setProviderStep(3);
+            return;
+        }
+        await handleSaveConfig();
+    };
+
+    const handleBack = () => {
+        trackEvent(MixpanelEvent.Onboarding_Back_Clicked, {
+            from_step: providerStep === 1 ? "text_provider" : providerStep === 2 ? "image_provider" : "web_search",
+            to_step: providerStep === 1 ? "mode" : providerStep === 2 ? "text_provider" : "image_provider",
+            source: "footer_button",
+        });
+        if (providerStep > 1) {
+            setProviderStep(providerStep - 1);
+        } else {
+            setStep(currentStep - 1);
+        }
+    };
+
+    const selectedWebProvider = WEB_SEARCH_PROVIDER_OPTIONS.find(
+        (provider) => provider.value === (llmConfig.WEB_SEARCH_PROVIDER || "auto")
+    ) || WEB_SEARCH_PROVIDERS.auto;
 
     const downloadProgress = useMemo(() => {
         if (downloadingModel && downloadingModel.downloaded !== null && downloadingModel.size !== null) {
@@ -495,19 +641,34 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
         }
     }, [llmConfig.LLM, modelsChecked, modelsLoading]);
 
+    useEffect(() => {
+        if (textProviderTab === "chatgpt" && llmConfig.LLM !== "codex") {
+            setLlmConfig(prev => ({ ...prev, LLM: "codex" }));
+        }
+    }, [textProviderTab, llmConfig.LLM]);
+
     return (
         <div className='w-full max-w-[660px] font-syne pb-10'>
             <p className='px-2.5 py-0.5 w-fit text-[#7A5AF8] rounded-[50px]  border border-[#EDEEEF] text-[10px] font-medium mb-5 font-syne'>PRESENTON</p>
             <div className=''>
 
-                <h2 className='mb-4 text-black text-[26px] font-normal font-unbounded '>Choose your content providers</h2>
-                <p className='text-[#000000CC] text-xl font-normal font-syne'>Select the AI engines that will generate your slide text and visuals.</p>
+                <h2 className='mb-4 text-black text-[26px] font-normal font-unbounded '>
+                    {providerStep === 1 ? "Choose your text provider" : providerStep === 2 ? "Choose your image provider" : "Configure web search"}
+                </h2>
+                <p className='text-[#000000CC] text-xl font-normal font-syne'>
+                    {providerStep === 1
+                        ? "Start with ChatGPT, run a local model, or connect another AI provider."
+                        : providerStep === 2
+                            ? "Choose how Presenton creates visuals, or continue without image generation."
+                            : "Add current web context to presentations, or continue with web search disabled."}
+                </p>
             </div>
             <div className='flex items-center gap-2 bg-[#F0F3F9B2] rounded-[8px]  px-6 py-2.5 my-[54px]'>
                 <Info className='w-4 h-4 fill-[#003399] stroke-white' />
                 <p className='text-sm text-[#5F6062] font-medium'>Runs locally on your device. Your API keys and generation setup stay on your machine.</p>
             </div>
 
+            {providerStep === 1 && <>
             {/* Text Provider */}
             <div className='p-3 border border-[#EDEEEF] rounded-[11px] bg-white '>
                 <div className="flex items-center gap-[24.3px]  mb-[42px]">
@@ -528,22 +689,84 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                         </p>
                     </div>
                 </div>
-                <CodexConfig
-                    codexModel={llmConfig.CODEX_MODEL || ''}
-                    onInputChange={(value, field) => {
-                        const normalizedField = field === 'codex_model' ? 'CODEX_MODEL' : field;
-                        setLlmConfig(prev => ({
-                            ...prev,
-                            [normalizedField]: value
-                        }));
+                <Tabs
+                    value={textProviderTab}
+                    onValueChange={(tab) => {
+                        trackEvent(MixpanelEvent.Onboarding_Text_Provider_Tab_Selected, { tab });
+                        setTextProviderTab(tab);
                     }}
-                />
-                <div className='flex items-center gap-2.5 my-[30px]'>
-                    <div className='w-full h-[1px] bg-[#E1E1E5]' />
-                    <p className='text-xs font-normal text-[#999999]'>OR</p>
-                    <div className='w-full h-[1px] bg-[#E1E1E5]' />
-                </div>
-                <div className="flex w-full max-w-[222px] flex-col items-start gap-4">
+                    className="w-full"
+                >
+                    <TabsList className="grid h-11 w-full grid-cols-3 bg-[#F6F6F9] p-1">
+                        <TabsTrigger value="chatgpt">ChatGPT</TabsTrigger>
+                        <TabsTrigger value="local">Local</TabsTrigger>
+                        <TabsTrigger value="other">Other providers</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="chatgpt" className="mt-6">
+                        <CodexConfig
+                            codexModel={llmConfig.CODEX_MODEL || ''}
+                            onInputChange={(value, field) => {
+                                const normalizedField = field === 'codex_model' ? 'CODEX_MODEL' : field;
+                                setLlmConfig(prev => ({
+                                    ...prev,
+                                    [normalizedField]: value
+                                }));
+                            }}
+                            onAuthStatusChange={setChatGptAuthenticated}
+                        />
+                        {chatGptAuthenticated && (llmConfig.LLM === "codex" || llmConfig.LLM === "chatgpt") && (
+                            <div className="mt-5">
+                                <label className="mb-2 block text-sm font-medium text-gray-700">ChatGPT model</label>
+                                <Select
+                                    value={llmConfig.CODEX_MODEL || ""}
+                                    onValueChange={(value) => {
+                                        trackEvent(MixpanelEvent.Onboarding_Text_Model_Selected, {
+                                            provider: "codex",
+                                            model: value,
+                                        });
+                                        setLlmConfig(prev => ({ ...prev, CODEX_MODEL: value }));
+                                    }}
+                                >
+                                    <SelectTrigger className="h-12 w-full rounded-lg border-gray-300">
+                                        <SelectValue placeholder="Select a model" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {CHATGPT_MODELS.map((model) => (
+                                            <SelectItem key={model.id} value={model.id}>{model.name}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        )}
+                    </TabsContent>
+                    <TabsContent value="local" className="mt-6">
+                        <div className="grid grid-cols-2 gap-3">
+                            {LOCAL_PROVIDERS.map((value) => {
+                                const provider = LLM_PROVIDERS[value];
+                                return (
+                                    <button
+                                        type="button"
+                                        key={value}
+                                        onClick={() => handleProviderChange(value)}
+                                        className={cn(
+                                            "flex items-center gap-3 rounded-xl border p-4 text-left transition-colors hover:bg-[#F7F6F9]",
+                                            llmConfig.LLM === value ? "border-[#7A5AF8] bg-[#F4F3FF]" : "border-[#EDEEEF]"
+                                        )}
+                                    >
+                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white border border-[#EDEEEF]">
+                                            {provider.icon ? <img src={provider.icon} alt="" className="h-7 w-7 object-contain" /> : <span className="font-semibold">LM</span>}
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-[#191919]">{provider.label}</p>
+                                            <p className="mt-1 text-xs text-[#777]">{provider.description}</p>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="other" className="mt-6">
+                <div className="flex w-full max-w-[300px] flex-col items-start gap-4">
                     <div className="flex w-full flex-col justify-start">
 
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -581,7 +804,7 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                                     <CommandList className='hide-scrollbar'>
                                         <CommandEmpty>No provider found.</CommandEmpty>
                                         <CommandGroup >
-                                            {Object.values(LLM_PROVIDERS).map(
+                                            {OTHER_PROVIDERS.map(
                                                 (provider, index) => (
                                                     <CommandItem
                                                         key={index}
@@ -617,6 +840,11 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                             </PopoverContent>
                         </Popover>
                     </div>
+                </div>
+                    </TabsContent>
+                </Tabs>
+                {textProviderTab !== "chatgpt" && (
+                <div className="mt-6 flex w-full max-w-[300px] flex-col items-start gap-4">
                     <div className="relative flex w-full flex-col justify-end items-start">
                         <div className="flex flex-col justify-start w-full ">
                             {llmConfig.LLM === 'ollama' ? (
@@ -700,6 +928,10 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                                                                 key={model.id}
                                                                 value={model.id}
                                                                 onSelect={(value) => {
+                                                                    trackEvent(MixpanelEvent.Onboarding_Text_Model_Selected, {
+                                                                        provider: "codex",
+                                                                        model: value,
+                                                                    });
                                                                     setLlmConfig(prev => ({
                                                                         ...prev,
                                                                         CODEX_MODEL: value
@@ -895,6 +1127,7 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                     </div>
 
                 </div>
+                )}
                 <div className="mt-4 flex w-full max-w-[222px] items-start gap-4">
 
 
@@ -945,6 +1178,10 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                                                                 value={model}
                                                                 onSelect={(value) => {
                                                                     if (currentModelField) {
+                                                                        trackEvent(MixpanelEvent.Onboarding_Text_Model_Selected, {
+                                                                            provider: llmConfig.LLM || "",
+                                                                            model: value,
+                                                                        });
                                                                         setLlmConfig(prev => ({
                                                                             ...prev,
                                                                             [currentModelField]: value
@@ -983,6 +1220,8 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                     )}
                 </div>
             </div>
+            </>}
+            {providerStep === 2 && <>
             {/* Image Provider */}
             <div className={`p-3 border border-[#EDEEEF] rounded-[11px] relative mt-5 bg-white ${llmConfig.DISABLE_IMAGE_GENERATION ? "bg-[#F9FAFB]" : ""}`}>
                 <ToolTip content="Enable/Disable Image Generation" className='flex justify-end items-center absolute top-3 right-3'>
@@ -990,10 +1229,13 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                         <Switch
                             checked={!llmConfig.DISABLE_IMAGE_GENERATION}
                             className='data-[state=checked]:bg-[#4791FF] h-[22px] w-[36px] data-[state=unchecked]:bg-[#E2E0E1]'
-                            onCheckedChange={(checked) => setLlmConfig(prev => ({
-                                ...prev,
-                                DISABLE_IMAGE_GENERATION: !checked
-                            }))}
+                            onCheckedChange={(checked) => {
+                                trackEvent(MixpanelEvent.Onboarding_Image_Generation_Toggled, { enabled: checked });
+                                setLlmConfig(prev => ({
+                                    ...prev,
+                                    DISABLE_IMAGE_GENERATION: !checked
+                                }));
+                            }}
                         />
                     </div>
 
@@ -1059,6 +1301,10 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                                                                 key={index}
                                                                 value={provider.value}
                                                                 onSelect={(value) => {
+                                                                    trackEvent(MixpanelEvent.Onboarding_Image_Provider_Selected, {
+                                                                        image_provider: value,
+                                                                        image_provider_label: IMAGE_PROVIDERS[value]?.label || value,
+                                                                    });
                                                                     setLlmConfig(prev => ({
                                                                         ...prev,
                                                                         IMAGE_PROVIDER: value
@@ -1230,22 +1476,138 @@ const PresentonMode = ({ currentStep, setStep }: { currentStep: number, setStep:
                     </div>}
                 </div>}
             </div>
+            </>}
+
+            {providerStep === 3 && (
+                <div className={`relative rounded-[11px] border border-[#EDEEEF] p-3 ${llmConfig.WEB_GROUNDING ? "bg-white" : "bg-[#F9FAFB]"}`}>
+                    <ToolTip content="Enable/Disable Web Search" className='absolute right-3 top-3 flex items-center justify-end'>
+                        <Switch
+                            checked={!!llmConfig.WEB_GROUNDING}
+                            className='data-[state=checked]:bg-[#4791FF] h-[22px] w-[36px] data-[state=unchecked]:bg-[#E2E0E1]'
+                            onCheckedChange={(checked) => {
+                                trackEvent(MixpanelEvent.Onboarding_Web_Search_Toggled, { enabled: checked });
+                                setLlmConfig(prev => ({
+                                    ...prev,
+                                    WEB_GROUNDING: checked,
+                                    WEB_SEARCH_PROVIDER: prev.WEB_SEARCH_PROVIDER || "auto",
+                                }));
+                            }}
+                        />
+                    </ToolTip>
+                    <div className={`flex items-center gap-6 ${llmConfig.WEB_GROUNDING ? "mb-[42px]" : ""}`}>
+                        <div className='flex h-[74px] w-[74px] items-center justify-center rounded-[4px] bg-[#F4F3FF]'>
+                            <Search className="h-9 w-9 text-[#5146E5]" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-normal text-[#191919]">Web Search Settings</h3>
+                            <p className="text-sm text-gray-500">Bring current information into generated presentations</p>
+                        </div>
+                    </div>
+                    {llmConfig.WEB_GROUNDING && (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="mb-2 block text-sm font-medium text-gray-700">Select Web Search Provider</label>
+                                <Popover open={openWebProviderSelect} onOpenChange={setOpenWebProviderSelect}>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className="h-12 w-full justify-between rounded-lg border-gray-300 px-4">
+                                            <span>{selectedWebProvider.label}</span>
+                                            <ChevronUp className="h-4 w-4 text-gray-500" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="p-0" align="start" style={{ width: "var(--radix-popover-trigger-width)" }}>
+                                        <Command>
+                                            <CommandInput placeholder="Search provider..." />
+                                            <CommandList>
+                                                <CommandGroup>
+                                                    {WEB_SEARCH_PROVIDER_OPTIONS.map((provider) => (
+                                                        <CommandItem
+                                                            key={provider.value}
+                                                            value={provider.value}
+                                                            onSelect={() => {
+                                                                trackEvent(MixpanelEvent.Onboarding_Web_Search_Provider_Selected, {
+                                                                    web_search_provider: provider.value,
+                                                                    web_search_provider_label: provider.label,
+                                                                });
+                                                                setLlmConfig(prev => ({ ...prev, WEB_SEARCH_PROVIDER: provider.value }));
+                                                                setOpenWebProviderSelect(false);
+                                                            }}
+                                                        >
+                                                            <Check className={cn("mr-2 h-4 w-4", selectedWebProvider.value === provider.value ? "opacity-100" : "opacity-0")} />
+                                                            <div>
+                                                                <p className="text-sm font-medium">{provider.label}</p>
+                                                                <p className="text-xs text-gray-500">{provider.description}</p>
+                                                            </div>
+                                                        </CommandItem>
+                                                    ))}
+                                                </CommandGroup>
+                                            </CommandList>
+                                        </Command>
+                                    </PopoverContent>
+                                </Popover>
+                                <p className="mt-2 text-xs text-gray-500">{selectedWebProvider.description}</p>
+                            </div>
+                            {selectedWebProvider.urlField && (
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">{selectedWebProvider.urlLabel}</label>
+                                    <input
+                                        type="url"
+                                        value={getFieldValue(selectedWebProvider.urlField)}
+                                        onChange={(event) => setLlmConfig(prev => ({ ...prev, [selectedWebProvider.urlField!]: event.target.value }))}
+                                        className="h-12 w-full rounded-lg border border-gray-300 px-4 outline-none focus:border-blue-500"
+                                        placeholder="https://search.example.com"
+                                    />
+                                </div>
+                            )}
+                            {selectedWebProvider.apiKeyField && (
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">{selectedWebProvider.apiKeyLabel}</label>
+                                    <div className="relative">
+                                        <input
+                                            type={showApiKey ? "text" : "password"}
+                                            value={getFieldValue(selectedWebProvider.apiKeyField)}
+                                            onChange={(event) => setLlmConfig(prev => ({ ...prev, [selectedWebProvider.apiKeyField!]: event.target.value }))}
+                                            className="h-12 w-full rounded-lg border border-gray-300 px-4 pr-12 outline-none focus:border-blue-500"
+                                        />
+                                        <button type="button" onClick={() => setShowApiKey(prev => !prev)} className="absolute right-3 top-1/2 -translate-y-1/2">
+                                            {showApiKey ? <Eye className="h-4 w-4 text-gray-500" /> : <EyeOff className="h-4 w-4 text-gray-500" />}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                            {selectedWebProvider.value !== "auto" && (
+                                <div>
+                                    <label className="mb-2 block text-sm font-medium text-gray-700">Maximum results</label>
+                                    <input
+                                        type="number"
+                                        min={1}
+                                        max={10}
+                                        value={llmConfig.WEB_SEARCH_MAX_RESULTS || "5"}
+                                        onChange={(event) => setLlmConfig(prev => ({ ...prev, WEB_SEARCH_MAX_RESULTS: event.target.value }))}
+                                        className="h-12 w-full rounded-lg border border-gray-300 px-4 outline-none focus:border-blue-500"
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
 
             <div className='fixed bottom-16 mr-8  max-w-[1440px]  right-16 flex justify-end items-center gap-2.5 '>
                 <button
-                    disabled={currentStep === 1}
-                    onClick={() => {
-                        setStep(currentStep - 1);
-                    }}
+                    onClick={handleBack}
                     className='border border-[#EDEEEF] rounded-[53px] px-4 py-1 h-[36px]'>
                     <ChevronLeft className='w-4 h-4 text-gray-500' />
                 </button>
                 <button
 
                     disabled={savingConfig}
-                    onClick={handleSaveConfig}
+                    onClick={handleContinue}
                     className='border font-syne border-[#EDEEEF] bg-[#7C51F8]  rounded-[58px] px-5 py-2.5 text-white text-xs  font-semibold'>
-                    Continue to Finish
+                    {providerStep === 1
+                        ? "Continue to image provider"
+                        : providerStep === 2
+                            ? llmConfig.DISABLE_IMAGE_GENERATION ? "Disable image generation & Continue" : "Continue to web search"
+                            : llmConfig.WEB_GROUNDING ? "Save & Finish" : "Disable web search & Finish"}
                 </button>
             </div>
             {/* Download Progress Modal */}

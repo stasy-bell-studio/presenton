@@ -1,0 +1,181 @@
+PRESENTON ONBOARDING ANALYTICS EVENTS
+=====================================
+
+Purpose
+-------
+Measure onboarding progress, identify the exact step where users stop, and
+understand which provider paths and optional features cause friction.
+
+Privacy
+-------
+Never track API keys, access tokens, refresh tokens, account IDs, emails,
+usernames, endpoint credentials, or values entered into credential fields.
+Validation events contain only the user-facing validation error message.
+
+
+PRIMARY FUNNEL
+--------------
+
+1. Onboarding Step Viewed
+   Fired whenever a user reaches an onboarding step.
+   Properties:
+   - step_name: mode | text_provider | image_provider | web_search | finish
+   - step_number: 1 | 2 | 3 | 4 | 5
+
+2. Onboarding Step Continued
+   Fired when the user successfully advances to the next step.
+   Common properties:
+   - from_step
+   - to_step
+   Step-specific properties may include:
+   - selected_mode
+   - provider
+   - image_generation_enabled
+   - image_provider
+   - web_search_enabled
+   - web_search_provider
+
+3. Onboarding Validation Failed
+   Fired when the user tries to continue but the current configuration is not valid.
+   Properties:
+   - step_name
+   - validation_error
+   - provider, image provider, or web-search state relevant to the blocked step
+
+4. Onboarding Configuration Saved
+   Fired after the complete provider configuration is successfully saved.
+   Properties:
+   - text_provider
+   - image_generation_enabled
+   - image_provider
+   - web_search_enabled
+   - web_search_provider
+
+5. Onboarding Completed
+   Fired when the finish screen is reached.
+   Properties: none
+
+
+NAVIGATION ACTIONS
+------------------
+
+Onboarding Back Clicked
+Fired when the user navigates to an earlier step.
+Properties:
+- from_step / to_step when using the footer back button
+- from_step_number / to_step_number when using the progress header
+- source: footer_button | progress_header
+
+Onboarding Mode Selected
+Fired when a generation mode is selected.
+Properties:
+- mode
+
+
+TEXT PROVIDER ACTIONS
+---------------------
+
+Onboarding Text Provider Tab Selected
+Fired when a user switches between text-provider tabs.
+Properties:
+- tab: chatgpt | local | other
+
+Onboarding Text Provider Selected
+Fired when a local or other text provider is selected.
+Properties:
+- provider
+- provider_label
+- provider_group: local | other
+
+Onboarding Text Model Selected
+Fired when a text model is selected.
+Properties:
+- provider
+- model
+
+Codex Sign In API Call
+Fired when the user starts ChatGPT sign-in.
+
+Codex Sign In Completed
+Fired when ChatGPT sign-in succeeds.
+Properties:
+- method: browser_poll | manual_exchange
+
+Codex Sign In Failed
+Fired when ChatGPT sign-in fails.
+Properties:
+- method: initiate | browser_poll | manual_exchange
+
+Codex Sign In Cancelled
+Fired when the user cancels an in-progress ChatGPT sign-in.
+
+Codex Signed Out
+Fired when the user signs out of ChatGPT.
+
+
+IMAGE PROVIDER ACTIONS
+----------------------
+
+Onboarding Image Generation Toggled
+Fired when image generation is enabled or disabled.
+Properties:
+- enabled
+
+Onboarding Image Provider Selected
+Fired when an image provider is selected.
+Properties:
+- image_provider
+- image_provider_label
+
+Onboarding Image Quality Selected
+Fired when an image quality option is selected.
+Properties:
+- image_provider
+- quality
+
+
+WEB SEARCH ACTIONS
+------------------
+
+Onboarding Web Search Toggled
+Fired when web search is enabled or disabled.
+Properties:
+- enabled
+
+Onboarding Web Search Provider Selected
+Fired when a web-search provider is selected.
+Properties:
+- web_search_provider
+- web_search_provider_label
+
+
+FINAL CONFIGURATION SNAPSHOT
+----------------------------
+
+Onboarding Providers Models Selected
+Fired after successful save as a final aggregate snapshot.
+Properties:
+- pathname
+- text_provider
+- text_provider_label
+- text_model
+- uses_chatgpt_login
+- image_generation_enabled
+- image_provider
+- image_provider_label
+- image_quality
+- web_search_enabled
+- web_search_provider
+
+
+RECOMMENDED DASHBOARD METRICS
+-----------------------------
+
+- Conversion between each Onboarding Step Viewed event.
+- Validation failure rate grouped by step_name and validation_error.
+- Median time between consecutive Onboarding Step Viewed events.
+- Completion rate by text-provider tab and selected provider.
+- Image-generation disable rate.
+- Web-search disable rate.
+- ChatGPT sign-in start-to-completion rate.
+- Completion rate after ChatGPT sign-in failure.
