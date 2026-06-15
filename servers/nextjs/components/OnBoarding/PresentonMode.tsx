@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
 import { Button } from '../ui/button';
-import { ArrowUpRight, Blocks, Check, CheckCircle, ChevronLeft, ChevronUp, Download, Eye, EyeOff, Info, Laptop, Loader2, Search } from 'lucide-react';
+import { ArrowUpRight, Blocks, Check, ChevronLeft, ChevronUp, Eye, EyeOff, Info, Laptop, Loader2, Search } from 'lucide-react';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../ui/command';
 import { DALLE_3_QUALITY_OPTIONS, GPT_IMAGE_1_5_QUALITY_OPTIONS, IMAGE_PROVIDERS, LLM_PROVIDERS, WEB_SEARCH_PROVIDERS } from '@/utils/providerConstants';
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ import { Select, SelectItem, SelectContent, SelectValue, SelectTrigger } from '.
 import { MixpanelEvent, trackEvent } from '@/utils/mixpanel';
 import { usePathname } from 'next/navigation';
 import { getLLMConfigValidationError, handleSaveLLMConfig } from '@/utils/storeHelpers';
-import { checkIfSelectedOllamaModelIsPulled, pullOllamaModel } from '@/utils/providerUtils';
+import { getDefaultOllamaUrl, isOllamaModelAvailable } from '@/utils/providerUtils';
 import { getApiUrl } from '@/utils/api';
 import CodexConfig from '../CodexConfig';
 import { CODEX_MODELS } from '@/utils/codexModels';
@@ -24,6 +24,7 @@ import BedrockManualFields from '@/components/BedrockManualFields';
 import OpenAICompatibleImageFields from '@/components/OpenAICompatibleImageFields';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import Image from 'next/image';
+import OllamaConfig from '../OllamaConfig';
 
 const MANUAL_MODEL_PROVIDERS = new Set(["vertex", "azure", "bedrock"]);
 const LOCAL_PROVIDERS = ["ollama", "lmstudio"];
@@ -59,9 +60,7 @@ const PresentonMode = ({
     const pathname = usePathname();
     const userConfigState = useSelector((state: RootState) => state.userConfig);
     const [openProviderSelect, setOpenProviderSelect] = useState(false);
-    const [textProviderTab, setTextProviderTab] = useState<TextProviderTab>(
-        getTextProviderTab(userConfigState.llm_config.LLM)
-    );
+    const [textProviderTab, setTextProviderTab] = useState<TextProviderTab>("chatgpt");
     const [chatGptAuthenticated, setChatGptAuthenticated] = useState(false);
 
     const [showApiKey, setShowApiKey] = useState(false);
@@ -69,19 +68,11 @@ const PresentonMode = ({
     const [openModelSelect, setOpenModelSelect] = useState(false);
     const [modelsLoading, setModelsLoading] = useState(false);
     const [modelsChecked, setModelsChecked] = useState(false);
-    const [showDownloadModal, setShowDownloadModal] = useState(false);
     const [savingConfig, setSavingConfig] = useState(false);
     const [llmConfig, setLlmConfig] = useState<LLMConfig>(
         userConfigState.llm_config
     );
     const llmConfigRef = useRef(llmConfig);
-    const [downloadingModel, setDownloadingModel] = useState<{
-        name: string;
-        size: number | null;
-        downloaded: number | null;
-        status: string;
-        done: boolean;
-    } | null>(null);
     const isManualModelProvider = MANUAL_MODEL_PROVIDERS.has(llmConfig.LLM || "");
     const isActiveNonChatProvider =
         (textProviderTab === "local" && LOCAL_PROVIDERS.includes(llmConfig.LLM || "")) ||
@@ -97,7 +88,10 @@ const PresentonMode = ({
         });
         setLlmConfig(prev => ({
             ...prev,
-            LLM: provider
+            LLM: provider,
+            ...(provider === "ollama" && !(prev.OLLAMA_URL || "").trim()
+                ? { OLLAMA_URL: getDefaultOllamaUrl() }
+                : {})
         }));
         setOpenProviderSelect(false);
         setAvailableModels([]);
@@ -191,7 +185,6 @@ const PresentonMode = ({
     const currentFireworksUrl = (llmConfig.FIREWORKS_BASE_URL || '').trim();
     const currentTogetherUrl = (llmConfig.TOGETHER_BASE_URL || '').trim();
     const currentOllamaUrl = llmConfig.OLLAMA_URL || '';
-    const useCustomOllamaUrl = !!llmConfig.USE_CUSTOM_URL;
     const providerApiKeyLabel =
         llmConfig.LLM === 'custom'
             ? 'Custom LLM API Key'
@@ -322,8 +315,6 @@ const PresentonMode = ({
                         api_key: currentApiKey
                     }),
                 });
-            } else if (llmConfig.LLM === 'ollama') {
-                response = await fetch(getApiUrl('/api/v1/ppt/ollama/models/supported'));
             } else {
                 const openAiCompatibleUrl =
                     llmConfig.LLM === 'custom'
@@ -351,13 +342,7 @@ const PresentonMode = ({
 
             if (response.ok) {
                 const data = await response.json();
-                const normalizedModels: string[] = llmConfig.LLM === 'ollama'
-                    ? Array.isArray(data)
-                        ? data.map((model: { value?: string; label?: string }) => model.value || model.label || '').filter(Boolean)
-                        : []
-                    : Array.isArray(data)
-                        ? data
-                        : [];
+                const normalizedModels: string[] = Array.isArray(data) ? data : [];
 
                 setAvailableModels(normalizedModels);
                 setModelsChecked(true);
@@ -406,9 +391,17 @@ const PresentonMode = ({
             }
         } catch (error) {
             console.error('Error fetching models:', error);
-            notify.error("Could not load models", "The server could not list models. Check your API key or endpoint and try again.");
+            notify.error(
+                llmConfig.LLM === "ollama" ? "Could not connect to Ollama" : "Could not load models",
+                error instanceof Error
+                    ? error.message
+                    : "The server could not list models. Check your API key or endpoint and try again."
+            );
             setAvailableModels([]);
             setModelsChecked(true);
+            if (llmConfig.LLM === "ollama") {
+                setLlmConfig(prev => ({ ...prev, OLLAMA_MODEL: "" }));
+            }
         } finally {
             setModelsLoading(false);
         }
@@ -486,15 +479,6 @@ const PresentonMode = ({
 
         return null;
     };
-    const handleModelDownload = async () => {
-        try {
-            await pullOllamaModel(llmConfig.OLLAMA_MODEL!, setDownloadingModel);
-        }
-        finally {
-            setDownloadingModel(null);
-            setShowDownloadModal(false);
-        }
-    };
     const checkCurrentAuthStatus = async () => {
         try {
             const res = await fetch(getApiUrl("/api/v1/ppt/codex/auth/status"));
@@ -538,6 +522,15 @@ const PresentonMode = ({
             }
             setSavingConfig(true);
 
+            if (
+                llmConfig.LLM === "ollama" &&
+                llmConfig.OLLAMA_MODEL &&
+                !(await isOllamaModelAvailable(llmConfig.OLLAMA_MODEL, currentOllamaUrl))
+            ) {
+                throw new Error(
+                    `The selected model "${llmConfig.OLLAMA_MODEL}" is not available at ${currentOllamaUrl}. Check models and select an available model.`
+                );
+            }
             await handleSaveLLMConfig(llmConfig);
             trackEvent(MixpanelEvent.Onboarding_Configuration_Saved, {
                 text_provider: llmConfig.LLM || "",
@@ -549,14 +542,6 @@ const PresentonMode = ({
                 web_search_step_skipped: !llmConfig.WEB_GROUNDING,
                 web_search_provider: llmConfig.WEB_GROUNDING ? llmConfig.WEB_SEARCH_PROVIDER || "auto" : "disabled",
             });
-
-            if (llmConfig.LLM === "ollama" && llmConfig.OLLAMA_MODEL) {
-                const isPulled = await checkIfSelectedOllamaModelIsPulled(llmConfig.OLLAMA_MODEL);
-                if (!isPulled) {
-                    setShowDownloadModal(true);
-                    await handleModelDownload();
-                }
-            }
 
             const textProvider = llmConfig.LLM || '';
             const textModel = getSelectedTextModel(llmConfig);
@@ -680,19 +665,6 @@ const PresentonMode = ({
         (provider) => provider.value === llmConfig.WEB_SEARCH_PROVIDER
     );
 
-    const downloadProgress = useMemo(() => {
-        if (downloadingModel && downloadingModel.downloaded !== null && downloadingModel.size !== null) {
-            return Math.round((downloadingModel.downloaded / downloadingModel.size) * 100);
-        }
-        return 0;
-    }, [downloadingModel?.downloaded, downloadingModel?.size]);
-
-    useEffect(() => {
-        if (llmConfig.LLM === 'ollama' && !modelsChecked && !modelsLoading) {
-            void fetchAvailableModels();
-        }
-    }, [llmConfig.LLM, modelsChecked, modelsLoading]);
-
     useEffect(() => {
         llmConfigRef.current = llmConfig;
     }, [llmConfig]);
@@ -744,7 +716,13 @@ const PresentonMode = ({
             (textProviderTab === "other" && OTHER_PROVIDER_VALUES.has(llmConfig.LLM || ""));
 
         if (!providerMatchesTab) {
-            setLlmConfig(prev => ({ ...prev, LLM: nextProvider }));
+            setLlmConfig(prev => ({
+                ...prev,
+                LLM: nextProvider,
+                ...(nextProvider === "ollama" && !(prev.OLLAMA_URL || "").trim()
+                    ? { OLLAMA_URL: getDefaultOllamaUrl() }
+                    : {})
+            }));
             setAvailableModels([]);
             setModelsChecked(false);
         }
@@ -965,50 +943,23 @@ const PresentonMode = ({
                     <div className="relative flex w-full flex-col justify-end items-start">
                         <div className="flex flex-col justify-start w-full ">
                             {llmConfig.LLM === 'ollama' ? (
-                                <>
-                                    {!useCustomOllamaUrl ? (
-                                        <button
-                                            type="button"
-                                            onClick={() => setLlmConfig(prev => ({
-                                                ...prev,
-                                                USE_CUSTOM_URL: true,
-                                                OLLAMA_URL: prev.OLLAMA_URL || 'http://localhost:11434'
-                                            }))}
-                                            className="py-2.5 bg-[#EDEEEF] px-3.5 w-fit rounded-[48px] text-xs font-semibold text-[#101323] transition-all duration-200 border border-[#EDEEEF] hover:bg-[#E8F0FF]/90 focus:ring-2 focus:ring-blue-500/20"
-                                        >
-                                            Use Ollama URL
-                                        </button>
-                                    ) : (
-                                        <>
-                                            <label className="block text-sm font-medium capitalize text-gray-700 mb-2">
-                                                Ollama URL
-                                            </label>
-                                            <div className="relative">
-                                                <input
-                                                    type="text"
-                                                    value={currentOllamaUrl}
-                                                    onChange={(e) => setLlmConfig(prev => ({
-                                                        ...prev,
-                                                        OLLAMA_URL: e.target.value
-                                                    }))}
-                                                    className="w-full px-2 py-3 outline-none border  border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
-                                                    placeholder="http://localhost:11434"
-                                                />
-                                            </div>
-                                            <button
-                                                type="button"
-                                                onClick={() => setLlmConfig(prev => ({
-                                                    ...prev,
-                                                    USE_CUSTOM_URL: false,
-                                                    OLLAMA_URL: 'http://localhost:11434'
-                                                }))}
-                                                className="mt-2 text-xs font-medium text-[#4B5563] underline underline-offset-2"
-                                            >
-                                                Use default Ollama URL
-                                            </button>
-                                        </>
-                                    )}
-                                </>
+                                <OllamaConfig
+                                    ollamaModel={llmConfig.OLLAMA_MODEL || ""}
+                                    ollamaUrl={currentOllamaUrl}
+                                    onInputChange={(value, field) => {
+                                        const normalizedField =
+                                            field === "ollama_url"
+                                                ? "OLLAMA_URL"
+                                                : field === "ollama_model"
+                                                    ? "OLLAMA_MODEL"
+                                                    : field;
+                                        if (typeof value !== "string") return;
+                                        setLlmConfig((prev) => ({
+                                            ...prev,
+                                            [normalizedField]: value,
+                                        }));
+                                    }}
+                                />
                             ) : llmConfig.LLM === 'bedrock' ? (
                                 <BedrockManualFields
                                     llmConfig={llmConfig}
@@ -1146,7 +1097,7 @@ const PresentonMode = ({
                         </div>
 
 
-                        {!isManualModelProvider && llmConfig.LLM !== 'ollama' && llmConfig.LLM !== 'chatgpt' && llmConfig.LLM !== 'codex' && (!modelsChecked || (modelsChecked && availableModels.length === 0)) && (
+                        {!isManualModelProvider && llmConfig.LLM !== 'chatgpt' && llmConfig.LLM !== 'codex' && llmConfig.LLM !== 'ollama' && (!modelsChecked || availableModels.length === 0) && (
 
                             <button
                                 onClick={fetchAvailableModels}
@@ -1185,16 +1136,21 @@ const PresentonMode = ({
 
 
                     {/* Model Selection - only show if models are available */}
-                    {isActiveNonChatProvider && !isManualModelProvider && modelsChecked && availableModels.length > 0 && (
+                    {isActiveNonChatProvider && !isManualModelProvider && llmConfig.LLM !== 'ollama' && modelsChecked && availableModels.length > 0 && (
                         <div className="w-full">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    {llmConfig.LLM === 'ollama' ? 'Choose a supported model' : `Select ${LLM_PROVIDERS[llmConfig.LLM!]?.label} Model`}
+                                    {`Select ${LLM_PROVIDERS[llmConfig.LLM!]?.label} Model`}
                                 </label>
                                 <div className="w-full">
                                     <Popover
                                         open={openModelSelect}
-                                        onOpenChange={setOpenModelSelect}
+                                        onOpenChange={(open) => {
+                                            setOpenModelSelect(open);
+                                            if (open && llmConfig.LLM === "ollama") {
+                                                void fetchAvailableModels();
+                                            }
+                                        }}
                                     >
                                         <PopoverTrigger asChild>
                                             <Button
@@ -1486,20 +1442,22 @@ const PresentonMode = ({
             {providerStep === 3 && (
                 <div className={`relative rounded-[11px] border border-[#EDEEEF] p-3 ${llmConfig.WEB_GROUNDING ? "bg-white" : "bg-[#F9FAFB]"}`}>
                     <ToolTip content="Enable/Disable Web Search" className='absolute right-3 top-3 flex items-center justify-end'>
-                        <Switch
-                            checked={!!llmConfig.WEB_GROUNDING}
-                            className='data-[state=checked]:bg-[#4791FF] h-[22px] w-[36px] data-[state=unchecked]:bg-[#E2E0E1]'
-                            onCheckedChange={(checked) => {
-                                trackEvent(MixpanelEvent.Onboarding_Web_Search_Toggled, {
-                                    enabled: checked,
-                                    web_search_step_skipped: !checked,
-                                });
-                                setLlmConfig(prev => ({
-                                    ...prev,
-                                    WEB_GROUNDING: checked,
-                                }));
-                            }}
-                        />
+                        <div className='flex items-center justify-end'>
+                            <Switch
+                                checked={!!llmConfig.WEB_GROUNDING}
+                                className='data-[state=checked]:bg-[#4791FF] h-[22px] w-[36px] data-[state=unchecked]:bg-[#E2E0E1]'
+                                onCheckedChange={(checked) => {
+                                    trackEvent(MixpanelEvent.Onboarding_Web_Search_Toggled, {
+                                        enabled: checked,
+                                        web_search_step_skipped: !checked,
+                                    });
+                                    setLlmConfig(prev => ({
+                                        ...prev,
+                                        WEB_GROUNDING: checked,
+                                    }));
+                                }}
+                            />
+                        </div>
                     </ToolTip>
                     <div className="mb-[42px] flex items-center gap-6">
                         <div className='flex h-[74px] w-[74px] items-center justify-center rounded-[4px] bg-[#F4F3FF]'>
@@ -1510,7 +1468,7 @@ const PresentonMode = ({
                             <p className="text-sm text-gray-500">Bring current information into generated presentations</p>
                         </div>
                     </div>
-                    <div className="space-y-4">
+                    {llmConfig.WEB_GROUNDING && <div className="space-y-4">
                             <div>
                                 <label className="mb-2 block text-sm font-medium text-gray-700">Select Web Search Provider</label>
                                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -1586,7 +1544,7 @@ const PresentonMode = ({
                                     />
                                 </div>
                             )}
-                        </div>
+                        </div>}
                 </div>
             )}
 
@@ -1610,78 +1568,6 @@ const PresentonMode = ({
                             : llmConfig.WEB_GROUNDING ? "Save & Finish" : "Disable web search & Finish"}
                 </button>
             </div>
-            {/* Download Progress Modal */}
-            {showDownloadModal && downloadingModel && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white/95 backdrop-blur-md rounded-xl shadow-2xl max-w-md w-full p-6 relative">
-                        {/* Modal Content */}
-                        <div className="text-center">
-                            {/* Icon */}
-                            <div className="mb-4">
-                                {downloadingModel.done ? (
-                                    <CheckCircle className="w-12 h-12 text-green-600 mx-auto" />
-                                ) : (
-                                    <Download className="w-12 h-12 text-blue-600 mx-auto animate-pulse" />
-                                )}
-                            </div>
-
-                            {/* Title */}
-                            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                                {downloadingModel.done ? "Download Complete!" : "Downloading Model"}
-                            </h3>
-
-                            {/* Model Name */}
-                            <p className="text-sm text-gray-600 mb-6">
-                                {llmConfig.OLLAMA_MODEL}
-                            </p>
-
-                            {/* Progress Bar */}
-                            {downloadProgress > 0 && (
-                                <div className="mb-4">
-                                    <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-                                        <div
-                                            className="bg-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
-                                            style={{ width: `${downloadProgress}%` }}
-                                        />
-                                    </div>
-                                    <p className="text-sm text-gray-600 mt-2">
-                                        {downloadProgress}% Complete
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Status */}
-                            {downloadingModel.status && (
-                                <div className="flex items-center justify-center gap-2 mb-4">
-                                    <CheckCircle className="w-4 h-4 text-green-600" />
-                                    <span className="text-sm font-medium text-green-700 capitalize">
-                                        {downloadingModel.status}
-                                    </span>
-                                </div>
-                            )}
-
-                            {/* Status Message */}
-                            {downloadingModel.status && downloadingModel.status !== "pulled" && (
-                                <div className="text-xs text-gray-500">
-                                    {downloadingModel.status === "downloading" && "Downloading model files..."}
-                                    {downloadingModel.status === "verifying" && "Verifying model integrity..."}
-                                    {downloadingModel.status === "pulling" && "Pulling model from registry..."}
-                                </div>
-                            )}
-
-                            {/* Download Info */}
-                            {downloadingModel.downloaded && downloadingModel.size && (
-                                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
-                                    <div className="flex justify-between text-xs text-gray-600">
-                                        <span>Downloaded: {(downloadingModel.downloaded / 1024 / 1024).toFixed(1)} MB</span>
-                                        <span>Total: {(downloadingModel.size / 1024 / 1024).toFixed(1)} MB</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

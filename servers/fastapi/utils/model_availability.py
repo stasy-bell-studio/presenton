@@ -1,4 +1,3 @@
-from constants.supported_ollama_models import SUPPORTED_OLLAMA_MODELS
 from constants.llm import OPENAI_URL
 from enums.image_provider import ImageProvider
 from enums.llm_provider import LLMProvider
@@ -54,7 +53,7 @@ from utils.llm_provider import (
     is_custom_llm_selected,
     is_ollama_selected,
 )
-from utils.ollama import pull_ollama_model
+from utils.ollama import list_available_ollama_models
 from utils.image_provider import (
     get_selected_image_provider,
     is_image_generation_disabled,
@@ -256,15 +255,12 @@ async def check_llm_and_image_provider_api_or_model_availability():
             if not ollama_model:
                 raise Exception("OLLAMA_MODEL must be provided")
 
-            if ollama_model not in SUPPORTED_OLLAMA_MODELS:
-                raise Exception(f"Model {ollama_model} is not supported")
-
-            print("-" * 50)
-            print("Pulling model: ", ollama_model)
-            async for event in pull_ollama_model(ollama_model):
-                print(event)
-            print("Pulled model: ", ollama_model)
-            print("-" * 50)
+            available_models = await list_available_ollama_models()
+            if ollama_model not in {model.name for model in available_models}:
+                raise Exception(
+                    f"Model {ollama_model} is not available in Ollama. "
+                    "Pull it in Ollama, then check models in Presenton."
+                )
 
         elif is_custom_llm_selected():
             custom_model = get_custom_model_env()

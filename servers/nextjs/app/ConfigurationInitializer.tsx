@@ -5,9 +5,10 @@ import { setCanChangeKeys, setLLMConfig } from '@/store/slices/userConfig';
 import { hasValidLLMConfig, normalizeLLMConfig } from '@/utils/storeHelpers';
 import { usePathname, useRouter } from 'next/navigation';
 import { useDispatch } from 'react-redux';
-import { checkIfSelectedOllamaModelIsPulled } from '@/utils/providerUtils';
+import { isOllamaModelAvailable } from '@/utils/providerUtils';
 import { LLMConfig } from '@/types/llm_config';
 import { getApiUrl } from '@/utils/api';
+import { notify } from '@/components/ui/sonner';
 
 export function ConfigurationInitializer({ children }: { children: React.ReactNode }) {
   const dispatch = useDispatch();
@@ -88,8 +89,19 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
       if (isValid) {
         // Check if the selected Ollama model is pulled
         if (llmConfig.LLM === 'ollama' && llmConfig.OLLAMA_MODEL) {
-          const isPulled = await checkIfSelectedOllamaModelIsPulled(llmConfig.OLLAMA_MODEL);
-          if (!isPulled) {
+          let isAvailable = false;
+          try {
+            isAvailable = await isOllamaModelAvailable(
+              llmConfig.OLLAMA_MODEL,
+              llmConfig.OLLAMA_URL
+            );
+          } catch (error) {
+            notify.error(
+              "Could not connect to Ollama",
+              error instanceof Error ? error.message : "Check the Ollama URL and try again."
+            );
+          }
+          if (!isAvailable) {
             router.push('/');
             setLoadingToFalseAfterNavigatingTo('/');
             return;

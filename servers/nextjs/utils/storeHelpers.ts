@@ -3,7 +3,15 @@ import { store } from "@/store/store";
 import { LLMConfig } from "@/types/llm_config";
 import { isSupportedCodexModel } from "@/utils/codexModels";
 
-const DEFAULT_OLLAMA_URL = "http://localhost:11434";
+const DEFAULT_OLLAMA_URL_ELECTRON = "http://localhost:11434";
+const DEFAULT_OLLAMA_URL_DOCKER = "http://host.docker.internal:11434";
+
+function getDefaultOllamaUrl(): string {
+  if (typeof window !== "undefined" && window.electron) {
+    return DEFAULT_OLLAMA_URL_ELECTRON;
+  }
+  return DEFAULT_OLLAMA_URL_DOCKER;
+}
 
 function isProvided(value: unknown): boolean {
   return value !== "" && value !== null && value !== undefined;
@@ -36,10 +44,9 @@ export const normalizeLLMConfig = (llmConfig: LLMConfig): LLMConfig => {
 
   if (
     normalizedConfig.LLM === "ollama" &&
-    !normalizedConfig.USE_CUSTOM_URL &&
     !isProvided(normalizedConfig.OLLAMA_URL)
   ) {
-    normalizedConfig.OLLAMA_URL = DEFAULT_OLLAMA_URL;
+    normalizedConfig.OLLAMA_URL = getDefaultOllamaUrl();
   }
 
   const parsedDisableImageGeneration = parseOptionalBool(

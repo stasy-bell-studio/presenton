@@ -34,6 +34,21 @@ function runtimeLooksComplete(executablePath) {
   );
 }
 
+function removeProbeProfile(profileDir) {
+  try {
+    fs.rmSync(profileDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 100,
+    });
+  } catch (error) {
+    console.warn(
+      `[Chromium] Could not remove temporary probe profile ${profileDir}: ${error.message}`,
+    );
+  }
+}
+
 function validateExecutable(executablePath) {
   if (!runtimeLooksComplete(executablePath)) {
     return { ok: false, reason: "Chromium runtime layout is incomplete." };
@@ -52,6 +67,21 @@ function validateExecutable(executablePath) {
     if (result.status !== 0) {
       const detail = result.error?.message || result.stderr || `status=${result.status}`;
       return { ok: false, reason: detail.trim() };
+    }
+    return { ok: true };
+  }
+
+  if (process.platform === "linux") {
+    const result = spawnSync(executablePath, ["--version"], {
+      stdio: ["ignore", "pipe", "pipe"],
+      encoding: "utf8",
+    });
+    if (result.error || result.status !== 0) {
+      const detail = result.error?.message || result.stderr || `status=${result.status}`;
+      return { ok: false, reason: detail.trim() };
+    }
+    if (!/chrome|chromium/i.test(result.stdout || "")) {
+      return { ok: false, reason: "Chromium version probe produced unexpected output." };
     }
     return { ok: true };
   }
@@ -90,7 +120,7 @@ function validateExecutable(executablePath) {
     }
     return { ok: true };
   } finally {
-    fs.rmSync(profileDir, { recursive: true, force: true });
+    removeProbeProfile(profileDir);
   }
 }
 
