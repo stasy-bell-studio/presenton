@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from models.presentation_and_path import PresentationAndPath
 from models.presentation_outline_model import SlideOutlineModel
 from models.presentation_structure_model import PresentationStructureModel
 from models.sql.presentation import PresentationModel, PresentationVersion
+from models.sql.template_v2 import TemplateV2
 from templates.presentation_layout import PresentationLayoutModel, SlideLayoutModel
 from tests.conftest import FakeAsyncSession
 
@@ -119,6 +121,20 @@ def test_generate_presentation_handler_full_flow_uses_mocked_dependencies(fake_a
     assert all(slide.presentation == presentation_id for slide in fake_async_session.added_all)
 
 
+def test_create_presentation_requires_and_stores_version(fake_async_session):
+    presentation = _run(
+        presentation_endpoint.create_presentation(
+            content="Create a short deck.",
+            version=PresentationVersion.V2_STANDARD,
+            sql_session=fake_async_session,
+        )
+    )
+
+    assert presentation.version == PresentationVersion.V2_STANDARD
+    assert fake_async_session.added == [presentation]
+    assert fake_async_session.commit_count == 1
+
+
 def test_prepare_presentation_preserves_payload_icon_weight():
     presentation_id = uuid.uuid4()
     presentation = PresentationModel(
@@ -166,6 +182,179 @@ def test_prepare_presentation_preserves_payload_icon_weight():
 
     assert response.layout["icon_weight"] == "thin"
     assert response.get_layout().icon_weight == "thin"
+
+
+def test_prepare_presentation_accepts_template_v2_layout_id():
+    presentation_id = uuid.uuid4()
+    template_id = uuid.uuid4()
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+    )
+    template_layouts = {
+        "layouts": [
+            {
+                "id": "template-layout-1",
+                "description": "Hero layout",
+                "components": [
+                    {
+                        "id": "hero",
+                        "description": "Hero content",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "fixed": False,
+                                "name": "headline",
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    template = TemplateV2(
+        id=template_id,
+        name="Custom V2",
+        layouts=template_layouts,
+    )
+    session = FakeAsyncSession(
+        get_results={presentation_id: presentation, template_id: template}
+    )
+    generate_structure = AsyncMock(
+        return_value=PresentationStructureModel(slides=[0])
+    )
+
+    with patch.object(
+        presentation_endpoint,
+        "generate_presentation_structure",
+        new=generate_structure,
+    ), patch.object(
+        presentation_endpoint.MEM0_PRESENTATION_MEMORY_SERVICE,
+        "store_generated_outlines",
+        new=AsyncMock(),
+    ):
+        response = _run(
+            presentation_endpoint.prepare_presentation(
+                presentation_id=presentation_id,
+                outlines=[SlideOutlineModel(content="## Causes")],
+                layout=str(template_id),
+                sql_session=session,
+            )
+        )
+
+    assert response.layout == template_layouts
+    assert response.structure == {"slides": [0]}
+    structure_layout = generate_structure.await_args.kwargs["presentation_layout"]
+    assert structure_layout.name == f"template-v2-{template_id}"
+    assert structure_layout.slides[0].id == "template-layout-1"
+
+
+def test_stream_presentation_uses_template_v2_schema_for_content_generation():
+    presentation_id = uuid.uuid4()
+    now = datetime.now()
+    template_layouts = {
+        "layouts": [
+            {
+                "id": "template-layout-1",
+                "description": "Hero layout",
+                "components": [
+                    {
+                        "id": "hero",
+                        "description": "Hero content",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "fixed": False,
+                                "name": "headline",
+                                "min_length": 2,
+                                "max_length": 32,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        title="Deck",
+        outlines={"slides": [{"content": "## Causes"}]},
+        layout=template_layouts,
+        structure={"slides": [0]},
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+        created_at=now,
+        updated_at=now,
+    )
+    session = FakeAsyncSession(get_results={presentation_id: presentation})
+    generated_layouts: list[SlideLayoutModel] = []
+
+    async def fake_slide_content(slide_layout, *_args, **_kwargs):
+        generated_layouts.append(slide_layout)
+        return {
+            "hero": {"headline": "Causes"},
+            "__speaker_note__": "Speaker note for this generated slide.",
+        }
+
+    async def consume_stream():
+        response = await presentation_endpoint.stream_presentation(
+            id=presentation_id,
+            sql_session=session,
+        )
+        chunks = []
+        async for chunk in response.body_iterator:
+            chunks.append(chunk)
+        return chunks
+
+    with patch.object(
+        presentation_endpoint,
+        "get_slide_content_from_type_and_outline",
+        new=fake_slide_content,
+    ), patch.object(
+        presentation_endpoint,
+        "process_slide_and_fetch_assets",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        presentation_endpoint,
+        "get_images_directory",
+        return_value="/tmp",
+    ), patch.object(
+        presentation_endpoint,
+        "ImageGenerationService",
+        return_value=Mock(),
+    ):
+        chunks = _run(consume_stream())
+
+    assert chunks
+    assert len(generated_layouts) == 1
+    generated_layout = generated_layouts[0]
+    assert generated_layout.id == "template-layout-1"
+    assert generated_layout.name == "template-layout-1"
+    assert generated_layout.description == "Hero layout"
+    assert generated_layout.json_schema["title"] == "template-layout-1"
+    assert generated_layout.json_schema["properties"]["hero"] == {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "headline": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 32,
+            }
+        },
+        "required": ["headline"],
+    }
 
 
 def test_generate_presentation_sync_rejects_invalid_slide_count(fake_async_session):

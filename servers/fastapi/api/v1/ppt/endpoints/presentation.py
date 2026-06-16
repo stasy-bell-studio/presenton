@@ -1,11 +1,12 @@
 import asyncio
+import copy
 from datetime import datetime
 import json
 import logging
 import os
 import random
 import traceback
-from typing import Annotated, List, Literal, Optional, Tuple
+from typing import Annotated, Any, List, Literal, Optional, Tuple
 import dirtyjson
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Path, Request
 from fastapi.responses import StreamingResponse
@@ -49,6 +50,7 @@ from models.sse_response import SSECompleteResponse, SSEErrorResponse, SSERespon
 from services.database import get_async_session
 from services.concurrent_service import CONCURRENT_SERVICE
 from models.sql.presentation import PresentationModel, PresentationVersion
+from models.sql.template_v2 import TemplateV2
 from models.sql.async_presentation_generation_status import (
     AsyncPresentationGenerationTaskModel,
 )
@@ -81,7 +83,8 @@ from utils.simple_auth import (
     get_session_token_from_request,
 )
 from utils.web_search import get_selected_web_search_provider, get_web_search_route
-from models.presentation_layout import PresentationLayoutModel
+from models.presentation_layout import PresentationLayoutModel, SlideLayoutModel
+from templates.v2.schema import get_template_schema
 import uuid
 
 logger = logging.getLogger(__name__)
@@ -147,6 +150,137 @@ def _insert_toc_layouts(
     insertion_index = 1 if include_title_slide else 0
     for i in range(n_toc_slides):
         structure.slides.insert(insertion_index + i, toc_slide_layout_index)
+
+
+def _layout_count(layout_payload: Any) -> int:
+    if isinstance(layout_payload, dict):
+        layouts = layout_payload.get("layouts", layout_payload.get("slides"))
+        return len(layouts) if isinstance(layouts, list) else 0
+    if isinstance(layout_payload, list):
+        return len(layout_payload)
+    return 0
+
+
+def _build_template_v2_layout_model(
+    layout_payload: dict[str, Any],
+    *,
+    layout_name: str,
+) -> PresentationLayoutModel:
+    try:
+        template_schema = get_template_schema(layout_payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid template v2 layout JSON: {exc}",
+        ) from exc
+
+    source_layouts = layout_payload.get("layouts")
+    if not isinstance(source_layouts, list):
+        source_layouts = []
+
+    slides: list[SlideLayoutModel] = []
+    for index, schema_layout in enumerate(template_schema["layouts"]):
+        if not isinstance(schema_layout, dict):
+            continue
+
+        source_layout = (
+            source_layouts[index]
+            if index < len(source_layouts) and isinstance(source_layouts[index], dict)
+            else {}
+        )
+        layout_id = (
+            schema_layout.get("layout_id")
+            or source_layout.get("id")
+            or f"layout_{index + 1}"
+        )
+        layout_schema = schema_layout.get("schema")
+        if not isinstance(layout_schema, dict):
+            layout_schema = {
+                "title": str(layout_id),
+                "description": source_layout.get("description"),
+            }
+
+        slides.append(
+            SlideLayoutModel(
+                id=str(layout_id),
+                name=source_layout.get("name") or layout_schema.get("title"),
+                description=source_layout.get("description")
+                or layout_schema.get("description"),
+                json_schema=layout_schema,
+            )
+        )
+
+    if not slides:
+        raise HTTPException(
+            status_code=400,
+            detail="Template v2 layout JSON must contain at least one layout",
+        )
+
+    return PresentationLayoutModel(
+        name=layout_name,
+        ordered=False,
+        slides=slides,
+    )
+
+
+def _build_template_v2_structure_layout(
+    template: TemplateV2,
+    layout_payload: dict[str, Any],
+) -> PresentationLayoutModel:
+    return _build_template_v2_layout_model(
+        layout_payload,
+        layout_name=f"template-v2-{template.id}",
+    )
+
+
+def _is_template_v2_layout_payload(layout_payload: Any) -> bool:
+    return (
+        isinstance(layout_payload, dict)
+        and isinstance(layout_payload.get("layouts"), list)
+    )
+
+
+def _get_presentation_stream_layout(
+    presentation: PresentationModel,
+) -> PresentationLayoutModel:
+    if _is_template_v2_layout_payload(presentation.layout):
+        layout_name = str(presentation.layout.get("name") or "template-v2")
+        return _build_template_v2_layout_model(
+            presentation.layout,
+            layout_name=layout_name,
+        )
+
+    return presentation.get_layout()
+
+
+async def _resolve_prepare_layout(
+    layout: PresentationLayoutModel | str,
+    sql_session: AsyncSession,
+) -> tuple[dict[str, Any], PresentationLayoutModel]:
+    if isinstance(layout, PresentationLayoutModel):
+        return layout.model_dump(mode="json"), layout
+
+    try:
+        template_id = uuid.UUID(layout)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Template v2 layout id must be a valid UUID",
+        ) from exc
+
+    template = await sql_session.get(TemplateV2, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template v2 layout not found")
+
+    layout_payload = copy.deepcopy(template.layouts)
+    if not isinstance(layout_payload, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Template v2 layout JSON must be an object",
+        )
+
+    structure_layout = _build_template_v2_structure_layout(template, layout_payload)
+    return layout_payload, structure_layout
 
 
 def _build_export_cookie_header(request: Request) -> Optional[str]:
@@ -234,6 +368,7 @@ async def delete_presentation(
 @PRESENTATION_ROUTER.post("/create", response_model=PresentationModel)
 async def create_presentation(
     content: Annotated[str, Body()],
+    version: Annotated[PresentationVersion, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
     language: Annotated[Optional[str], Body()] = None,
     file_paths: Annotated[Optional[List[str]], Body()] = None,
@@ -276,7 +411,7 @@ async def create_presentation(
 
     presentation = PresentationModel(
         id=presentation_id,
-        version=PresentationVersion.V1_STANDARD,
+        version=version,
         content=content,
         n_slides=n_slides_to_store,
         language=language_to_store,
@@ -314,7 +449,7 @@ async def create_presentation(
 async def prepare_presentation(
     presentation_id: Annotated[uuid.UUID, Body()],
     outlines: Annotated[List[SlideOutlineModel], Body()],
-    layout: Annotated[PresentationLayoutModel, Body()],
+    layout: Annotated[PresentationLayoutModel | str, Body()],
     title: Annotated[Optional[str], Body()] = None,
     sql_session: AsyncSession = Depends(get_async_session),
 ):
@@ -327,16 +462,24 @@ async def prepare_presentation(
 
     presentation_outline_model = PresentationOutlineModel(slides=outlines)
 
-    total_slide_layouts = len(layout.slides)
+    layout_payload, structure_layout = await _resolve_prepare_layout(
+        layout, sql_session
+    )
+    total_slide_layouts = _layout_count(layout_payload)
+    if total_slide_layouts < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Layout must contain at least one slide layout",
+        )
     total_outlines = len(outlines)
 
-    if layout.ordered:
-        presentation_structure = layout.to_presentation_structure()
+    if structure_layout.ordered:
+        presentation_structure = structure_layout.to_presentation_structure()
     else:
         presentation_structure: PresentationStructureModel = (
             await generate_presentation_structure(
                 presentation_outline=presentation_outline_model,
-                presentation_layout=layout,
+                presentation_layout=structure_layout,
                 instructions=presentation.instructions,
             )
         )
@@ -356,7 +499,7 @@ async def prepare_presentation(
             title_slide=presentation.include_title_slide,
             target_total_slides=(presentation.n_slides if presentation.n_slides > 0 else None),
         )
-        toc_slide_layout_index = select_toc_or_list_slide_layout_index(layout)
+        toc_slide_layout_index = select_toc_or_list_slide_layout_index(structure_layout)
         _insert_toc_layouts(
             presentation_structure,
             n_toc_slides,
@@ -373,7 +516,7 @@ async def prepare_presentation(
     sql_session.add(presentation)
     presentation.outlines = presentation_outline_model.model_dump(mode="json")
     presentation.title = title or presentation.title
-    presentation.set_layout(layout)
+    presentation.layout = layout_payload
     presentation.set_structure(presentation_structure)
     await sql_session.commit()
 
@@ -407,7 +550,7 @@ async def stream_presentation(
 
     async def inner():
         structure = presentation.get_structure()
-        layout = presentation.get_layout()
+        layout = _get_presentation_stream_layout(presentation)
         icon_weight = layout.icon_weight
         outline = presentation.get_presentation_outline()
         image_urls_for_slides = get_images_for_slides_from_outline(outline.slides)
