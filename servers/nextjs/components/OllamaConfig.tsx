@@ -43,6 +43,7 @@ interface CombinedModel {
   size?: string;
   description?: string;
   isPulled: boolean;
+  tested?: boolean;
 }
 
 interface OllamaConfigProps {
@@ -96,15 +97,6 @@ export default function OllamaConfig({
 
       const pulledNames = new Set(pulledModels.map((m) => m.name));
 
-      const pulled: CombinedModel[] = pulledModels.map((model) => ({
-        name: model.name,
-        parameters: model.parameters || undefined,
-        size: model.size
-          ? `${(model.size / 1024 / 1024 / 1024).toFixed(1)} GB`
-          : undefined,
-        isPulled: true,
-      }));
-
       const libraryOnly: CombinedModel[] = libraryModels
         .filter((lm: OllamaLibraryModel) => !pulledNames.has(lm.name))
         .map((lm: OllamaLibraryModel) => ({
@@ -113,7 +105,22 @@ export default function OllamaConfig({
           size: lm.size,
           description: lm.description,
           isPulled: false,
+          tested: true,
         }));
+
+      const pulled: CombinedModel[] = pulledModels.map((model) => {
+        const libraryMatch = libraryModels.find((lm: OllamaLibraryModel) => lm.name === model.name);
+
+        return {
+          name: model.name,
+          parameters: model.parameters || libraryMatch?.parameters || undefined,
+          size: libraryMatch?.size
+            || (model.size ? `${(model.size / 1024 / 1024 / 1024).toFixed(1)} GB` : undefined),
+          description: libraryMatch?.description,
+          isPulled: true,
+          tested: !!libraryMatch,
+        };
+      });
 
       const combined = [...pulled, ...libraryOnly];
       setCombinedModels(combined);
@@ -288,6 +295,12 @@ export default function OllamaConfig({
   const modelParameterBadge = (model: CombinedModel) =>
     normalizeParameters(model.parameters);
   const modelSizeBadge = (model: CombinedModel) => compactSize(model.size);
+  const modelSupportBadge = (model: CombinedModel) =>
+    model.tested === false ? "Experimental" : "Recommended";
+  const modelSupportBadgeClass = (model: CombinedModel) =>
+    model.tested === false
+      ? "border-[#FDE2B4] bg-[#FFF7E8] text-[#9A5B00]"
+      : "border-[#CFEBD5] bg-[#ECFDF0] text-[#1C7A34]";
 
   const modelNameWithParameters = (model: CombinedModel) => {
     const rawName = model.name;
@@ -317,6 +330,14 @@ export default function OllamaConfig({
     `${modelNameWithParameters(model)}  ${compactSize(model.size)}`;
   const renderModelBadges = (model: CombinedModel) => (
     <div className="mt-1 flex items-center gap-1.5">
+      <span
+        className={cn(
+          "rounded-full border px-1.5 py-0.5 text-[10px] font-medium",
+          modelSupportBadgeClass(model)
+        )}
+      >
+        {modelSupportBadge(model)}
+      </span>
       {hasKnownParameters(model) && (
         <span className="rounded-full border border-[#E7E8EC] bg-[#F7F8FA] px-1.5 py-0.5 text-[10px] font-medium text-[#5F6062]">
           {modelParameterBadge(model)}
@@ -377,7 +398,7 @@ export default function OllamaConfig({
       {modelsChecked && combinedModels.length > 0 && (
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-3">
-            Choose a model
+            Choose an Ollama model
           </label>
           <Popover open={openModelSelect} onOpenChange={setOpenModelSelect}>
             <PopoverTrigger asChild>

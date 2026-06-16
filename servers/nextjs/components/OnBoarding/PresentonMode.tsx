@@ -1407,6 +1407,7 @@ const PresentonMode = ({
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
                                     {`Select ${LLM_PROVIDERS[llmConfig.LLM!]?.label} Model`}
+                                    {`Select ${LLM_PROVIDERS[llmConfig.LLM!]?.label} Model`}
                                 </label>
                                 <div className="w-full">
                                     <Popover

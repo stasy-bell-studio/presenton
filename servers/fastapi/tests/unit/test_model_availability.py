@@ -74,3 +74,25 @@ def test_ollama_accepts_selected_available_model(monkeypatch):
     monkeypatch.setattr(model_availability, "list_available_ollama_models", list_models)
 
     asyncio.run(check_llm_and_image_provider_api_or_model_availability())
+
+
+def test_ollama_accepts_selected_available_experimental_model(monkeypatch):
+    monkeypatch.setenv("CAN_CHANGE_KEYS", "false")
+    monkeypatch.setenv("LLM", "ollama")
+    monkeypatch.setenv("OLLAMA_MODEL", "custom-local-model:latest")
+    monkeypatch.setenv("DISABLE_IMAGE_GENERATION", "true")
+
+    async def list_models():
+        return [
+            OllamaModelStatus(
+                name="custom-local-model:latest",
+                size=1,
+                downloaded=1,
+                status="pulled",
+                done=True,
+            )
+        ]
+
+    monkeypatch.setattr(model_availability, "list_available_ollama_models", list_models)
+
+    asyncio.run(check_llm_and_image_provider_api_or_model_availability())
