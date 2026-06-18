@@ -9,6 +9,7 @@ from templates.v2.generation import (
     Component,
     ComponentCluster,
     ComponentClusterCandidate,
+    _apply_design_variable,
     _component_payload,
     _messages_for_json_repair_retry,
     _messages_for_model_validation_retry,
@@ -29,6 +30,56 @@ class _ProviderResponseItem:
 
 class _RetrySchema(BaseModel):
     title: str = Field(min_length=5)
+
+
+def test_design_variable_uses_source_expression_and_explicit_target_path():
+    component = Component(
+        id="metric_card",
+        description="Reusable metric card with scalable typography.",
+        position={"x": 0, "y": 0},
+        size={"width": 200, "height": 100},
+        design_variables=[
+            {
+                "name": "scale_variant",
+                "type": "object",
+                "options": [{"width": 240, "font_size": 28}],
+                "effect": [
+                    {"source": "$.width", "target": "elements.0.size.width"},
+                    {
+                        "source": "$.font_size",
+                        "target": "elements.1.runs.0.font.size",
+                    },
+                ],
+            }
+        ],
+        elements=[
+            {
+                "type": "rectangle",
+                "position": {"x": 0, "y": 0},
+                "size": {"width": 200, "height": 100},
+            },
+            {
+                "type": "text",
+                "position": {"x": 20, "y": 20},
+                "size": {"width": 160, "height": 40},
+                "fixed": False,
+                "name": "metric",
+                "min_length": 10,
+                "max_length": 20,
+                "runs": [{"text": "Metric", "font": {"size": 20}}],
+            },
+        ],
+    )
+    component_data = component.model_dump(mode="json", exclude_none=True)
+
+    _apply_design_variable(
+        component_data["elements"],
+        component_data["design_variables"][0],
+        {"width": 240, "font_size": 28},
+    )
+
+    assert component_data["elements"][0]["size"]["width"] == 240
+    assert component_data["elements"][1]["runs"][0]["font"]["size"] == 28
 
 
 def test_build_template_layouts_replaces_candidates_and_keeps_fallbacks():

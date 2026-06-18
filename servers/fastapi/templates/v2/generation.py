@@ -91,8 +91,8 @@ class Cluster(BaseModel):
 
 
 class DesignVariableEffect(BaseModel):
-    path: str = Field(min_length=1)
-    effect: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    target: str = Field(min_length=1)
 
 
 class DesignVariable(BaseModel):
@@ -302,6 +302,7 @@ Use the source elements as ground truth and return one raw JSON object matching 
 - Content is user-replaceable information: headings, body text, metric values, list items, table cells, chart labels or values, photos, illustrations, logos, icons selected by the user, and any image or text that carries the instance's meaning.
 - Use concise lower_snake_case role names for editable `name` fields.
 - Include required bounds where supported: text uses `min_length` and `max_length`; text-list uses `min_items`, `max_items`, `min_item_length`, and `max_item_length`; table uses `min_columns`, `max_columns`, `min_rows`, and `max_rows`; flex/grid uses `min_children` and `max_children`.
+- When a flex/grid contains repeated item children, use the same `min_length` and `max_length` for corresponding editable text roles in every repeated item.
 - Every `min_*` must equal half of the matching `max_*`, rounded up.
 
 # Design Variable Rules
@@ -330,10 +331,10 @@ Use the source elements as ground truth and return one raw JSON object matching 
 # Effect Rules
 - Every design variable must have at least one effect.
 - Use one variable with multiple effects when one semantic choice changes multiple related elements.
-- `effect.path` is a dot path from a top-level element type, such as `grid.text.font.size`, `grid.0.text.font.size`, `container.rotation`, `text.runs.0.text`, `image.data`, `text-list.items`, `table.rows`, `chart.data`, or `chart.title`.
-- Prefer broad paths inside flex/grid when appropriate, such as `grid.text.font.size`, instead of repeating per-child paths.
-- Use list indices only after the top-level element name when needed.
-- `effect.effect` is an expression using `$`, such as `$`, `$ * 0.5`, `$ / 3`, `round($)`, `$.width`, `$.height`, or `$.font_size`.
+- `effect.source` is an expression using `$`, such as `$`, `$ * 0.5`, `$ / 3`, `round($)`, `$.width`, `$.height`, or `$.font_size`.
+- `effect.target` is an explicit dot path from the component root and must start with `elements.<index>`, such as `elements.0.size.width`, `elements.1.font.size`, `elements.1.runs.0.font.size`, `elements.2.children.0.size.width`, `elements.3.child.runs.0.text`, `elements.4.items`, `elements.5.rows`, `elements.6.data`, or `elements.6.title`.
+- Use concrete array indices for every list segment in the target path.
+- Do not use element type names as target path selectors, such as `grid`, `rectangle`, `text`, or `image`, because multiple elements can share the same type.
 
 # Output Rules
 - Return exactly one JSON object and nothing else.
@@ -1021,14 +1022,14 @@ def _apply_design_variable(
         if not isinstance(effect, dict):
             continue
 
-        path = effect.get("path")
-        expression = effect.get("effect")
-        if not isinstance(path, str) or not isinstance(expression, str):
+        target = effect.get("target")
+        source = effect.get("source")
+        if not isinstance(target, str) or not isinstance(source, str):
             continue
 
-        value = _evaluate_design_variable_effect(selected_option, expression)
+        value = _evaluate_design_variable_effect(selected_option, source)
         if value is not None:
-            _set_design_path_value(component_elements, path, value)
+            _set_design_path_value(component_elements, target, value)
 
 
 def _evaluate_design_variable_effect(selected_option: Any, expression: str) -> Any:
@@ -1072,7 +1073,9 @@ def _set_design_path_value(
         return
 
     property_name = segments[-1]
-    parent = _resolve_design_path_node(elements, segments[:-1])
+    parent = _resolve_design_path_node({"elements": elements}, segments[:-1])
+    if parent is None:
+        parent = _resolve_design_path_node(elements, segments[:-1])
 
     if isinstance(parent, list) and _is_array_index(property_name):
         parent[int(property_name)] = value
