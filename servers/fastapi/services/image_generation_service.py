@@ -858,9 +858,19 @@ class ImageGenerationService:
                 f.write(base64.b64decode(item.b64_json))
         elif item.url:
             image_url = item.url
-            if image_url.startswith("/"):
+            is_relative_url = image_url.startswith("/")
+            if is_relative_url:
                 image_url = origin + image_url
-            headers = {"Authorization": f"Bearer {api_key}"}
+            image_origin = urlparse(image_url)
+            headers = {}
+            if (
+                is_relative_url
+                or (
+                    image_origin.scheme == parsed.scheme
+                    and image_origin.netloc == parsed.netloc
+                )
+            ):
+                headers["Authorization"] = f"Bearer {api_key}"
             async with aiohttp.ClientSession(trust_env=True) as session:
                 dl_resp = await session.get(
                     image_url,
