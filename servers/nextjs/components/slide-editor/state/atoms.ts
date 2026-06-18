@@ -32,8 +32,8 @@ export type TableCellSelection = {
 
 // --- Primitive atoms ----------------------------------------------------
 
-// Immer-backed: writers receive a draft of the Deck they can mutate
-// directly. SlideEditor seeds the real deck via `useHydrateAtoms`.
+// Immer-backed: writers receive a draft of the Deck they can mutate directly.
+// Embedded editor surfaces seed the active deck via `useHydrateAtoms`.
 export const deckAtom = atomWithImmer(neoGeneralDeck);
 export const activeSlideIndexAtom = atom(0);
 export const selectedAtom = atom(-1);

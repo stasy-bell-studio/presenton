@@ -238,6 +238,13 @@ function extractRenderableLayouts(
   return extractTemplateV2Layouts(template.raw_layouts);
 }
 
+export function adaptTemplateV2LayoutToSlide(
+  layout: TemplateV2Layout,
+  index = 0,
+): Slide {
+  return adaptLayoutToSlide(layout, index);
+}
+
 function adaptLayoutToSlide(layout: TemplateV2Layout, index: number): Slide {
   const rawElements = extractLayoutElements(layout);
   const elements = rawElements

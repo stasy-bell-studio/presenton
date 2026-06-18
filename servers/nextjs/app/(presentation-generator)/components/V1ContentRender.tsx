@@ -11,11 +11,10 @@ import { updateSlideContent } from "@/store/slices/presentationGeneration";
 import { useDispatch, useSelector } from "react-redux";
 import { Loader2 } from "lucide-react";
 import { RootState } from "@/store/store";
-import { TemplateV2LayoutPreview } from "../custom-template/components/EachSlide/TemplateV2LayoutPreview";
 import {
-    applyGeneratedSlideContentToLayout,
     extractTemplateV2Layouts,
 } from "@/components/slide-editor/lib/template-v2-import";
+import { TemplateV2KonvaSlide } from "./TemplateV2KonvaSlide";
 
 
 
@@ -53,15 +52,6 @@ export const V1ContentRender = ({ slide, isEditMode, theme, presentationLayout: 
         return layouts.find((layout) => layout.id === layoutId) ?? null;
     }, [isTemplateV2Slide, presentationLayout, slideLayout]);
 
-    const renderedTemplateV2Layout = useMemo(() => {
-        if (!templateV2Layout) return null;
-        return applyGeneratedSlideContentToLayout(
-            templateV2Layout,
-            slide.content && typeof slide.content === "object" ? slide.content : {}
-        );
-    }, [templateV2Layout, slide.content]);
-
-
     // Memoize layout resolution to prevent unnecessary recalculations
     const Layout = useMemo(() => {
         if (isTemplateV2Slide) {
@@ -87,7 +77,7 @@ export const V1ContentRender = ({ slide, isEditMode, theme, presentationLayout: 
     }, [isTemplateV2Slide, isCustomTemplate, customTemplate, slideLayout, layoutGroup]);
 
     if (isTemplateV2Slide) {
-        if (!renderedTemplateV2Layout) {
+        if (!templateV2Layout) {
             return (
                 <div className="flex h-full aspect-video flex-col items-center justify-center rounded-lg bg-gray-100">
                     <Loader2 className="mb-2 h-4 w-4 animate-spin" />
@@ -98,7 +88,11 @@ export const V1ContentRender = ({ slide, isEditMode, theme, presentationLayout: 
 
         return (
             <SlideErrorBoundary label={`Slide ${slide.index + 1}`}>
-                <TemplateV2LayoutPreview layout={renderedTemplateV2Layout as any} />
+                <TemplateV2KonvaSlide
+                    layout={templateV2Layout}
+                    slide={slide}
+                    isEditMode={isEditMode}
+                />
             </SlideErrorBoundary>
         );
     }

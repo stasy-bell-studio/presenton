@@ -91,7 +91,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   // Auto-save functionality
   const { isSaving } = useAutoSave({
     debounceMs: 2000,
-    enabled: !!presentationData && !isStreaming && !isTemplateV2Presentation,
+    enabled: !!presentationData && !isStreaming,
   });
 
   // Custom hooks

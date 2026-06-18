@@ -1,5 +1,16 @@
 import type { CSSProperties } from "react";
-import { baseFont, editorTheme } from "../editorStyles";
+
+const baseFont =
+  "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+
+const editorTheme = {
+  surface: "#FFFFFF",
+  border: "#EDEEEF",
+  text: "#191919",
+  primary: "#7C51F8",
+  primarySoft: "#F4F3FF",
+  danger: "#D83B3B",
+} as const;
 
 export const inlineStyles = {
   toolbar: {

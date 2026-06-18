@@ -86,7 +86,7 @@ export const FontSchema = z
     bold: z.boolean().nullish(),
     italic: z.boolean().nullish(),
     lineHeight: z.number().min(0.8).max(2.2).nullish(),
-    // Hundredths of a point, matching pptxgenjs/OOXML char spacing.
+    // Hundredths of a point, matching OOXML character spacing.
     letterSpacing: z.number().min(-200).max(600).nullish(),
     wrap: TextWrapSchema.nullish(),
     ellipsis: z.boolean().nullish(),

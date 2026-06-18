@@ -44,7 +44,7 @@ export const SlideThumbnailCard = forwardRef<
             transform: `scale(${SCALE})`,
           }}
         >
-          <V1ContentRender slide={slide} isEditMode={true} />
+          <V1ContentRender slide={slide} isEditMode={false} />
         </div>
       </div>
     </div>
