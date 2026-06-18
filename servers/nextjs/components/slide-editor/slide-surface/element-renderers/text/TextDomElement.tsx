@@ -1,8 +1,9 @@
 import { useMemo, type CSSProperties } from "react";
-import type { TextElement } from "../../../lib/slide-schema";
+import type { Font, TextElement, TextRun } from "../../../lib/slide-schema";
 import { elementBox, textContent } from "../../../lib/element-model";
 import { rootPath, type ElementPath } from "../../../lib/element-path";
 import type { ResolvedLayoutItem } from "../../../lib/layout-resolver";
+import { renderMarkdownTextRuns } from "../../../lib/markdown-text";
 import { fitFontToBox } from "../../../lib/textMeasure";
 import {
   DomElementLayer,
@@ -52,6 +53,7 @@ export function TextDomElement({
         const valign = element.alignment?.vertical ?? "top";
         const effective =
           effectiveFontSizes.get(item.path) ?? element.font?.size;
+        const renderedRuns = renderMarkdownTextRuns(element.runs);
         return (
           <div
             key={item.path}
@@ -62,7 +64,7 @@ export function TextDomElement({
                 scale,
               ),
               ...textBoxStyle,
-              overflow: valign === "top" ? "visible" : "hidden",
+              overflow: "hidden",
               whiteSpace: element.font?.wrap === "none" ? "pre" : "pre-wrap",
               wordBreak:
                 element.font?.wrap === "none" ? "normal" : "break-word",
@@ -75,11 +77,45 @@ export function TextDomElement({
               textAlign: element.alignment?.horizontal ?? "left",
             }}
           >
-            <div style={textContentStyle}>{textContent(element)}</div>
+            <div style={textContentStyle}>
+              {renderedRuns.length > 1 ||
+              renderedRuns.some((run) => run.font) ? (
+                <RichTextRuns
+                  baseFont={{ ...(element.font ?? {}), size: effective }}
+                  runs={renderedRuns}
+                  scale={scale}
+                />
+              ) : (
+                textContent({ ...element, runs: renderedRuns })
+              )}
+            </div>
           </div>
         );
       })}
     </DomElementLayer>
+  );
+}
+
+function RichTextRuns({
+  baseFont,
+  runs,
+  scale,
+}: {
+  baseFont: Font;
+  runs: TextRun[];
+  scale: number;
+}) {
+  return (
+    <>
+      {runs.map((run, index) => (
+        <span
+          key={`${index}-${run.text}`}
+          style={fontStyle({ font: { ...baseFont, ...(run.font ?? {}) } }, scale)}
+        >
+          {run.text}
+        </span>
+      ))}
+    </>
   );
 }
 

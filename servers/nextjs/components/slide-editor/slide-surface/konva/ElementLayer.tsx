@@ -35,6 +35,7 @@ type ComponentPress = {
 const COMPONENT_LONG_PRESS_MS = 550;
 const COMPONENT_LONG_PRESS_MOVE_TOLERANCE = 8;
 const SUPPRESS_SELECT_AFTER_LONG_PRESS_MS = 400;
+const INLINE_EDIT_DOUBLE_CLICK_MS = 450;
 
 export function ElementLayer({
   editingBulletsIndex,
@@ -138,6 +139,7 @@ export function ElementLayer({
 
   const [hoveredOverflow, setHoveredOverflow] = useState<number | null>(null);
   const componentPressRef = useRef<ComponentPress | null>(null);
+  const lastClickRef = useRef<{ path: ElementPath; ts: number } | null>(null);
   const suppressSelectRef = useRef<Set<number> | null>(null);
   const suppressSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -235,6 +237,27 @@ export function ElementLayer({
     return true;
   };
 
+  const openInlineEditor = (
+    index: number,
+    el: SlideElement,
+    path: ElementPath,
+  ) => {
+    if (el.type === "text") onEditText?.(index, path);
+    if (el.type === "text-list") onEditBullets?.(index, path);
+    if (el.type === "chart") onEditChart?.(index, path);
+    if (el.type === "image") onEditImage?.(index, path);
+    if (el.type === "svg") onEditSvg?.(index, path);
+    if (el.type === "table") onEditTable?.(index, path);
+  };
+
+  const canInlineEdit = (el: SlideElement) =>
+    el.type === "text" ||
+    el.type === "text-list" ||
+    el.type === "chart" ||
+    el.type === "image" ||
+    el.type === "svg" ||
+    el.type === "table";
+
   const commonEvents = (
     index: number,
     el: SlideElement,
@@ -252,26 +275,29 @@ export function ElementLayer({
         event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey,
         path,
       );
+      const now = Date.now();
+      const lastClick = lastClickRef.current;
+      const isRepeatedClick =
+        lastClick?.path === path &&
+        now - lastClick.ts <= INLINE_EDIT_DOUBLE_CLICK_MS;
+      lastClickRef.current = { path, ts: now };
+      if (
+        isRepeatedClick &&
+        canInlineEdit(el) &&
+        !event.evt.shiftKey &&
+        !event.evt.metaKey &&
+        !event.evt.ctrlKey
+      ) {
+        event.cancelBubble = true;
+        openInlineEditor(index, el, path);
+      }
       return true;
     },
     onDblClick: (event: Konva.KonvaEventObject<MouseEvent>) => {
-      if (
-        el.type !== "text" &&
-        el.type !== "text-list" &&
-        el.type !== "chart" &&
-        el.type !== "image" &&
-        el.type !== "svg" &&
-        el.type !== "table"
-      )
-        return;
+      if (!canInlineEdit(el)) return;
       event.cancelBubble = true;
       onSelect?.(index, false, path);
-      if (el.type === "text") onEditText?.(index, path);
-      if (el.type === "text-list") onEditBullets?.(index, path);
-      if (el.type === "chart") onEditChart?.(index, path);
-      if (el.type === "image") onEditImage?.(index, path);
-      if (el.type === "svg") onEditSvg?.(index, path);
-      if (el.type === "table") onEditTable?.(index, path);
+      openInlineEditor(index, el, path);
     },
     onTap: (event: Konva.KonvaEventObject<TouchEvent>) => {
       if (shouldSuppressSelect(index)) {

@@ -1,5 +1,7 @@
 import { useAtomValue, useSetAtom } from "jotai";
 import {
+  editingTextIndexAtom,
+  editingTextPathAtom,
   selectedResolvedElementAtom,
   selectedIndexAtom,
   selectedPathAtom,
@@ -23,6 +25,8 @@ export function WorkspaceToolbars({
   const selectedElement = useAtomValue(selectedResolvedElementAtom);
   const selectedTableCell = useAtomValue(selectedTableCellAtom);
   const updateElementAtPath = useSetAtom(updateElementAtPathAtom);
+  const setEditingTextIndex = useSetAtom(editingTextIndexAtom);
+  const setEditingTextPath = useSetAtom(editingTextPathAtom);
 
   if (!selectedElement) return null;
 
@@ -37,6 +41,10 @@ export function WorkspaceToolbars({
         updateElementAtPath({ path: path ?? rootPath(index), element })
       }
       onEditImage={onEditImage}
+      onEditText={(index, path) => {
+        setEditingTextIndex(index);
+        setEditingTextPath(path ?? rootPath(index));
+      }}
     />
   );
 }

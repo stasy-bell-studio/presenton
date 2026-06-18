@@ -15,9 +15,9 @@ import {
   boxToPositionSize,
   elementBox,
   elementFont,
-  textContent,
   type ElementBox,
 } from "./element-model";
+import { renderMarkdownTextContent } from "./markdown-text";
 
 export type RenderMode = "absolute" | "flow";
 
@@ -446,7 +446,7 @@ function intrinsicTextMainSize(
   crossSize: number,
 ) {
   const font = elementFont(child);
-  const text = textContent(child);
+  const text = renderMarkdownTextContent(child.runs);
   const lineHeight = (font.size / 72) * (font.lineHeight ?? 1.15);
   if (direction === "row") {
     return Math.max(0.1, text.length * (font.size / 72) * TEXT_AVERAGE_CHAR_EM);

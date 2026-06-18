@@ -1,7 +1,16 @@
 import type Konva from "konva";
+import { useAtomValue } from "jotai";
 import { SLIDE_W, type Slide, type SlideElement } from "../lib/slide-schema";
 import type { ElementPath } from "../lib/element-path";
-import type { TableCellSelection } from "../state";
+import {
+  editingBulletsIndexAtom,
+  editingBulletsPathAtom,
+  editingTableIndexAtom,
+  editingTablePathAtom,
+  editingTextIndexAtom,
+  editingTextPathAtom,
+  type TableCellSelection,
+} from "../state";
 import { DomOverlayRenderers } from "./element-renderers/DomOverlayRenderers";
 import { KonvaSlide } from "./konva/KonvaSlide";
 
@@ -78,15 +87,33 @@ export function SlideSurface({
   width: number;
 }) {
   const scale = width / SLIDE_W;
+  const atomEditingTextIndex = useAtomValue(editingTextIndexAtom);
+  const atomEditingTextPath = useAtomValue(editingTextPathAtom);
+  const atomEditingBulletsIndex = useAtomValue(editingBulletsIndexAtom);
+  const atomEditingBulletsPath = useAtomValue(editingBulletsPathAtom);
+  const atomEditingTableIndex = useAtomValue(editingTableIndexAtom);
+  const atomEditingTablePath = useAtomValue(editingTablePathAtom);
+  const resolvedEditingTextIndex =
+    editingTextIndex ?? (interactive ? atomEditingTextIndex : undefined);
+  const resolvedEditingTextPath =
+    editingTextPath ?? (interactive ? atomEditingTextPath : undefined);
+  const resolvedEditingBulletsIndex =
+    editingBulletsIndex ?? (interactive ? atomEditingBulletsIndex : undefined);
+  const resolvedEditingBulletsPath =
+    editingBulletsPath ?? (interactive ? atomEditingBulletsPath : undefined);
+  const resolvedEditingTableIndex =
+    editingTableIndex ?? (interactive ? atomEditingTableIndex : undefined);
+  const resolvedEditingTablePath =
+    editingTablePath ?? (interactive ? atomEditingTablePath : undefined);
 
   return (
     <>
       <KonvaSlide
-        editingBulletsIndex={editingBulletsIndex}
+        editingBulletsIndex={resolvedEditingBulletsIndex}
         editingChartIndex={editingChartIndex}
         editingSvgIndex={editingSvgIndex}
-        editingTableIndex={editingTableIndex}
-        editingTextIndex={editingTextIndex}
+        editingTableIndex={resolvedEditingTableIndex}
+        editingTextIndex={resolvedEditingTextIndex}
         height={height}
         interactive={interactive}
         onChange={onChange}
@@ -115,12 +142,12 @@ export function SlideSurface({
         width={width}
       />
       <DomOverlayRenderers
-        editingBulletsIndex={editingBulletsIndex}
-        editingBulletsPath={editingBulletsPath}
-        editingTableIndex={editingTableIndex}
-        editingTablePath={editingTablePath}
-        editingTextIndex={editingTextIndex}
-        editingTextPath={editingTextPath}
+        editingBulletsIndex={resolvedEditingBulletsIndex}
+        editingBulletsPath={resolvedEditingBulletsPath}
+        editingTableIndex={resolvedEditingTableIndex}
+        editingTablePath={resolvedEditingTablePath}
+        editingTextIndex={resolvedEditingTextIndex}
+        editingTextPath={resolvedEditingTextPath}
         scale={scale}
         selectedTableCell={selectedTableCell}
         slide={slide}

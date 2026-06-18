@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { TextElement as TextEl } from "../../lib/slide-schema";
 import { elementBox, elementFont, textContent } from "../../lib/element-model";
+import { renderMarkdownTextRuns } from "../../lib/markdown-text";
 import { fitFontToBox } from "../../lib/textMeasure";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../../editorUtils";
 import { rotationProps, shadowProps } from "./elementVisuals";
@@ -39,6 +40,11 @@ export function TextElement({
   const fontSize = effectiveFontSizePt * PT_TO_PX * (scale / PX_PER_IN);
   const verticalAlign = element.alignment?.vertical ?? "top";
   const isTopAligned = verticalAlign === "top";
+  const renderedRuns = useMemo(
+    () => renderMarkdownTextRuns(element.runs),
+    [element.runs],
+  );
+  const renderedText = textContent({ ...element, runs: renderedRuns });
 
   return (
     <Group
@@ -53,12 +59,12 @@ export function TextElement({
       {...shadowProps(element.shadow, scale)}
       {...events}
     >
-      <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
+      <Rect width={width} height={height} fill="rgba(255,255,255,0.01)" />
       {editing || renderMode === "proxy" ? null : (
         <Text
           width={width}
           height={isTopAligned ? undefined : height}
-          text={textContent(element)}
+          text={renderedText}
           fill={withHash(font.color)}
           fontFamily={`${font.family}, Helvetica, sans-serif`}
           fontSize={fontSize}

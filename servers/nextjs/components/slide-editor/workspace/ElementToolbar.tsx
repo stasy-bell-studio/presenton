@@ -21,16 +21,18 @@ type ElementToolbarProps = {
   selectedTableCell: TableCellSelection | null;
   onChange: (index: number, element: SlideElement, path?: ElementPath) => void;
   onEditImage: (index: number, path?: ElementPath) => void;
+  onEditText?: (index: number, path?: ElementPath) => void;
 };
 
 const TOOLBAR_RENDERERS = {
-  text: ({ element, index, onChange, path, scale }) =>
+  text: ({ element, index, onChange, onEditText, path, scale }) =>
     element.type === "text" ? (
       <TextToolbar
         element={element}
         index={index}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
+        onEdit={onEditText ? (index) => onEditText(index, path) : undefined}
       />
     ) : null,
   bullets: ({ element, index, onChange, path, scale }) =>

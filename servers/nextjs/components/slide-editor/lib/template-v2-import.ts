@@ -9,6 +9,7 @@ import {
   type Deck,
   type Fill,
   type Font,
+  type GroupElement,
   type LayoutAlignment,
   type LayoutItem,
   type Padding,
@@ -245,6 +246,13 @@ export function adaptTemplateV2LayoutToSlide(
   return adaptLayoutToSlide(layout, index);
 }
 
+export function normalizeTemplateV2Slide(slide: Slide): Slide {
+  return {
+    ...slide,
+    elements: slide.elements.map(normalizeTemplateV2Element),
+  };
+}
+
 function adaptLayoutToSlide(layout: TemplateV2Layout, index: number): Slide {
   const rawElements = extractLayoutElements(layout);
   const elements = rawElements
@@ -255,11 +263,99 @@ function adaptLayoutToSlide(layout: TemplateV2Layout, index: number): Slide {
   const slideElements =
     elements.length > 0 ? elements : [invisibleFallbackElement()];
 
-  return {
+  return normalizeTemplateV2Slide({
     title: titleFromLayout(layout, index),
     background: backgroundFromElements(slideElements),
     elements: slideElements,
-  };
+  });
+}
+
+function normalizeTemplateV2Element(element: SlideElement): SlideElement {
+  if ("children" in element && Array.isArray(element.children)) {
+    const next = {
+      ...element,
+      children: element.children.map(normalizeTemplateV2Element),
+    } as SlideElement;
+    return next.type === "group" ? normalizeAuthorInfoCardGroup(next) : next;
+  }
+
+  if (element.type === "container" && element.child) {
+    return {
+      ...element,
+      child: normalizeTemplateV2Element(element.child),
+    };
+  }
+
+  if (
+    (element.type === "list-view" || element.type === "grid-view") &&
+    element.item
+  ) {
+    return {
+      ...element,
+      item: normalizeTemplateV2Element(element.item),
+    };
+  }
+
+  return element;
+}
+
+function normalizeAuthorInfoCardGroup(group: GroupElement): GroupElement {
+  if (!isAuthorInfoCard(group)) return group;
+
+  const cardRight = authorInfoCardRightEdge(group);
+  let changed = false;
+  const children = group.children.map((child) => {
+    if (!isAuthorInfoText(child) || !child.position || !child.size) {
+      return child;
+    }
+
+    const availableWidth = Math.max(0.1, cardRight - child.position.x - 0.18);
+    if (availableWidth <= child.size.width + 0.01) return child;
+
+    changed = true;
+    return {
+      ...child,
+      size: {
+        ...child.size,
+        width: Math.min(SLIDE_W, availableWidth),
+      },
+    };
+  });
+
+  return changed ? { ...group, children } : group;
+}
+
+function isAuthorInfoCard(group: GroupElement) {
+  return (
+    group.componentId === "author_info_card" ||
+    group.componentSlot === "author_info_card" ||
+    group.componentInstanceId?.startsWith("author_info_card:")
+  );
+}
+
+function authorInfoCardRightEdge(group: GroupElement) {
+  const background = group.children.find(
+    (child) =>
+      child.type === "rectangle" &&
+      (child.position?.x ?? 0) <= 0.05 &&
+      (child.position?.y ?? 0) <= 0.05 &&
+      child.size?.width,
+  );
+
+  if (background?.size?.width) {
+    return (background.position?.x ?? 0) + background.size.width;
+  }
+
+  return group.size.width;
+}
+
+function isAuthorInfoText(
+  element: SlideElement,
+): element is Extract<SlideElement, { type: "text" }> {
+  return (
+    element.type === "text" &&
+    (element.componentSlot === "author_name" || element.componentSlot === "date")
+  );
 }
 
 function extractLayoutElements(layout: TemplateV2Layout): unknown[] {

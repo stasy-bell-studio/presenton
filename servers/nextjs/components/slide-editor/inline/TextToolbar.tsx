@@ -1,3 +1,4 @@
+import { Bold, Italic, Pencil } from "lucide-react";
 import type { TextSlideElement } from "../state";
 import { withHash, withoutHash } from "../editorUtils";
 import { elementFont, mergeFont } from "../lib/element-model";
@@ -9,15 +10,28 @@ export function TextToolbar({
   index,
   scale,
   onChange,
+  onEdit,
 }: {
   element: TextSlideElement;
   index: number;
   scale: number;
   onChange: (index: number, element: TextSlideElement) => void;
+  onEdit?: (index: number) => void;
 }) {
   const font = elementFont(element);
   return (
     <InlineToolbar element={element} scale={scale}>
+      {onEdit ? (
+        <button
+          type="button"
+          title="Edit text"
+          aria-label="Edit text"
+          onClick={() => onEdit(index)}
+          style={inlineStyles.iconButton}
+        >
+          <Pencil size={15} aria-hidden="true" />
+        </button>
+      ) : null}
       <button
         type="button"
         title="Bold"
@@ -30,7 +44,7 @@ export function TextToolbar({
           ...(font.bold ? inlineStyles.iconButtonActive : {}),
         }}
       >
-        B
+        <Bold size={15} aria-hidden="true" />
       </button>
       <button
         type="button"
@@ -45,7 +59,7 @@ export function TextToolbar({
           ...(font.italic ? inlineStyles.iconButtonActive : {}),
         }}
       >
-        I
+        <Italic size={15} aria-hidden="true" />
       </button>
       <input
         aria-label="Font size"

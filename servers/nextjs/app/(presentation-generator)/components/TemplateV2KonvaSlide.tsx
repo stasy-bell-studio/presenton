@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useDispatch } from "react-redux";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Provider, useAtomValue, useSetAtom } from "jotai";
@@ -17,16 +26,21 @@ import { notify } from "@/components/ui/sonner";
 import {
   adaptTemplateV2LayoutToSlide,
   applyGeneratedSlideContentToLayout,
+  normalizeTemplateV2Slide,
   type TemplateV2Layout,
 } from "@/components/slide-editor/lib/template-v2-import";
 import {
   DeckSchema,
+  SLIDE_H,
   SLIDE_W,
   SlideSchema,
   type Deck,
   type Slide as KonvaSlideData,
   type SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
+import { elementBox } from "@/components/slide-editor/lib/element-model";
+import { resolveSlideLayout } from "@/components/slide-editor/lib/layout-resolver";
+import type { ElementPath } from "@/components/slide-editor/lib/element-path";
 import { SlideSurface } from "@/components/slide-editor/slide-surface";
 import { WorkspaceInlineEditors } from "@/components/slide-editor/workspace/WorkspaceInlineEditors";
 import { WorkspaceToolbars } from "@/components/slide-editor/workspace/WorkspaceToolbars";
@@ -34,8 +48,11 @@ import {
   canRedoAtom,
   canUndoAtom,
   deckAtom,
+  editingTextIndexAtom,
+  editingTextPathAtom,
   insertElementsAtom,
   redoAtom,
+  selectElementAtom,
   undoAtom,
 } from "@/components/slide-editor/state";
 import { updateSlide } from "@/store/slices/presentationGeneration";
@@ -48,6 +65,12 @@ export const TEMPLATE_V2_COMPONENT_DRAWER_EVENT =
 const STAGE_WIDTH = 1280;
 const STAGE_HEIGHT = 720;
 const STAGE_SCALE = STAGE_WIDTH / SLIDE_W;
+const INLINE_EDIT_DOUBLE_CLICK_MS = 450;
+
+type TextInlineEditHit = {
+  rootIndex: number;
+  path: ElementPath;
+};
 
 type TemplateV2KonvaSlideProps = {
   layout: TemplateV2Layout;
@@ -104,6 +127,9 @@ function TemplateV2KonvaSlideBody({
   const dispatch = useDispatch();
   const surfaceId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const lastTextPointerRef = useRef<{ path: ElementPath; ts: number } | null>(
+    null,
+  );
   const [componentDrawerOpen, setComponentDrawerOpen] = useState(false);
   const initialDeck = useMemo(
     () =>
@@ -124,6 +150,9 @@ function TemplateV2KonvaSlideBody({
   const undo = useSetAtom(undoAtom);
   const redo = useSetAtom(redoAtom);
   const insertElements = useSetAtom(insertElementsAtom);
+  const selectElement = useSetAtom(selectElementAtom);
+  const setEditingTextIndex = useSetAtom(editingTextIndexAtom);
+  const setEditingTextPath = useSetAtom(editingTextPathAtom);
   const activeSlide = deck.slides[0];
   const componentItems = useMemo(
     () => extractTemplateV2ComponentItems(components),
@@ -241,6 +270,88 @@ function TemplateV2KonvaSlideBody({
     notify.success("Component added", `${item.name} was added to this slide.`);
   };
 
+  const openTextInlineEditor = useCallback(
+    (hit: TextInlineEditHit) => {
+      activateSurface();
+      selectElement({ index: hit.rootIndex, path: hit.path });
+      setEditingTextIndex(hit.rootIndex);
+      setEditingTextPath(hit.path);
+    },
+    [activateSurface, selectElement, setEditingTextIndex, setEditingTextPath],
+  );
+
+  const findTextAtClientPoint = useCallback(
+    (clientX: number, clientY: number): TextInlineEditHit | null => {
+      const root = rootRef.current;
+      if (!root) return null;
+      const rect = root.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+
+      const x = ((clientX - rect.left) / rect.width) * SLIDE_W;
+      const y = ((clientY - rect.top) / rect.height) * SLIDE_H;
+      const hit = resolveSlideLayout(activeSlide)
+        .slice()
+        .reverse()
+        .find((item) => {
+          if (item.element.type !== "text") return false;
+          const box = elementBox(item.element);
+          return (
+            x >= box.x &&
+            x <= box.x + box.w &&
+            y >= box.y &&
+            y <= box.y + box.h
+          );
+        });
+
+      return hit ? { rootIndex: hit.rootIndex, path: hit.sourcePath } : null;
+    },
+    [activeSlide],
+  );
+
+  const handleRootPointerDownCapture = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      activateSurface();
+
+      if (!isPrimaryPointer(event)) return;
+      if (isInlineEditIgnoredTarget(event.target)) return;
+
+      const hit = findTextAtClientPoint(event.clientX, event.clientY);
+      if (!hit) {
+        lastTextPointerRef.current = null;
+        return;
+      }
+
+      const now = Date.now();
+      const last = lastTextPointerRef.current;
+      const isRepeatedClick =
+        last?.path === hit.path && now - last.ts <= INLINE_EDIT_DOUBLE_CLICK_MS;
+      lastTextPointerRef.current = { path: hit.path, ts: now };
+
+      if (!isRepeatedClick) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      lastTextPointerRef.current = null;
+      openTextInlineEditor(hit);
+    },
+    [activateSurface, findTextAtClientPoint, openTextInlineEditor],
+  );
+
+  const handleRootDoubleClickCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (isInlineEditIgnoredTarget(event.target)) return;
+
+      const hit = findTextAtClientPoint(event.clientX, event.clientY);
+      if (!hit) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      lastTextPointerRef.current = null;
+      openTextInlineEditor(hit);
+    },
+    [findTextAtClientPoint, openTextInlineEditor],
+  );
+
   useEffect(() => {
     if (!isEditMode) return;
 
@@ -268,7 +379,12 @@ function TemplateV2KonvaSlideBody({
       ref={rootRef}
       className="relative h-full w-full overflow-hidden bg-white"
       style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
-      onPointerDownCapture={isEditMode ? activateSurface : undefined}
+      onDoubleClickCapture={
+        isEditMode ? handleRootDoubleClickCapture : undefined
+      }
+      onPointerDownCapture={
+        isEditMode ? handleRootPointerDownCapture : undefined
+      }
     >
       {isEditMode ? (
         <>
@@ -301,6 +417,21 @@ function TemplateV2KonvaSlideBody({
   );
 }
 
+function isPrimaryPointer(event: ReactPointerEvent<HTMLDivElement>) {
+  if (!event.isPrimary) return false;
+  if (event.pointerType === "mouse" && event.button !== 0) return false;
+  return !(event.shiftKey || event.metaKey || event.ctrlKey || event.altKey);
+}
+
+function isInlineEditIgnoredTarget(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      "button,input,textarea,select,[contenteditable='true'],[role='dialog'],[data-inline-edit-ignore='true']",
+    ),
+  );
+}
+
 function buildKonvaSlide(
   layout: TemplateV2Layout,
   slide: any,
@@ -330,7 +461,7 @@ function readStoredKonvaSlide(content: unknown): KonvaSlideData | null {
     TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY
   ];
   const parsed = SlideSchema.safeParse(candidate);
-  return parsed.success ? parsed.data : null;
+  return parsed.success ? normalizeTemplateV2Slide(parsed.data) : null;
 }
 
 type TemplateV2ComponentDrawerDetail = {

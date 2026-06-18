@@ -8,9 +8,9 @@ import type { BulletsElement, TextElement } from "./slide-schema";
 import {
   elementBox,
   elementFont,
-  textContent,
   textListStrings,
 } from "./element-model";
+import { renderMarkdownTextContent } from "./markdown-text";
 
 // Reference DPI used across the editor (`PX_PER_IN` in editorUtils). Keep
 // in sync — if that changes, this should too.
@@ -71,7 +71,7 @@ function textLayoutSpec(element: TextElement): TextLayoutSpec {
   const box = elementBox(element);
   const font = elementFont(element);
   return {
-    text: textContent(element),
+    text: renderMarkdownTextContent(element.runs),
     fontFace: font.family,
     fontSize: font.size,
     bold: font.bold,

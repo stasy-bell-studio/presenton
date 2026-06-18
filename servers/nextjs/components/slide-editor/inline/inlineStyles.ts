@@ -137,9 +137,9 @@ export const inlineStyles = {
     border: `1px solid ${editorTheme.primary}`,
     outline: "none",
     resize: "none",
-    overflow: "hidden",
-    padding: 0,
+    overflow: "auto",
+    padding: 2,
     margin: 0,
-    background: "rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.96)",
   },
 } satisfies Record<string, CSSProperties>;
