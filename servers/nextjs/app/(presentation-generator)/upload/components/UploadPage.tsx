@@ -352,9 +352,12 @@ const UploadPage = () => {
       web_search: !!config?.webSearch,
     });
 
-
+    dispatch(setPptGenUploadState({
+      config,
+      files: [],
+    }));
+    dispatch(clearOutlines());
     dispatch(setPresentationId(createResponse.id));
-    dispatch(clearOutlines())
     trackEvent(MixpanelEvent.Upload_Outline_Generation_Requested, {
       ...getUploadSnapshotProps(),
       presentation_id: createResponse.id,
