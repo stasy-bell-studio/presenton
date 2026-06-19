@@ -10,7 +10,12 @@ from templates.v2.generation import (
     ComponentCluster,
     ComponentClusterCandidate,
     _apply_design_variable,
+    _cluster_candidate_payload,
+    _cluster_candidates_artifact,
+    _cluster_payload,
+    _clusters_artifact,
     _component_payload,
+    _components_artifact,
     _messages_for_json_repair_retry,
     _messages_for_model_validation_retry,
     build_template_layouts,
@@ -330,13 +335,61 @@ def test_component_payload_localizes_candidate_elements_and_strips_fixed_fields(
     )
 
     payload = _component_payload(cluster)
-    candidate = payload["cluster"]["candidates"][0]
+    assert set(payload) == {"component_group"}
+    assert set(payload["component_group"]) == {"id", "components"}
+    candidate = payload["component_group"]["components"][0]
 
     assert candidate["position"] == {"x": 100.0, "y": 120.0}
     assert candidate["size"] == {"width": 200.0, "height": 80.0}
     assert candidate["elements"][0]["position"] == {"x": 0.0, "y": 0.0}
     assert candidate["elements"][1]["position"] == {"x": 20.0, "y": 20.0}
     assert "fixed" not in candidate["elements"][1]
+
+
+def test_generation_artifacts_and_prompt_payloads_use_reference_shapes():
+    candidate = ClusterCandidate(
+        id="title_card",
+        description="Card with a title and decorative background.",
+        slide_index=0,
+        elements=[0],
+    )
+    cluster = Cluster(id="title_cards", candidates=[0])
+    component = Component(
+        id="title_card",
+        description="Reusable title card with a decorative background.",
+        position={"x": 0, "y": 0},
+        size={"width": 100, "height": 50},
+        elements=[
+            {
+                "type": "rectangle",
+                "position": {"x": 0, "y": 0},
+                "size": {"width": 100, "height": 50},
+            }
+        ],
+    )
+    elements = SlideLayouts.model_validate(
+        {
+            "layouts": [
+                {
+                    "id": "slide_1",
+                    "description": "Source slide.",
+                    "elements": component.elements,
+                }
+            ]
+        }
+    ).layouts[0].elements
+
+    assert set(_cluster_candidate_payload(elements)) == {"elements"}
+    assert set(_cluster_payload([candidate])) == {"components"}
+    assert _cluster_candidates_artifact([candidate]) == {
+        "candidates": [candidate.model_dump(mode="json", exclude_none=True)]
+    }
+    assert _clusters_artifact([cluster]) == {
+        "clusters": [cluster.model_dump(mode="json", exclude_none=True)]
+    }
+    assert _components_artifact([component]) == {
+        "components": [component.model_dump(mode="json", exclude_none=True)]
+    }
 
 
 def test_json_repair_retry_rebuilds_messages_without_provider_response_items():

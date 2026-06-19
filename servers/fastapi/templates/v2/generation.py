@@ -161,11 +161,11 @@ class _ClusterCandidateSelection(BaseModel):
 
 
 class _ClusterCandidateSelections(BaseModel):
-    candidates: list[_ClusterCandidateSelection]
+    components: list[_ClusterCandidateSelection]
 
     @model_validator(mode="after")
     def _candidate_ids_must_be_unique(self) -> "_ClusterCandidateSelections":
-        ids = [candidate.id for candidate in self.candidates]
+        ids = [candidate.id for candidate in self.components]
         if len(ids) != len(set(ids)):
             raise ValueError("candidate ids must be unique")
         return self
@@ -173,22 +173,22 @@ class _ClusterCandidateSelections(BaseModel):
 
 class _ClusterSelection(BaseModel):
     id: str = Field(min_length=1, max_length=80)
-    candidate_indices: list[int] = Field(min_length=1)
+    component_indices: list[int] = Field(min_length=1)
 
-    @field_validator("candidate_indices")
+    @field_validator("component_indices")
     @classmethod
     def _candidate_indices_must_be_unique(cls, value: list[int]) -> list[int]:
         if len(value) != len(set(value)):
-            raise ValueError("candidate_indices must not contain duplicates")
+            raise ValueError("component_indices must not contain duplicates")
         return value
 
 
 class _ClusterSelections(BaseModel):
-    clusters: list[_ClusterSelection]
+    groups: list[_ClusterSelection]
 
     @model_validator(mode="after")
     def _cluster_ids_must_be_unique(self) -> "_ClusterSelections":
-        ids = [cluster.id for cluster in self.clusters]
+        ids = [cluster.id for cluster in self.groups]
         if len(ids) != len(set(ids)):
             raise ValueError("cluster ids must be unique")
         return self
@@ -209,138 +209,94 @@ class ContentElementMatch:
 
 
 GENERATE_CLUSTER_CANDIDATES_SYSTEM_PROMPT = """
-Identify reusable visual component candidates in one slide.
-The user message contains slide elements with stable 0-based source indices.
-Return exactly one raw JSON object matching the response schema.
-Do not include markdown, comments, explanations, or text outside the JSON object.
+Identify group of elements that create a meaningful component and provide it as output.
 
-# What to Cluster
-- Create candidates for elements that together form a component: a card, list of cards, table block, pricing/metric block, timeline item, icon/text feature, chart block, header/nav, or similar reusable visual unit.
-- Every source element must be included in at least one candidate.
-- Page titles, subtitles, footers, dividers, lines, decorative shapes, backgrounds, ornaments, isolated text, standalone images, tables, charts, and text-lists are all valid candidate material.
-- If a title has a line below it, group the title and line as a candidate.
-- A candidate may contain exactly one element.
-- If an element does not visually belong with nearby elements, create a single-element candidate for it instead of omitting it.
-- Prefer useful visual groups over tiny fragments, but never omit an element.
+# Steps:
+1. Analyze/Visualize the provided elements.
+2. Group related elements that together form a component.
+3. Generate `id` and `description` for each component.
 
-# Selection Rules
-- Generate a unique, concise lower_snake_case id for each candidate.
-- Use only element_indices from the provided source elements.
-- Every element index must be valid, unique within its candidate, and non-empty.
-- Across all candidates, every source element index must appear at least once.
-- Preserve the visual/reading order of selected elements as much as possible.
-- Candidates may overlap only when one is a meaningful higher-level component that contains smaller repeated components.
-- Write descriptions that define the candidate layout, not the slide topic.
-- In each description, name the structure and element order: for example grid, row, column, flex-like stack, group, card, title with divider, icon/title/description block, image/text pair, table, or standalone text.
-- Mention the important element types in order, such as background rectangle, icon image, title text, description text, line, chart, table, or repeated card group.
+# Component Rules:
+- Every element must be included in atleast one of the component.
+- Group of elements that form a card, list of cards, table, timeline item, timeline, chart, or similar visual unit, etc are considered as component.
+- If there is a list of elements forming a grid of items or list of items:
+    - Create a component for each individual item.
+    - Create a component for the whole grid/list itself.
+    - Same element can be used in two or more components.
+
+# Table Rules:
+- Don't create component for table rows.
+- Create just one component for whole table.
+
+# `id` and `desription` Rules:
+- `id` should be two to five words long in snake-case format.
+- `description` should describe what the group of elements form and what elements are used.
+- `description` should be around 20 to 50 words.
+
+# Examples:
+- If there is a slide with image with decoration on right and title, decorative line below title, description and contact info on left.
+    - Create three components from it as:
+        1. Image with decoration component.
+        2. Title, decorative line below title and description component.
+        3. Contact info card component.
 """
 
 
 GENERATE_CLUSTERS_SYSTEM_PROMPT = """
-Group reusable visual component candidates into clusters of similar layout structure.
-The user message contains every candidate with a stable 0-based source index, id,
-slide index, and description. Return exactly one raw JSON object matching the
-response schema. Do not include markdown, comments, explanations, or text outside
-the JSON object.
+Analyze provided components and create groups of similar components.
 
-# Clustering Goal
-- Cluster candidates by visual/component structure, not by slide topic or literal content.
-- Similar candidates should have the same kind of layout, element roles, and element order.
-- Useful cluster examples include card, card grid, title with divider, footer label,
-  image/text pair, metric block, table block, chart block, standalone background,
-  standalone heading, icon/title/description block, and repeated list item.
-- Ignore exact wording and minor style differences when the structural pattern matches.
-- Do not merge candidates when their structure or intended reusable component role differs.
+# Steps:
+1. Analyze available components `id` and `description`.
+2. Group similar components together.
 
-# Response Rules
-- Generate a unique, concise lower_snake_case id for each cluster.
-- Use only candidate_indices from the provided source candidates.
-- Every source candidate index must appear exactly once across all clusters.
-- A cluster may contain one candidate when it has no similar candidate.
-- Preserve source order inside candidate_indices.
+# Grouping Rules:
+- Check for components with similar layout to create a group.
+- Components with similar layout but different content can be grouped together.
+- Two component must have same elements to group them together.
+- Two groups must not include same component.
+- Every component must be included in atleast one component group.
 """
 
 
 GENERATE_COMPONENTS_FROM_CLUSTER_PROMPT = """
-Generate one reusable presentation component from one cluster of visually similar candidates.
-Use the source elements as ground truth and return one raw JSON object matching the Component schema.
+Create a flexible reusable component from a group of components.
 
-# Steps
-1. Compare the candidate structures, roles, styling, and layout intent.
-2. Choose candidate 0 as the base geometry unless another candidate better represents the shared structure.
-3. Set the component `position` and `size` from the chosen base candidate bounds.
-4. Build one generalized component using valid SlideElement objects whose coordinates are local to the component origin.
-5. Mark literal content as editable placeholders or fixed static content based on role.
-6. Add design variables only for meaningful reusable visual differences, with the narrow fixed text/image exception below.
-7. Check that the final JSON matches the Component schema exactly.
+# Steps:
+1. Analyze/Visualize each component.
+2. Identify design differences between each component.
+3. Create a flexible component.
+4. Extract design differences as design variables.
+5. Update the schema related element fields.
 
-# Layout Rules
-- Preserve source element roles, stacking order, visible styling, images, typography, and layout intent.
-- Normalize repeated instances to one component geometry.
-- Do not create variables for absolute slide placement.
-- The top-level Component must include required `position` and `size`.
-- `position` is the selected base candidate's absolute slide position; `size` is its bounding box size.
-- Every element inside `elements` must use coordinates local to the Component origin: local `{x: 0, y: 0}` means the component's top-left corner.
-- The source candidate payload already localizes candidate `elements`; keep output element coordinates in that same local coordinate system.
-- Prefer `flex` for rows, columns, stacks, headers, footers, icon/text pairs, menus, timelines, and card internals.
-- Prefer `grid` for columns, dashboards, card decks, metric areas, asymmetric regions, and repeated grids.
-- Use `container` or `group` only for real semantic structure.
-- Keep simple standalone components simple.
-- Direct children of `flex` and `grid` should omit `position` and `size`; nested elements inside computed slots may use local coordinates.
+# Layout Rules:
+- Build the flexible component layout using `flex`, `grid`, `container`, etc.
+- Use `table` element for table and `chart` element for chart.
+- Use `text-list` element for list of text like bullet points, numbered list, unordered list, etc.
+- Use `rectangle`, `ellipse`, `line` etc for geometry.
+- Use `container` for flexible alignment and layout.
 
-# Element Rules
-- Use `text` for text boxes; text belongs in `runs`, never top-level `text`.
-- Use `image` for photos, illustrations, logos, and icons.
-- Use `rectangle`, `ellipse`, and `line` for visible geometry.
-- Use `table`, `chart`, and `text-list` for tabular, chart, and list content.
+# Position and Size Rules:
+- Use local coordinates relative to component for elements.
+- Don't provide position and size for elements inside flexible elements like `flex`, `grid`, `container`, etc.
+- Must provide `position` and `size` for elements inside `group` element.
 
-# Editable Content Rules
-- Source candidates intentionally omit `fixed`; decide `fixed` from each element's role.
-- Set `fixed: true` for static or decorative content.
-- Set `fixed: false` for replaceable content placeholders.
-- Decorative content is visual chrome that defines the component style and is not meant to be edited per instance: background shapes, dividers, borders, shadows, decorative icons, ornaments, brand marks, static labels, and layout helper geometry.
-- Content is user-replaceable information: headings, body text, metric values, list items, table cells, chart labels or values, photos, illustrations, logos, icons selected by the user, and any image or text that carries the instance's meaning.
-- Use concise lower_snake_case role names for editable `name` fields.
-- Include required bounds where supported: text uses `min_length` and `max_length`; text-list uses `min_items`, `max_items`, `min_item_length`, and `max_item_length`; table uses `min_columns`, `max_columns`, `min_rows`, and `max_rows`; flex/grid uses `min_children` and `max_children`.
-- When a flex/grid contains repeated item children, use the same `min_length` and `max_length` for corresponding editable text roles in every repeated item.
-- Every `min_*` must equal half of the matching `max_*`, rounded up.
+# Decorative and Content Element Rules:
+- `fixed=true` represent decorative elements and will not be replaced while generating new slide.
+- `fixed=false` represent content elements and will be replaced while generating new slide.
 
-# Design Variable Rules
-- Use `design_variables` for reusable visual differences, not for user-replaceable content differences.
-- Create visual variables only for meaningful reusable visual differences: icon choice, colors, opacity, stroke, shadow, font styling, size, rotation, child count, layout spacing, and relative layout variants.
-- Do not create design variables for replaceable content differences: headings, body text, metric values, list items, table cells, chart labels or values, chart titles, user photos, illustrations, logos, or user-selected icons.
-- Text strings and image data may be design variables only when the target element is `fixed: true` and the literal text or image is static visual chrome, not user-replaceable instance content.
-- Never create content-related design variables for `text-list`, `table`, or `chart` content.
-- Editable content alone is not a reason to create a design variable.
-- A design variable may include only properties whose values actually change across candidate options; unchanged properties must stay in the base `elements`.
-- For object or array options, include only the varying nested fields needed by the effects. Do not copy full objects, rich text runs, font objects, geometry, or other attributes into each option when those attributes are identical across options.
-- Before adding a variable, compare every candidate option after removing unchanged nested fields. If the remaining option values are all identical or empty, do not create the variable.
-- Do not create variables for absolute slide position.
-- Image variables are allowed for visual icon choices and for fixed decorative/static image choices only.
-- Use position variables only for meaningful relative movement inside the component.
-- Ignore tiny accidental coordinate differences when shared geometry works.
-- Combine correlated changes into one semantic variable, such as `scale_variant`, `density`, `card_size`, or `typography_scale`.
-- If correlated values are not a simple scale, use an `object` option such as `{"width": 240, "height": 120, "font_size": 28}`.
-- Avoid variables that allow impossible combinations not observed in the source candidates.
-- Names must be unique lower_snake_case.
-- Types must be one of: string, number, integer, boolean, color, image, enum, array, object.
-- `options` must contain observed values, deduplicated in source order.
-- Deduplicate object and array options by their meaningful varying fields, not by unchanged metadata bundled into the option.
-- Do not create a variable with fewer than two options.
+# Schema Rules:
+- If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
+- For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
 
-# Effect Rules
-- Every design variable must have at least one effect.
-- Use one variable with multiple effects when one semantic choice changes multiple related elements.
+# Design Variable Rules:
+- Every design variable must have atleast one effect.
 - `effect.source` is an expression using `$`, such as `$`, `$ * 0.5`, `$ / 3`, `round($)`, `$.width`, `$.height`, or `$.font_size`.
-- `effect.target` is an explicit dot path from the component root and must start with `elements.<index>`, such as `elements.0.size.width`, `elements.1.font.size`, `elements.1.runs.0.font.size`, `elements.2.children.0.size.width`, `elements.3.child.runs.0.text`, `elements.4.items`, `elements.5.rows`, `elements.6.data`, or `elements.6.title`.
-- Use concrete array indices for every list segment in the target path.
-- Do not use element type names as target path selectors, such as `grid`, `rectangle`, `text`, or `image`, because multiple elements can share the same type.
-
-# Output Rules
-- Return exactly one JSON object and nothing else.
-- Do not include markdown, comments, explanations, or surrounding text.
-- Use only supported SlideElement types and snake_case fields.
-- `elements` must be a non-empty list.
+- `effect.target` is an explicit dot path from the component root and must start with `elements.<index>`, such as `elements.0.size.width`, `elements.1.font.size`, `elements.1.runs.0.font.size`, etc.
+- For elements with list of items like `flex`, `grid`, etc, If a design variable effects element inside every item then create one effect like `elements.0.grid.text.font`, `elements.1.flex.rectangle.width`, etc.
+- Create one design variable with options that contains design attributes that is different between components.
+- Don't include content like text, images in design variable unless `fixed=true` (i.e. is decorative element).
+- If there are multiple design differences between components, create one design variable with options as list of object, each with design variables of each component.
+- Design variable option must only contain design attributes and not id, name, etc.
 """
 
 
@@ -372,9 +328,9 @@ def generate_template(layouts: SlideLayouts) -> TemplateGenerationArtifacts:
         components,
     )
     artifacts = TemplateGenerationArtifacts(
-        cluster_candidates=_cluster_candidates_artifact(layouts, candidates),
-        clusters=_clusters_artifact(candidates, clusters),
-        components=_components_artifact(clusters, components),
+        cluster_candidates=_cluster_candidates_artifact(candidates),
+        clusters=_clusters_artifact(clusters),
+        components=_components_artifact(components),
         layouts=template_layouts,
         stats=stats,
     )
@@ -445,21 +401,21 @@ def generate_clusters(candidates: list[ClusterCandidate]) -> list[Cluster]:
         model=get_model(),
         messages=[
             SystemMessage(content=GENERATE_CLUSTERS_SYSTEM_PROMPT),
-            UserMessage(content=_json_dumps_for_prompt(payload)),
+            UserMessage(content=json.dumps(payload, indent=2)),
         ],
         label="candidate clusters",
         output_model=_ClusterSelections,
-        response_name="ClusterSelectionsResponse",
+        response_name="ComponentGroupsResponse",
         validation_retries=DEFAULT_VALIDATION_RETRIES,
         extra_validator=lambda value: _validate_cluster_selection_indices(
-            value.clusters,
+            value.groups,
             len(candidates),
         ),
     )
     selections = _ClusterSelections.model_validate(selections_json)
     clusters = [
-        Cluster(id=selection.id, candidates=selection.candidate_indices)
-        for selection in selections.clusters
+        Cluster(id=selection.id, candidates=selection.component_indices)
+        for selection in selections.groups
     ]
     LOGGER.info(
         "[templates.v2.clusters] generation complete candidates=%d clusters=%d",
@@ -532,7 +488,7 @@ def generate_component_from_cluster(cluster: ComponentCluster) -> Component:
         model=get_model(),
         messages=[
             SystemMessage(content=GENERATE_COMPONENTS_FROM_CLUSTER_PROMPT),
-            UserMessage(content=_json_dumps_for_prompt(payload)),
+            UserMessage(content=json.dumps(payload, indent=2)),
         ],
         label=f"component for cluster {cluster.id}",
         output_model=Component,
@@ -616,14 +572,16 @@ def _generate_cluster_candidates_from_elements(
         model=get_model(),
         messages=[
             SystemMessage(content=GENERATE_CLUSTER_CANDIDATES_SYSTEM_PROMPT),
-            UserMessage(content=_json_dumps_for_prompt(payload)),
+            UserMessage(
+                content="- Slide Elements:\n\n" + json.dumps(payload, indent=2)
+            ),
         ],
         label=f"cluster candidates for slide {slide_index + 1}",
         output_model=_ClusterCandidateSelections,
-        response_name="ClusterCandidateSelectionsResponse",
+        response_name="ComponentsSelectionResponse",
         validation_retries=DEFAULT_VALIDATION_RETRIES,
         extra_validator=lambda value: _validate_candidate_selection_indices(
-            value.candidates,
+            value.components,
             len(elements),
         ),
     )
@@ -635,14 +593,13 @@ def _generate_cluster_candidates_from_elements(
             description=selection.description,
             elements=selection.element_indices,
         )
-        for selection in selections.candidates
+        for selection in selections.components
     ]
 
 
 def _cluster_candidate_payload(elements: list[SlideElement]) -> dict[str, Any]:
     serialized_elements = _SLIDE_ELEMENTS_ADAPTER.dump_python(elements, mode="json")
     return {
-        "slide_element_count": len(elements),
         "elements": [
             {"index": index, "element": element}
             for index, element in enumerate(serialized_elements)
@@ -652,8 +609,7 @@ def _cluster_candidate_payload(elements: list[SlideElement]) -> dict[str, Any]:
 
 def _cluster_payload(candidates: list[ClusterCandidate]) -> dict[str, Any]:
     return {
-        "candidate_count": len(candidates),
-        "candidates": [
+        "components": [
             {
                 "index": index,
                 "id": candidate.id,
@@ -667,19 +623,17 @@ def _cluster_payload(candidates: list[ClusterCandidate]) -> dict[str, Any]:
 
 def _component_payload(cluster: ComponentCluster) -> dict[str, Any]:
     return {
-        "cluster": {
+        "component_group": {
             "id": cluster.id,
-            "candidate_count": len(cluster.candidates),
-            "candidates": [
-                _component_candidate_payload(index, candidate)
-                for index, candidate in enumerate(cluster.candidates)
+            "components": [
+                _component_candidate_payload(candidate)
+                for candidate in cluster.candidates
             ],
         }
     }
 
 
 def _component_candidate_payload(
-    index: int,
     candidate: ComponentClusterCandidate,
 ) -> dict[str, Any]:
     elements = _SLIDE_ELEMENTS_ADAPTER.dump_python(candidate.elements, mode="json")
@@ -693,9 +647,7 @@ def _component_candidate_payload(
     _strip_fixed_fields(localized_elements)
 
     return {
-        "index": index,
         "id": candidate.id,
-        "slide_index": candidate.slide_index,
         "description": candidate.description,
         "position": {"x": bounds["x"], "y": bounds["y"]},
         "size": {"width": bounds["width"], "height": bounds["height"]},
@@ -779,7 +731,7 @@ def _validate_cluster_selection_indices(
     duplicate_indices: set[int] = set()
 
     for cluster_index, selection in enumerate(selections):
-        for candidate_index in selection.candidate_indices:
+        for candidate_index in selection.component_indices:
             if candidate_index < 0 or candidate_index >= candidate_count:
                 raise ValueError(
                     "cluster "
@@ -2088,12 +2040,9 @@ def _strip_fixed_fields(value: Any) -> None:
 
 
 def _cluster_candidates_artifact(
-    layouts: SlideLayouts,
     candidates: list[ClusterCandidate],
 ) -> dict[str, Any]:
     return {
-        "slide_count": len(layouts.layouts),
-        "candidate_count": len(candidates),
         "candidates": [
             candidate.model_dump(mode="json", exclude_none=True)
             for candidate in candidates
@@ -2101,13 +2050,8 @@ def _cluster_candidates_artifact(
     }
 
 
-def _clusters_artifact(
-    candidates: list[ClusterCandidate],
-    clusters: list[Cluster],
-) -> dict[str, Any]:
+def _clusters_artifact(clusters: list[Cluster]) -> dict[str, Any]:
     return {
-        "candidate_count": len(candidates),
-        "cluster_count": len(clusters),
         "clusters": [
             cluster.model_dump(mode="json", exclude_none=True)
             for cluster in clusters
@@ -2115,13 +2059,8 @@ def _clusters_artifact(
     }
 
 
-def _components_artifact(
-    clusters: list[Cluster],
-    components: list[Component],
-) -> dict[str, Any]:
+def _components_artifact(components: list[Component]) -> dict[str, Any]:
     return {
-        "cluster_count": len(clusters),
-        "component_count": len(components),
         "components": [
             component.model_dump(mode="json", exclude_none=True)
             for component in components

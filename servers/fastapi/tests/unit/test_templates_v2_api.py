@@ -73,8 +73,6 @@ TEMPLATE_LAYOUTS = {
 
 GENERATED_ARTIFACTS = TemplateGenerationArtifacts(
     cluster_candidates={
-        "slide_count": 1,
-        "candidate_count": 1,
         "candidates": [
             {
                 "id": "photo",
@@ -85,13 +83,9 @@ GENERATED_ARTIFACTS = TemplateGenerationArtifacts(
         ],
     },
     clusters={
-        "candidate_count": 1,
-        "cluster_count": 1,
         "clusters": [{"id": "image_component", "candidates": [0]}],
     },
     components={
-        "cluster_count": 1,
-        "component_count": 1,
         "components": TEMPLATE_LAYOUTS["layouts"][0]["components"],
     },
     layouts=TEMPLATE_LAYOUTS,
@@ -134,6 +128,10 @@ class _ListSession:
 def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async_session):
     pptx_path = tmp_path / "quarterly-review.pptx"
     pptx_path.write_bytes(b"pptx")
+    generated_artifacts = GENERATED_ARTIFACTS.model_copy(deep=True)
+    generated_artifacts.cluster_candidates["candidate_count"] = 1
+    generated_artifacts.clusters["cluster_count"] = 1
+    generated_artifacts.components["component_count"] = 1
 
     with patch(
         "api.v2.templates.router.resolve_app_path_to_filesystem",
@@ -143,7 +141,7 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
         new=AsyncMock(return_value=PptxToJsonDocument(**RAW_LAYOUTS)),
     ) as convert_mock, patch(
         "api.v2.templates.router.generate_template",
-        new=Mock(return_value=GENERATED_ARTIFACTS),
+        new=Mock(return_value=generated_artifacts),
     ) as generate_mock:
         template = asyncio.run(
             create_template_v2(

@@ -134,9 +134,9 @@ async def _generate_template_artifacts(
         "[templates.v2.create] template artifact generation complete slides=%d "
         "candidates=%d clusters=%d components=%d",
         len(raw_layouts.layouts),
-        artifacts.cluster_candidates.get("candidate_count", 0),
-        artifacts.clusters.get("cluster_count", 0),
-        artifacts.components.get("component_count", 0),
+        len(artifacts.cluster_candidates.get("candidates", [])),
+        len(artifacts.clusters.get("clusters", [])),
+        len(artifacts.components.get("components", [])),
     )
     return artifacts
 
@@ -159,13 +159,9 @@ def _coerce_template_generation_artifacts(
     if isinstance(generated_template, SlideLayouts):
         layouts_json = generated_template.model_dump(mode="json", exclude_none=True)
         return TemplateGenerationArtifacts(
-            cluster_candidates={
-                "slide_count": len(generated_template.layouts),
-                "candidate_count": 0,
-                "candidates": [],
-            },
-            clusters={"candidate_count": 0, "cluster_count": 0, "clusters": []},
-            components={"cluster_count": 0, "component_count": 0, "components": []},
+            cluster_candidates={"candidates": []},
+            clusters={"clusters": []},
+            components={"components": []},
             layouts=layouts_json,
             stats={
                 "replaced_candidates": 0,
@@ -287,9 +283,15 @@ async def create_template_v2(
         ),
         description=request.description,
         raw_layouts=raw_layouts_json,
-        cluster_candidates=generation_artifacts.cluster_candidates,
-        clusters=generation_artifacts.clusters,
-        components=generation_artifacts.components,
+        cluster_candidates={
+            "candidates": generation_artifacts.cluster_candidates.get(
+                "candidates", []
+            )
+        },
+        clusters={"clusters": generation_artifacts.clusters.get("clusters", [])},
+        components={
+            "components": generation_artifacts.components.get("components", [])
+        },
         layouts=generation_artifacts.layouts,
         assets={
             "fonts": request.fonts or {},
