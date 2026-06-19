@@ -7,6 +7,7 @@ import {
   type BorderRadius,
   type ChartDatum,
   type Deck,
+  type DesignVariable,
   type Fill,
   type Font,
   type GroupElement,
@@ -42,6 +43,7 @@ type AdaptedBaseElement = {
   componentInstanceId?: string | null;
   componentDescription?: string | null;
   componentSlot?: string | null;
+  designVariables?: DesignVariable[] | null;
   layout?: LayoutItem | null;
 };
 type AdaptedRequiredBaseElement = AdaptedBaseElement & {
@@ -409,6 +411,7 @@ function componentToGroupElement(
     componentId,
     componentInstanceId: `${componentId}:${componentIndex}`,
     componentDescription: componentDescription || null,
+    design_variables: readArray(raw, "design_variables"),
   });
 }
 
@@ -1271,6 +1274,10 @@ function baseElement(
     base.opacity = clamp(readNumber(raw, "opacity") ?? 1, 0, 1);
   }
   if (componentSlot) base.componentSlot = truncateString(componentSlot, 120);
+  const designVariables = adaptDesignVariables(
+    readArray(raw, "designVariables", "design_variables"),
+  );
+  if (designVariables.length > 0) base.designVariables = designVariables;
   if (readString(readValue(raw, "componentId", "component_id"))) {
     base.componentId = truncateString(
       readString(readValue(raw, "componentId", "component_id")) ?? "",
@@ -1301,6 +1308,71 @@ function baseElement(
 
 function requiredBaseElement(raw: UnknownRecord): AdaptedRequiredBaseElement {
   return baseElement(raw, { requireFrame: true }) as AdaptedRequiredBaseElement;
+}
+
+function adaptDesignVariables(values: unknown[]): DesignVariable[] {
+  return values
+    .map((value): DesignVariable | null => {
+      const raw = asRecord(value);
+      if (!raw) return null;
+
+      const name = truncateString(readString(raw.name) ?? "", 120);
+      const type = truncateString(readString(raw.type) ?? "", 40);
+      const options: unknown[] = readArray(raw, "options")
+        .map(toJsonValue)
+        .filter((option) => option !== undefined);
+      const effect = readArray(raw, "effect")
+        .map((item) => {
+          const rawEffect = asRecord(item);
+          if (!rawEffect) return null;
+          const path = truncateString(
+            readString(readValue(rawEffect, "path", "target")) ?? "",
+            240,
+          );
+          const expression = truncateString(
+            readString(readValue(rawEffect, "effect", "source")) ?? "",
+            120,
+          );
+          return path && expression ? { path, effect: expression } : null;
+        })
+        .filter((item): item is DesignVariable["effect"][number] =>
+          Boolean(item),
+        );
+
+      if (!name || options.length === 0 || effect.length === 0) return null;
+      return {
+        name,
+        ...(type ? { type } : {}),
+        options,
+        effect,
+      } satisfies DesignVariable;
+    })
+    .filter((item): item is DesignVariable => Boolean(item));
+}
+
+function toJsonValue(value: unknown): unknown {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(toJsonValue).filter((item) => item !== undefined);
+  }
+
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, item]) => [key, toJsonValue(item)] as const)
+        .filter(([, item]) => item !== undefined),
+    );
+  }
+
+  return undefined;
 }
 
 function adaptPosition(value: UnknownRecord | null): { x: number; y: number } | null {

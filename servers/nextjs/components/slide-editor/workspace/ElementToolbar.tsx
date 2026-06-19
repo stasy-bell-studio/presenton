@@ -4,6 +4,7 @@ import { rootPath, type ElementPath } from "../lib/element-path";
 import {
   BulletsToolbar,
   ChartToolbar,
+  DesignVariablesToolbar,
   ImageToolbar,
   ShapeToolbar,
   SvgToolbar,
@@ -104,6 +105,19 @@ const TOOLBAR_RENDERERS = {
 >;
 
 export function ElementToolbar(props: ElementToolbarProps) {
+  if (props.element.designVariables?.length) {
+    return (
+      <DesignVariablesToolbar
+        element={props.element}
+        index={props.index}
+        scale={props.scale}
+        onChange={(index, element) =>
+          props.onChange(index, element, props.path)
+        }
+      />
+    );
+  }
+
   const toolbar = getElementDefinition(props.element.type).toolbar;
   if (toolbar == null) return null;
 

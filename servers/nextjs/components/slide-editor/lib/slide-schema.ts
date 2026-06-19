@@ -150,6 +150,33 @@ export const TextListItemSchema = z
   })
   .strict();
 
+const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
+  ]),
+);
+
+export const DesignVariableEffectSchema = z
+  .object({
+    path: z.string().min(1).max(240),
+    effect: z.string().min(1).max(120),
+  })
+  .strict();
+
+export const DesignVariableSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    type: z.string().min(1).max(40).nullish(),
+    options: z.array(JsonValueSchema).min(1).max(40),
+    effect: z.array(DesignVariableEffectSchema).min(1).max(40),
+  })
+  .strict();
+
 const elementBaseShape = {
   fixed: z.boolean().nullish(),
   position: PositionSchema.nullish(),
@@ -161,6 +188,7 @@ const elementBaseShape = {
   componentInstanceId: z.string().min(1).max(160).nullish(),
   componentDescription: z.string().max(600).nullish(),
   componentSlot: z.string().min(1).max(120).nullish(),
+  designVariables: z.array(DesignVariableSchema).max(24).nullish(),
   layout: LayoutItemSchema.nullish(),
 };
 
@@ -195,6 +223,7 @@ type ElementBaseOutput = {
   componentInstanceId?: string | null | undefined;
   componentDescription?: string | null | undefined;
   componentSlot?: string | null | undefined;
+  designVariables?: z.infer<typeof DesignVariableSchema>[] | null | undefined;
   layout?: z.infer<typeof LayoutItemSchema> | null | undefined;
 };
 
@@ -625,6 +654,8 @@ export type Shadow = z.infer<typeof ShadowSchema>;
 export type ChartDatum = z.infer<typeof ChartDatumSchema>;
 export type TextRun = z.infer<typeof TextRunSchema>;
 export type TextListItem = z.infer<typeof TextListItemSchema>;
+export type DesignVariableEffect = z.infer<typeof DesignVariableEffectSchema>;
+export type DesignVariable = z.infer<typeof DesignVariableSchema>;
 export type TextElement = z.infer<typeof TextElementSchema>;
 export type ContainerElement = z.infer<typeof ContainerElementSchema>;
 export type ImageElement = z.infer<typeof ImageElementSchema>;

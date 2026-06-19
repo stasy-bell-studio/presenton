@@ -1,4 +1,4 @@
-import { useMemo, type CSSProperties } from "react";
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
 import type { Font, TextElement, TextRun } from "../../../lib/slide-schema";
 import { elementBox, textContent } from "../../../lib/element-model";
 import { rootPath, type ElementPath } from "../../../lib/element-path";
@@ -26,6 +26,7 @@ export function TextDomElement({
   const editingPath =
     editingTextPath ??
     (editingTextIndex != null ? rootPath(editingTextIndex) : null);
+  const renderSemanticRichTextForPptx = isPptxExportRender();
 
   // Pre-compute the effective (post-shrink) fontSize for every text
   // element on this slide. The DOM overlay is what the user actually sees
@@ -54,6 +55,7 @@ export function TextDomElement({
         const effective =
           effectiveFontSizes.get(item.path) ?? element.font?.size;
         const renderedRuns = renderMarkdownTextRuns(element.runs);
+        const renderedText = textContent({ ...element, runs: renderedRuns });
         return (
           <div
             key={item.path}
@@ -77,23 +79,57 @@ export function TextDomElement({
               textAlign: element.alignment?.horizontal ?? "left",
             }}
           >
-            <div style={textContentStyle}>
-              {renderedRuns.length > 1 ||
-              renderedRuns.some((run) => run.font) ? (
-                <RichTextRuns
-                  baseFont={{ ...(element.font ?? {}), size: effective }}
-                  runs={renderedRuns}
-                  scale={scale}
-                />
-              ) : (
-                textContent({ ...element, runs: renderedRuns })
-              )}
-            </div>
+            {renderSemanticRichTextForPptx ? (
+              <SemanticRichTextRuns runs={renderedRuns} />
+            ) : (
+              <div style={textContentStyle}>
+                {renderedRuns.length > 1 ||
+                renderedRuns.some((run) => run.font) ? (
+                  <RichTextRuns
+                    baseFont={{ ...(element.font ?? {}), size: effective }}
+                    runs={renderedRuns}
+                    scale={scale}
+                  />
+                ) : (
+                  renderedText
+                )}
+              </div>
+            )}
           </div>
         );
       })}
     </DomElementLayer>
   );
+}
+
+function isPptxExportRender() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("format") === "pptx";
+}
+
+// The bundled PPTX scraper preserves rich runs from semantic inline tags.
+// Styled nested spans are interpreted as separate positioned text shapes.
+function SemanticRichTextRuns({ runs }: { runs: TextRun[] }) {
+  return (
+    <>
+      {runs.map((run, index) => (
+        <Fragment key={`${index}-${run.text}`}>
+          {semanticRunContent(run)}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function semanticRunContent(run: TextRun): ReactNode {
+  let content: ReactNode = run.text;
+  if (run.font?.italic) {
+    content = <em>{content}</em>;
+  }
+  if (run.font?.bold) {
+    content = <strong>{content}</strong>;
+  }
+  return content;
 }
 
 function RichTextRuns({

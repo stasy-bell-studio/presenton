@@ -436,14 +436,25 @@ function buildKonvaSlide(
   layout: TemplateV2Layout,
   slide: any,
 ): KonvaSlideData | null {
+  const content =
+    slide.content && typeof slide.content === "object" ? slide.content : {};
   const storedSlide = readStoredKonvaSlide(slide.content);
-  if (storedSlide) return storedSlide;
+  if (storedSlide) {
+    try {
+      const renderedLayout = applyGeneratedSlideContentToLayout(layout, content);
+      const designSlide = adaptTemplateV2LayoutToSlide(
+        renderedLayout,
+        slide.index ?? 0,
+      );
+      return mergeDesignVariablesIntoSlide(storedSlide, designSlide);
+    } catch (error) {
+      console.error("Could not hydrate template v2 design variables:", error);
+      return storedSlide;
+    }
+  }
 
   try {
-    const renderedLayout = applyGeneratedSlideContentToLayout(
-      layout,
-      slide.content && typeof slide.content === "object" ? slide.content : {},
-    );
+    const renderedLayout = applyGeneratedSlideContentToLayout(layout, content);
 
     return adaptTemplateV2LayoutToSlide(renderedLayout, slide.index ?? 0);
   } catch (error) {
@@ -464,6 +475,66 @@ function readStoredKonvaSlide(content: unknown): KonvaSlideData | null {
   return parsed.success ? normalizeTemplateV2Slide(parsed.data) : null;
 }
 
+function mergeDesignVariablesIntoSlide(
+  slide: KonvaSlideData,
+  designSource: KonvaSlideData,
+): KonvaSlideData {
+  return {
+    ...slide,
+    elements: slide.elements.map((element, index) =>
+      mergeDesignVariablesIntoElement(element, designSource.elements[index]),
+    ),
+  };
+}
+
+function mergeDesignVariablesIntoElement(
+  element: SlideElement,
+  designSource: SlideElement | undefined,
+): SlideElement {
+  let next = designSource?.designVariables?.length
+    ? { ...element, designVariables: designSource.designVariables }
+    : element;
+
+  if (
+    "children" in next &&
+    Array.isArray(next.children) &&
+    designSource &&
+    "children" in designSource &&
+    Array.isArray(designSource.children)
+  ) {
+    next = {
+      ...next,
+      children: next.children.map((child, index) =>
+        mergeDesignVariablesIntoElement(child, designSource.children[index]),
+      ),
+    } as SlideElement;
+  }
+
+  if (
+    next.type === "container" &&
+    next.child &&
+    designSource?.type === "container" &&
+    designSource.child
+  ) {
+    next = {
+      ...next,
+      child: mergeDesignVariablesIntoElement(next.child, designSource.child),
+    };
+  }
+
+  if (
+    (next.type === "list-view" || next.type === "grid-view") &&
+    (designSource?.type === "list-view" || designSource?.type === "grid-view")
+  ) {
+    next = {
+      ...next,
+      item: mergeDesignVariablesIntoElement(next.item, designSource.item),
+    } as SlideElement;
+  }
+
+  return next;
+}
+
 type TemplateV2ComponentDrawerDetail = {
   slideId?: string | null;
   slideIndex?: number | null;
@@ -473,6 +544,7 @@ type TemplateV2ComponentItem = {
   key: string;
   name: string;
   description: string;
+  variantCount: number;
   previewSlide: KonvaSlideData | null;
   elements: SlideElement[];
 };
@@ -491,6 +563,13 @@ function TemplateV2ComponentsDrawer({
   const componentCountLabel = `${components.length} component${
     components.length === 1 ? "" : "s"
   }`;
+  const variantCount = components.reduce(
+    (total, component) => total + component.variantCount,
+    0,
+  );
+  const variantCountLabel = `${variantCount} variant${
+    variantCount === 1 ? "" : "s"
+  }`;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -503,7 +582,7 @@ function TemplateV2ComponentsDrawer({
             Components
           </SheetTitle>
           <SheetDescription className="text-xs text-[#777780]">
-            {componentCountLabel}
+            {componentCountLabel} · {variantCountLabel}
           </SheetDescription>
         </SheetHeader>
 
@@ -537,9 +616,14 @@ function TemplateV2ComponentsDrawer({
                   </div>
                   <div className="space-y-3 p-3">
                     <div className="space-y-1">
-                      <p className="truncate text-sm font-medium text-[#191919]">
-                        {component.name}
-                      </p>
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#191919]">
+                          {component.name}
+                        </p>
+                        <span className="shrink-0 rounded-md border border-[#E4E4EC] bg-[#F8F8FA] px-2 py-0.5 text-[11px] font-medium leading-5 text-[#66666F]">
+                          {formatVariantCount(component.variantCount)}
+                        </span>
+                      </div>
                       {component.description ? (
                         <p className="max-h-10 overflow-hidden text-xs leading-5 text-[#66666F]">
                           {component.description}
@@ -604,6 +688,7 @@ function buildTemplateV2ComponentItem(
 
   const name = readString(component.id) || `component_${index + 1}`;
   const description = readString(component.description) || "";
+  const variantCount = countTemplateV2ComponentVariants(component);
 
   try {
     const previewSlide = adaptTemplateV2LayoutToSlide(
@@ -618,6 +703,7 @@ function buildTemplateV2ComponentItem(
       key: `${name}-${index}`,
       name,
       description,
+      variantCount,
       previewSlide,
       elements: previewSlide.elements,
     };
@@ -627,10 +713,35 @@ function buildTemplateV2ComponentItem(
       key: `${name}-${index}`,
       name,
       description,
+      variantCount,
       previewSlide: null,
       elements: [],
     };
   }
+}
+
+function countTemplateV2ComponentVariants(component: Record<string, unknown>) {
+  const variables = Array.isArray(component.design_variables)
+    ? component.design_variables
+    : Array.isArray(component.designVariables)
+      ? component.designVariables
+      : [];
+
+  return Math.max(
+    1,
+    variables
+      .filter(isRecord)
+      .map((variable) =>
+        Array.isArray(variable.options) && variable.options.length > 0
+          ? variable.options.length
+          : 1,
+      )
+      .reduce((total, count) => total * count, 1),
+  );
+}
+
+function formatVariantCount(count: number) {
+  return `${count} variant${count === 1 ? "" : "s"}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
