@@ -65,7 +65,7 @@ def test_export_node_env_recreates_puppeteer_directories(monkeypatch, tmp_path):
     puppeteer_cache = tmp_path / "cache" / "puppeteer"
     monkeypatch.setenv("APP_DATA_DIRECTORY", str(app_data))
     monkeypatch.setenv("TEMP_DIRECTORY", str(temp_dir))
-    monkeypatch.setenv("NEXT_PUBLIC_FAST_API", "http://127.0.0.1:5000")
+    monkeypatch.setenv("NEXT_PUBLIC_FAST_API", "http://127.0.0.1:5001")
     monkeypatch.setenv("PUPPETEER_TMP_DIR", str(puppeteer_temp))
     monkeypatch.setenv("PUPPETEER_CACHE_DIR", str(puppeteer_cache))
 

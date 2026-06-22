@@ -151,7 +151,7 @@ function normalizeLayoutAssetUrls<T>(value: T): T {
 function normalizeHardcodedBackendUrlsInCode(layoutCode: string): string {
     // Keep /app_data and /static paths origin-agnostic so nginx can proxy them.
     return layoutCode.replace(
-        /https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0):(?:8000|5000)(?=\/(?:app_data|static)\/)/g,
+        /https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0):(?:8000|5000|5001)(?=\/(?:app_data|static)\/)/g,
         ""
     );
 }
@@ -283,5 +283,4 @@ export function compileCustomLayout(layoutCode: string): CompiledLayout | null {
         return null;
     }
 }
-
 

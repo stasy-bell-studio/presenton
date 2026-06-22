@@ -340,14 +340,14 @@ def test_localize_preview_asset_urls_rewrites_app_data_http_urls(monkeypatch, tm
     )
 
     html = (
-        '<img src="http://127.0.0.1:5000/app_data/pptx-to-html/session/images/asset.png">'
+        '<img src="http://127.0.0.1:5001/app_data/pptx-to-html/session/images/asset.png">'
         "<div style=\"background-image: url('/app_data/pptx-to-html/session/images/asset.png')\"></div>"
     )
 
     localized = fonts_and_slides_preview._localize_preview_asset_urls(html)
 
     assert localized.count("data:image/png;base64,cG5n") == 2
-    assert "http://127.0.0.1:5000/app_data" not in localized
+    assert "http://127.0.0.1:5001/app_data" not in localized
     assert "url('data:image/png;base64,cG5n')" in localized
 
 

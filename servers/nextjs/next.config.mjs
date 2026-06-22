@@ -1,3 +1,9 @@
+const presentonHttpHostPort =
+  process.env.PRESENTON_HTTP_HOST_PORT ||
+  process.env.PRESENTON_HOST_HTTP_PORT ||
+  process.env.PRESENTON_PUBLIC_PORT ||
+  "5001";
+
 const nextConfig = {
   reactStrictMode: false,
   distDir: ".next-build",
@@ -18,7 +24,7 @@ const nextConfig = {
     return [
       {
         source: '/app_data/fonts/:path*',
-        destination: 'http://localhost:5000/app_data/fonts/:path*',
+        destination: `http://localhost:${presentonHttpHostPort}/app_data/fonts/:path*`,
       },
     ];
   },
