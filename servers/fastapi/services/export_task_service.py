@@ -56,6 +56,10 @@ class HtmlToImagesTaskResult(BaseModel):
     paths: list[str]
 
 
+class JsonToImageTaskResult(BaseModel):
+    path: str
+
+
 class ExtractSchemaSlide(BaseModel):
     id: str
     name: str | None = None
@@ -470,6 +474,33 @@ class ExportTaskService:
         self._ensure_output_readable(output_path)
 
         return HtmlToImageTaskResult(path=output_path)
+
+    async def render_json_to_image(
+        self,
+        data: list[dict[str, Any]],
+        width: int,
+        height: int,
+    ) -> JsonToImageTaskResult:
+        if width <= 0 or height <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="JSON-to-image dimensions must be positive",
+            )
+
+        response_data = await self._run_task(
+            {
+                "type": "json-to-image",
+                "data": data,
+                "width": width,
+                "height": height,
+            },
+            "JSON-to-image export task did not produce a response file",
+        )
+
+        output_path = self._resolve_output_path(response_data)
+        self._ensure_output_readable(output_path)
+
+        return JsonToImageTaskResult(path=output_path)
 
     async def render_htmls_to_images(
         self,

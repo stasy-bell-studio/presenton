@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .elements import Position, Size, SlideElement
 
@@ -21,6 +21,43 @@ class Component(BaseModel):
     position: Position
     size: Size
     elements: list[SlideElement] = Field(min_length=1)
+
+
+class SimilarComponents(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    indices: list[int] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def _indices_must_be_unique_and_non_negative(self) -> "SimilarComponents":
+        if any(index < 0 for index in self.indices):
+            raise ValueError("similar component indices must be non-negative")
+        if len(self.indices) != len(set(self.indices)):
+            raise ValueError("similar component indices must be unique")
+        return self
+
+
+class SimilarComponentsList(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    similar_components: list[SimilarComponents]
+
+
+class MergedComponent(BaseModel):
+    id: str = Field(min_length=1, max_length=80)
+    description: str = Field(min_length=10, max_length=300)
+    variants: list[Component] = Field(min_length=1)
+
+
+class MergedComponents(BaseModel):
+    components: list[MergedComponent]
+
+    @model_validator(mode="after")
+    def _component_ids_must_be_unique(self) -> "MergedComponents":
+        ids = [component.id for component in self.components]
+        if len(ids) != len(set(ids)):
+            raise ValueError("merged component ids must be unique")
+        return self
 
 
 class SlideLayout(BaseModel):

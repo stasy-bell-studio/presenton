@@ -15,7 +15,7 @@ from api.v2.templates.router import (
 )
 from models.sql.template_v2 import TemplateV2
 from services.export_task_service import PptxToJsonDocument
-from templates.v2.models.layouts import SlideLayouts
+from templates.v2.models.layouts import MergedComponents, SlideLayouts
 
 
 RAW_LAYOUTS = {
@@ -73,6 +73,17 @@ TEMPLATE_LAYOUTS = {
 }
 
 GENERATED_LAYOUTS = SlideLayouts.model_validate(TEMPLATE_LAYOUTS)
+MERGED_COMPONENTS = MergedComponents.model_validate(
+    {
+        "components": [
+            {
+                "id": "photo_component",
+                "description": "Reusable image component.",
+                "variants": TEMPLATE_LAYOUTS["layouts"][0]["components"],
+            }
+        ]
+    }
+)
 
 
 class _RowsResult:
@@ -115,7 +126,10 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
     ) as convert_mock, patch(
         "api.v2.templates.router.generate_template",
         new=Mock(return_value=GENERATED_LAYOUTS),
-    ) as generate_mock:
+    ) as generate_mock, patch(
+        "api.v2.templates.router.merge_similar_components",
+        new=Mock(return_value=MERGED_COMPONENTS),
+    ) as merge_mock:
         template = asyncio.run(
             create_template_v2(
                 CreateTemplateV2Request(
@@ -129,9 +143,13 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
 
     convert_mock.assert_awaited_once_with(str(pptx_path))
     generate_mock.assert_called_once()
+    merge_mock.assert_called_once_with(GENERATED_LAYOUTS)
     assert template.name == "quarterly-review"
     assert template.raw_layouts == RAW_LAYOUTS
     assert template.components is None
+    assert template.merged_components == MERGED_COMPONENTS.model_dump(
+        mode="json", exclude_none=True
+    )
     assert template.layouts == TEMPLATE_LAYOUTS
     assert template.assets == {
         "fonts": {"Inter": "Inter"},

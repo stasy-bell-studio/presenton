@@ -120,6 +120,32 @@ def test_render_html_to_image_sends_html_task_payload(tmp_path):
     assert "HTML-to-image" in captured["response_error_detail"]
 
 
+def test_render_json_to_image_sends_json_task_payload(tmp_path):
+    output_path = tmp_path / "preview.png"
+    output_path.write_bytes(b"png")
+    service = ExportTaskService(timeout_seconds=10)
+    captured = {}
+
+    async def fake_run_task(task_payload, response_error_detail):
+        captured["task_payload"] = task_payload
+        captured["response_error_detail"] = response_error_detail
+        return {"file_path": str(output_path)}
+
+    service._run_task = fake_run_task
+    data = [{"type": "text", "runs": [{"text": "Preview"}]}]
+
+    result = asyncio.run(service.render_json_to_image(data, 1280, 720))
+
+    assert result.path == str(output_path)
+    assert captured["task_payload"] == {
+        "type": "json-to-image",
+        "data": data,
+        "width": 1280,
+        "height": 720,
+    }
+    assert "JSON-to-image" in captured["response_error_detail"]
+
+
 def test_render_htmls_to_images_sends_batch_task_payload(tmp_path):
     output_paths = [tmp_path / "preview-1.png", tmp_path / "preview-2.png"]
     for output_path in output_paths:

@@ -17,8 +17,12 @@ from sqlmodel import select
 from models.sql.template_v2 import TemplateV2
 from services.database import get_async_session
 from services.export_task_service import EXPORT_TASK_SERVICE
-from templates.v2.generation import generate_template
-from templates.v2.models.layouts import RawSlideLayouts, SlideLayouts
+from templates.v2.generation import generate_template, merge_similar_components
+from templates.v2.models.layouts import (
+    MergedComponents,
+    RawSlideLayouts,
+    SlideLayouts,
+)
 from utils.asset_directory_utils import resolve_app_path_to_filesystem
 from utils.file_utils import get_original_file_name
 
@@ -56,6 +60,7 @@ class TemplateV2ListResponse(BaseModel):
 class TemplateV2Response(TemplateV2ListItem):
     raw_layouts: Optional[dict[str, Any]] = None
     components: Optional[dict[str, Any]] = None
+    merged_components: Optional[dict[str, Any]] = None
     layouts: dict[str, Any]
     assets: Optional[dict[str, Any]] = None
 
@@ -137,6 +142,32 @@ async def _generate_slide_layouts(
         sum(len(layout.components) for layout in layouts.layouts),
     )
     return layouts
+
+
+async def _merge_generated_components(layouts: SlideLayouts) -> MergedComponents:
+    LOGGER.info(
+        "[templates.v2.create] component de-duplication start components=%d",
+        sum(len(layout.components) for layout in layouts.layouts),
+    )
+    try:
+        merged_components = await _run_template_generation_thread(
+            merge_similar_components,
+            layouts,
+        )
+    except (ValidationError, ValueError) as exc:
+        LOGGER.exception(
+            "[templates.v2.create] component de-duplication produced invalid output"
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Component de-duplication produced invalid output",
+        ) from exc
+
+    LOGGER.info(
+        "[templates.v2.create] component de-duplication complete merged_components=%d",
+        len(merged_components.components),
+    )
+    return merged_components
 
 
 async def _run_template_generation_thread(func: Any, *args: Any) -> Any:
@@ -268,6 +299,7 @@ async def create_template_v2(
         raw_layouts,
         request.slide_image_urls,
     )
+    merged_components = await _merge_generated_components(generated_layouts)
     raw_layouts_json = pptx_json.model_dump(mode="json", exclude_none=True)
     template = TemplateV2(
         name=(request.name or "").strip() or _derive_template_name(
@@ -275,6 +307,9 @@ async def create_template_v2(
         ),
         description=request.description,
         raw_layouts=raw_layouts_json,
+        merged_components=merged_components.model_dump(
+            mode="json", exclude_none=True
+        ),
         layouts=generated_layouts.model_dump(mode="json", exclude_none=True),
         assets={
             "fonts": request.fonts or {},

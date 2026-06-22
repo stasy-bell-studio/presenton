@@ -12,19 +12,26 @@ from typing import Any, Callable
 from llmai import get_client
 from llmai.shared import (
     AssistantMessage,
+    AssistantToolCall,
     ImageContentPart,
     JSONSchemaResponse,
     SystemMessage,
+    ToolResponseMessage,
     UserMessage,
 )
 from pydantic import BaseModel, ValidationError
 
 from templates.v2.models.layouts import (
+    Component,
+    MergedComponent,
+    MergedComponents,
     RawSlideLayout,
     RawSlideLayouts,
+    SimilarComponentsList,
     SlideLayout,
     SlideLayouts,
 )
+from templates.v2.tools import PreviewSlideTool
 from utils.asset_directory_utils import resolve_image_path_to_filesystem
 from utils.llm_config import get_llm_config
 from utils.llm_provider import get_model
@@ -45,6 +52,7 @@ Convert the provided raw slide elements to components.
 2. Divide the slide into a list of components using slide image.
 3. Identify group of elements that belongs to each component.
 4. Generate `id` and `description` for the layout.
+5. Call `previewSlide` with the complete candidate SlideLayout before returning it.
 
 # General Rules:
 - `id` and `description` must be related to layout and must not be derived from slide content.
@@ -71,6 +79,21 @@ Convert the provided raw slide elements to components.
 - Set `decorative=false` for content elements which should be replaced while creating new slide.
 - If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
 - For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
+"""
+
+CLUSTER_SIMILAR_COMPONENTS_SYSTEM_PROMPT = """
+Analyze components `id` and `description` and create clusters of similar components.
+
+# Steps:
+1. Analyze components `id` and `description`.
+2. Identify similar components.
+3. Return cluster of similar components as output.
+
+# Rules:
+- Group components only when they serve the same semantic purpose and have substantially similar structure.
+- Different content is expected and does not make otherwise equivalent components dissimilar.
+- Do not group components merely because they share broad words such as title, text, image, or content.
+- Each group must contain at least one index.
 """
 
 
@@ -132,24 +155,171 @@ def generate_template(
     return generated
 
 
+def merge_similar_components(layouts: SlideLayouts) -> MergedComponents:
+    indexed_components = [
+        component for layout in layouts.layouts for component in layout.components
+    ]
+    if len(indexed_components) < 2:
+        return _build_merged_components(indexed_components, [])
+
+    component_summaries = [
+        {
+            "index": index,
+            "id": component.id,
+            "description": component.description,
+        }
+        for index, component in enumerate(indexed_components)
+    ]
+    LOGGER.info(
+        "[templates.v2.deduplicate] clustering start components=%d",
+        len(indexed_components),
+    )
+    response = _generate_with_validation_retries(
+        client=get_client(config=get_llm_config()),
+        model=get_model(),
+        messages=[
+            SystemMessage(content=CLUSTER_SIMILAR_COMPONENTS_SYSTEM_PROMPT),
+            UserMessage(
+                content=json.dumps({"components": component_summaries}, indent=2)
+            ),
+        ],
+        label="similar component clusters",
+        output_model=SimilarComponentsList,
+        response_name="SimilarComponentsResponse",
+        validation_retries=DEFAULT_VALIDATION_RETRIES,
+        extra_validator=lambda clusters: _validate_similarity_groups(
+            clusters,
+            component_count=len(indexed_components),
+        ),
+        max_tokens=4096,
+    )
+    clusters = SimilarComponentsList.model_validate(response)
+    merged = _build_merged_components(
+        indexed_components,
+        [group.indices for group in clusters.similar_components],
+    )
+    LOGGER.info(
+        "[templates.v2.deduplicate] clustering complete components=%d "
+        "similar_groups=%d merged_components=%d",
+        len(indexed_components),
+        len(clusters.similar_components),
+        len(merged.components),
+    )
+    return merged
+
+
+def _validate_similarity_groups(
+    clusters: SimilarComponentsList,
+    *,
+    component_count: int,
+) -> None:
+    seen: set[int] = set()
+    for group in clusters.similar_components:
+        for index in group.indices:
+            if index >= component_count:
+                raise ValueError(
+                    f"similar component index {index} is outside the available range"
+                )
+            if index in seen:
+                raise ValueError(
+                    f"component index {index} appears in more than one similarity group"
+                )
+            seen.add(index)
+
+
+def _build_merged_components(
+    components: list[Component],
+    similar_groups: list[list[int]],
+) -> MergedComponents:
+    group_by_index = {
+        index: sorted(group) for group in similar_groups for index in group
+    }
+    used_indices: set[int] = set()
+    used_ids: set[str] = set()
+    merged_components: list[MergedComponent] = []
+
+    for index, component in enumerate(components):
+        if index in used_indices:
+            continue
+        variant_indices = group_by_index.get(index, [index])
+        variants = [components[variant_index] for variant_index in variant_indices]
+        used_indices.update(variant_indices)
+        merged_components.append(
+            MergedComponent(
+                id=_unique_merged_component_id(component.id, used_ids),
+                description=component.description,
+                variants=variants,
+            )
+        )
+
+    return MergedComponents(components=merged_components)
+
+
+def _unique_merged_component_id(component_id: str, used_ids: set[str]) -> str:
+    if component_id not in used_ids:
+        used_ids.add(component_id)
+        return component_id
+
+    suffix = 2
+    while True:
+        suffix_text = f"_{suffix}"
+        candidate = f"{component_id[: 80 - len(suffix_text)]}{suffix_text}"
+        if candidate not in used_ids:
+            used_ids.add(candidate)
+            return candidate
+        suffix += 1
+
+
 def generate_slide_layout(
     source_layout: RawSlideLayout,
     slide_index: int,
     slide_image_url: str,
 ) -> SlideLayout:
     payload = (source_layout.model_dump(mode="json", exclude_none=True),)
+    client = get_client(config=get_llm_config())
+    model = get_model()
+    messages = [
+        SystemMessage(content=GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT),
+        UserMessage(
+            content=[
+                _slide_image_content(slide_image_url),
+                json.dumps(payload, indent=2),
+            ]
+        ),
+    ]
+    preview_tool = PreviewSlideTool()
+    candidate_layout, preview_messages, preview_tool_call = _generate_preview_candidate(
+        client=client,
+        model=model,
+        messages=messages,
+        label=f"slide layout {slide_index + 1}",
+        preview_tool=preview_tool,
+        validation_retries=DEFAULT_VALIDATION_RETRIES,
+        max_tokens=16384,
+    )
+    preview_image = preview_tool.render(candidate_layout)
+    feedback_messages = [
+        *preview_messages,
+        ToolResponseMessage(
+            id=preview_tool_call.id,
+            content=["The slide preview was rendered successfully."],
+        ),
+        UserMessage(
+            content=[
+                preview_image,
+                (
+                    "Review this rendered candidate against the original slide image. "
+                    "Fix visual problems such as incorrect grouping, alignment, sizing, "
+                    "overflow, spacing, colors, and local coordinates. Return the complete "
+                    "final SlideLayout JSON, even when no changes are needed."
+                ),
+            ]
+        ),
+    ]
     layout_json = _generate_with_validation_retries(
-        client=get_client(config=get_llm_config()),
-        model=get_model(),
-        messages=[
-            SystemMessage(content=GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT),
-            UserMessage(
-                content=[
-                    _slide_image_content(slide_image_url),
-                    json.dumps(payload, indent=2),
-                ]
-            ),
-        ],
+        client=client,
+        model=model,
+        messages=feedback_messages,
         label=f"slide layout {slide_index + 1}",
         output_model=SlideLayout,
         response_name="SlideLayoutResponse",
@@ -157,6 +327,91 @@ def generate_slide_layout(
         max_tokens=16384,
     )
     return SlideLayout.model_validate(layout_json)
+
+
+def _generate_preview_candidate(
+    *,
+    client: Any,
+    model: str,
+    messages: list[Any],
+    label: str,
+    preview_tool: PreviewSlideTool,
+    validation_retries: int,
+    max_tokens: int,
+) -> tuple[SlideLayout, list[Any], AssistantToolCall]:
+    attempt_messages = list(messages)
+    last_error: Exception | None = None
+    max_attempts = validation_retries + 1
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            response = client.generate(
+                model=model,
+                messages=attempt_messages,
+                tools=[preview_tool],
+                tool_choice={
+                    "mode": "required",
+                    "tools": [preview_tool.name],
+                },
+                max_tokens=max_tokens,
+            )
+            tool_call = next(
+                (
+                    call
+                    for call in list(getattr(response, "tool_calls", []) or [])
+                    if call.name == preview_tool.name
+                ),
+                None,
+            )
+            if tool_call is None:
+                raise ValueError(f"{preview_tool.name} was not called")
+
+            arguments = json.loads(tool_call.arguments or "{}")
+            if not isinstance(arguments, dict):
+                raise ValueError(f"{preview_tool.name} arguments must be a JSON object")
+            candidate_layout = SlideLayout.model_validate(arguments)
+            response_text = _text_from_content(getattr(response, "content", None))
+            assistant_message = AssistantMessage(
+                content=[response_text] if response_text else None,
+                tool_calls=[tool_call],
+            )
+            return (
+                candidate_layout,
+                [*attempt_messages, assistant_message],
+                tool_call,
+            )
+        except (JSONDecodeError, ValidationError, ValueError) as exc:
+            last_error = exc
+            if attempt > validation_retries:
+                raise
+            attempt_messages = [
+                *attempt_messages,
+                UserMessage(
+                    content=(
+                        f"The previous {preview_tool.name} call for {label} was invalid. "
+                        "Call the tool again with one complete SlideLayout JSON object.\n\n"
+                        f"errors:\n{_format_error_for_prompt(exc)}"
+                    )
+                ),
+            ]
+        except Exception as exc:
+            last_error = exc
+            if attempt > validation_retries:
+                raise
+            attempt_messages = [
+                *attempt_messages,
+                UserMessage(
+                    content=(
+                        f"The {preview_tool.name} call for {label} failed. "
+                        "Call the tool again with the complete candidate SlideLayout.\n\n"
+                        f"errors:\n{_format_error_for_prompt(exc)}"
+                    )
+                ),
+            ]
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError(f"LLM failed to produce a preview candidate for {label}")
 
 
 def _slide_image_content(slide_image_url: str) -> ImageContentPart:
