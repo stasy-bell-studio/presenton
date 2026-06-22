@@ -138,7 +138,13 @@ export function KonvaSlide({
     (interactive ? editorInteractions.onChangeAtPath : undefined);
   const resolvedOnChangeMany =
     onChangeMany ?? (interactive ? editorInteractions.onChangeMany : undefined);
-  const { nodeRefs, selectedBounds, selectedIndexes, transformerRef } =
+  const {
+    nodeRefs,
+    pathNodeRefs,
+    selectedBounds,
+    selectedIndexes,
+    transformerRef,
+  } =
     useKonvaSelection({
       interactive,
       scale,
@@ -172,6 +178,7 @@ export function KonvaSlide({
         editingTextIndex={resolvedEditingTextIndex}
         interactive={interactive}
         nodeRefs={nodeRefs}
+        pathNodeRefs={pathNodeRefs}
         normalizedSelectionBox={normalizedSelectionBox}
         bulletsRenderMode={bulletsRenderMode}
         chartRenderMode={chartRenderMode}

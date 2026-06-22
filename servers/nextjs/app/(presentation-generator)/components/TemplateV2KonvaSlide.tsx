@@ -535,6 +535,32 @@ function TemplateV2KonvaSlideBody({
     ],
   );
 
+  const handleRootClickCapture = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (event.button !== 0) return;
+      if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+      if (isInlineEditIgnoredTarget(event.target)) return;
+
+      const hit =
+        findTextAtClientPoint(event.clientX, event.clientY) ??
+        findImageAtClientPoint(event.clientX, event.clientY);
+      if (!hit) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      activateSurface();
+      selectElement({ index: hit.rootIndex, path: hit.path });
+    },
+    [
+      activateSurface,
+      findImageAtClientPoint,
+      findTextAtClientPoint,
+      selectElement,
+    ],
+  );
+
   useEffect(() => {
     if (!isEditMode) return;
 
@@ -565,6 +591,7 @@ function TemplateV2KonvaSlideBody({
       onDoubleClickCapture={
         isEditMode ? handleRootDoubleClickCapture : undefined
       }
+      onClickCapture={isEditMode ? handleRootClickCapture : undefined}
       onPointerDownCapture={
         isEditMode ? handleRootPointerDownCapture : undefined
       }

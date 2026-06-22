@@ -1,5 +1,12 @@
 import Konva from "konva";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type RefObject,
+} from "react";
 import { Group, Line, Rect, Text, Transformer } from "react-konva";
 import {
   SLIDE_H,
@@ -8,7 +15,11 @@ import {
   type SlideElement,
 } from "../../lib/slide-schema";
 import { elementBox, resizeElement } from "../../lib/element-model";
-import { rootPath, type ElementPath } from "../../lib/element-path";
+import {
+  isRootPath,
+  rootPath,
+  type ElementPath,
+} from "../../lib/element-path";
 import {
   flattenResolvedLayoutNode,
   isLayoutElement,
@@ -45,6 +56,7 @@ export function ElementLayer({
   editingTextIndex,
   interactive,
   nodeRefs,
+  pathNodeRefs,
   normalizedSelectionBox,
   bulletsRenderMode = "canvas",
   chartRenderMode = "canvas",
@@ -80,6 +92,7 @@ export function ElementLayer({
   editingTextIndex?: number | null;
   interactive: boolean;
   nodeRefs: RefObject<Array<Konva.Node | null>>;
+  pathNodeRefs: MutableRefObject<Record<ElementPath, Konva.Node | null>>;
   normalizedSelectionBox: Bounds | null;
   bulletsRenderMode?: "canvas" | "proxy";
   chartRenderMode?: "canvas" | "proxy";
@@ -370,6 +383,8 @@ export function ElementLayer({
     },
   });
 
+  const selectedIsNested = Boolean(selectedPath && !isRootPath(selectedPath));
+
   return (
     <>
       {slide.elements.map((el, index) =>
@@ -391,10 +406,11 @@ export function ElementLayer({
             events={commonEvents(index, el)}
             onSelectTableCell={onSelectTableCell}
             nestedEvents={(item) =>
-              el.componentId
-                ? commonEvents(index, el, rootPath(index), true)
-                : commonEvents(index, item.element, item.sourcePath, true)
+              commonEvents(index, item.element, item.sourcePath, true)
             }
+            setPathRef={(path, node) => {
+              pathNodeRefs.current[path] = node;
+            }}
           />
         ) : (
           <KonvaElement
@@ -535,10 +551,11 @@ export function ElementLayer({
             );
           })()
         : null}
-      {interactive && selectedIndexes.length > 0 ? (
+      {interactive && (selectedIndexes.length > 0 || selectedIsNested) ? (
         <Transformer
           ref={transformerRef}
           rotateEnabled
+          resizeEnabled={!selectedIsNested}
           anchorSize={8}
           borderStroke={SELECTION_STROKE}
           anchorFill="#f4f6fa"
@@ -593,6 +610,7 @@ function LayoutRootElement({
   selected,
   selectedPath,
   setRef,
+  setPathRef,
   tableRenderMode,
   textRenderMode,
 }: {
@@ -612,6 +630,7 @@ function LayoutRootElement({
   selected: boolean;
   selectedPath?: ElementPath | null;
   setRef: (node: Konva.Node | null) => void;
+  setPathRef: (path: ElementPath, node: Konva.Node | null) => void;
   tableRenderMode?: "canvas" | "proxy";
   textRenderMode?: "canvas" | "proxy";
 }) {
@@ -668,6 +687,7 @@ function LayoutRootElement({
           tableRenderMode={tableRenderMode}
           textRenderMode={textRenderMode}
           events={nestedEvents(item)}
+          setRef={(node) => setPathRef(item.sourcePath, node)}
           onTableCellClick={
             item.element.type === "table"
               ? (rowIndex, colIndex) =>
@@ -706,6 +726,7 @@ function ResolvedKonvaItem({
   onTableCellClick,
   scale,
   selected,
+  setRef,
   tableRenderMode,
   textRenderMode,
 }: {
@@ -717,6 +738,7 @@ function ResolvedKonvaItem({
   onTableCellClick?: (rowIndex: number, colIndex: number) => void;
   scale: number;
   selected: boolean;
+  setRef: (node: Konva.Node | null) => void;
   tableRenderMode?: "canvas" | "proxy";
   textRenderMode?: "canvas" | "proxy";
 }) {
@@ -731,7 +753,7 @@ function ResolvedKonvaItem({
       textRenderMode={textRenderMode}
       selected={selected}
       onTableCellClick={onTableCellClick}
-      setRef={() => undefined}
+      setRef={setRef}
       events={events}
     />
   );

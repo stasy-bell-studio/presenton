@@ -26,6 +26,7 @@ export function useKonvaSelection({
 }) {
   const transformerRef = useRef<Konva.Transformer | null>(null);
   const nodeRefs = useRef<Array<Konva.Node | null>>([]);
+  const pathNodeRefs = useRef<Record<ElementPath, Konva.Node | null>>({});
   const selectedIsRoot = selectedPath == null || isRootPath(selectedPath);
   const selectedIndexes = useMemo(
     () =>
@@ -74,16 +75,24 @@ export function useKonvaSelection({
     if (!interactive) return;
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const nodes = selectedIndexes
-      .filter((index) => selectedPath == null || selectedPath === rootPath(index))
-      .map((index) => nodeRefs.current[index])
-      .filter((node): node is Konva.Node => Boolean(node));
+    const nodes =
+      selectedPath && !isRootPath(selectedPath)
+        ? [pathNodeRefs.current[selectedPath]].filter(
+            (node): node is Konva.Node => Boolean(node),
+          )
+        : selectedIndexes
+            .filter(
+              (index) => selectedPath == null || selectedPath === rootPath(index),
+            )
+            .map((index) => nodeRefs.current[index])
+            .filter((node): node is Konva.Node => Boolean(node));
     transformer.nodes(nodes);
     transformer.getLayer()?.batchDraw();
   }, [interactive, selectedIndexes, selectedPath, slide]);
 
   return {
     nodeRefs,
+    pathNodeRefs,
     selectedBounds,
     selectedIndexes,
     transformerRef,
