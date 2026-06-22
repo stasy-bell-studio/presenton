@@ -93,6 +93,7 @@ export function TextDomElement({
                   <RichTextRuns
                     baseFont={{ ...(element.font ?? {}), size: effective }}
                     fontScale={fontScale(element.font?.size, effective)}
+                    preferBaseColor={shouldPreferBaseColor(renderedRuns)}
                     runs={renderedRuns}
                     scale={scale}
                   />
@@ -141,11 +142,13 @@ function semanticRunContent(run: TextRun): ReactNode {
 function RichTextRuns({
   baseFont,
   fontScale,
+  preferBaseColor,
   runs,
   scale,
 }: {
   baseFont: Font;
   fontScale: number;
+  preferBaseColor: boolean;
   runs: TextRun[];
   scale: number;
 }) {
@@ -159,6 +162,9 @@ function RichTextRuns({
               font: {
                 ...baseFont,
                 ...(run.font ?? {}),
+                ...(preferBaseColor && baseFont.color
+                  ? { color: baseFont.color }
+                  : {}),
                 size:
                   run.font?.size != null
                     ? run.font.size * fontScale
@@ -173,6 +179,15 @@ function RichTextRuns({
       ))}
     </>
   );
+}
+
+function shouldPreferBaseColor(runs: TextRun[]) {
+  const colors = new Set(
+    runs
+      .map((run) => run.font?.color?.trim().toLowerCase())
+      .filter((color): color is string => Boolean(color)),
+  );
+  return colors.size <= 1;
 }
 
 function fontScale(

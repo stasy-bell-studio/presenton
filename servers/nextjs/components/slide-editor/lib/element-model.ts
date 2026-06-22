@@ -93,7 +93,7 @@ export function setTextContent(element: TextElement, text: string): TextElement 
   const first = element.runs[0];
   return {
     ...element,
-    runs: [textRun(text, first?.font)],
+    runs: [textRun(text, first?.font ?? element.font)],
   };
 }
 
@@ -117,9 +117,18 @@ export function mergeFont<T extends { font?: Font | null }>(
   element: T,
   font: Partial<Font>,
 ): T {
+  const nextFont = { ...(element.font ?? {}), ...font };
   return {
     ...element,
-    font: { ...(element.font ?? {}), ...font },
+    font: nextFont,
+    ...("runs" in element && Array.isArray(element.runs)
+      ? {
+          runs: element.runs.map((run) => ({
+            ...run,
+            font: { ...(run.font ?? element.font ?? {}), ...font },
+          })),
+        }
+      : {}),
   };
 }
 

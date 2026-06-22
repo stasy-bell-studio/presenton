@@ -431,6 +431,9 @@ export function extractTemplateV2ContentFromSlide(
     updateTemplateV2ContentFromElement(element, componentContent);
     content[componentKey] = componentContent;
   });
+  if (legacyEditorStateKey) {
+    content[legacyEditorStateKey] = normalizeTemplateV2Slide(slide);
+  }
   return content;
 }
 
