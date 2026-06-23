@@ -1,7 +1,9 @@
-import { useMemo, type CSSProperties } from "react";
+import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
 import { textListStrings } from "../../../lib/element-model";
 import { rootPath, type ElementPath } from "../../../lib/element-path";
 import type { ResolvedLayoutItem } from "../../../lib/layout-resolver";
+import { renderMarkdownTextRuns } from "../../../lib/markdown-text";
+import type { TextRun } from "../../../lib/slide-schema";
 import { fitBulletsFontToBox } from "../../../lib/textMeasure";
 import {
   DomElementLayer,
@@ -82,7 +84,7 @@ export function BulletsDomElement({
                   marginBottom: itemIndex === items.length - 1 ? 0 : 0.05 * scale,
                 }}
               >
-                {item}
+                <MarkdownListItem text={item} />
               </li>
             ))}
           </ListTag>
@@ -104,3 +106,27 @@ const listStyle: CSSProperties = {
 const itemStyle: CSSProperties = {
   paddingLeft: "0.15em",
 };
+
+function MarkdownListItem({ text }: { text: string }) {
+  const runs = renderMarkdownTextRuns([{ text }]);
+  return (
+    <>
+      {runs.map((run, index) => (
+        <Fragment key={`${index}-${run.text}`}>
+          {semanticRunContent(run)}
+        </Fragment>
+      ))}
+    </>
+  );
+}
+
+function semanticRunContent(run: TextRun): ReactNode {
+  let content: ReactNode = run.text;
+  if (run.font?.italic) {
+    content = <em>{content}</em>;
+  }
+  if (run.font?.bold) {
+    content = <strong>{content}</strong>;
+  }
+  return content;
+}

@@ -2,6 +2,10 @@ import { useMemo } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { BulletsElement as BulletsEl } from "../../lib/slide-schema";
 import { elementFont, textListStrings } from "../../lib/element-model";
+import {
+  renderMarkdownTextContent,
+  renderMarkdownTextRuns,
+} from "../../lib/markdown-text";
 import { fitBulletsFontToBox } from "../../lib/textMeasure";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../../editorUtils";
 import { rotationProps, shadowProps } from "./elementVisuals";
@@ -40,10 +44,16 @@ export function BulletsElement({
   const averageCharWidth = bulletFontSize * 0.52;
   const charsPerLine = Math.max(8, Math.floor(width / averageCharWidth));
   const items = textListStrings(element).map((item) => {
+    const runs = renderMarkdownTextRuns([{ text: item }]);
+    const renderedItem = renderMarkdownTextContent([{ text: item }]);
     const marker = element.marker === "number" ? "1." : "•";
-    const text = element.marker === "none" ? item : `${marker} ${item}`;
+    const text =
+      element.marker === "none" ? renderedItem : `${marker} ${renderedItem}`;
     const lineCount = Math.max(1, Math.ceil(text.length / charsPerLine));
     return {
+      fontStyle: `${runs.some((run) => run.font?.bold) ? "bold" : "normal"} ${
+        runs.some((run) => run.font?.italic) ? "italic" : ""
+      }`,
       text,
       height: lineCount * linePx,
     };
@@ -79,6 +89,7 @@ export function BulletsElement({
                 fill={withHash(font.color)}
                 fontFamily={`${font.family}, Helvetica, sans-serif`}
                 fontSize={bulletFontSize}
+                fontStyle={item.fontStyle}
                 lineHeight={lineHeight}
                 wrap="word"
                 listening={false}

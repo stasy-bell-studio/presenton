@@ -188,7 +188,7 @@ function measureBulletsHeightInches(
   let total = 0;
   for (let i = 0; i < items.length; i += 1) {
     const h = measureTextHeightInches({
-      text: items[i],
+      text: renderMarkdownTextContent([{ text: items[i] }]),
       fontFace: font.family,
       fontSize: fontSizePt,
       lineHeight: font.lineHeight,
