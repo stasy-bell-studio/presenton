@@ -1251,7 +1251,12 @@ function adaptChart(raw: UnknownRecord): SlideElement {
     ...baseElement(raw),
     type: "chart",
     chartType:
-      readEnum(raw, ["bar", "line", "donut"], "chartType", "chart_type") ??
+      readEnum(
+        raw,
+        ["bar", "line", "area", "pie", "donut"],
+        "chartType",
+        "chart_type",
+      ) ??
       "bar",
     data: data.length > 0 ? data : [{ label: "Data", value: 0 }],
     title: truncateString(readString(raw.title) ?? "", 80) || null,

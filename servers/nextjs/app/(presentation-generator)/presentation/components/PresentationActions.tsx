@@ -25,14 +25,16 @@ import {
   Shapes,
   Sparkles,
   Table2,
-  TrendingUp,
   Type,
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
-import type { SlideElement } from "@/components/slide-editor/lib/slide-schema";
+import type {
+  ChartType,
+  SlideElement,
+} from "@/components/slide-editor/lib/slide-schema";
 import Chat from "./Chat";
 import {
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
@@ -84,17 +86,11 @@ const textItems = [
 ] satisfies PaletteItem[];
 
 const chartTypeItems = [
-  { label: "Bar Chart", icon: BarChart3 },
-  { label: "Line Chart", icon: LineChart },
-  { label: "Pie Chart", icon: PieChart },
-  { label: "Area Chart", icon: AreaChart },
-];
-
-const chartComponentItems = [
-  { label: "Chart + Insight", icon: BarChart3 },
-  { label: "Metrics", icon: Table2 },
-  { label: "Tracker", icon: TrendingUp },
-];
+  { id: "bar", label: "Bar Chart", icon: BarChart3 },
+  { id: "line", label: "Line Chart", icon: LineChart },
+  { id: "pie", label: "Pie Chart", icon: PieChart },
+  { id: "area", label: "Area Chart", icon: AreaChart },
+] satisfies PaletteItem[];
 
 const tableTypeItems = [
   { label: "Simple Table", icon: Table2 },
@@ -283,6 +279,56 @@ const createTextInsertElements = (kind?: string): SlideElement[] => {
     default:
       return [];
   }
+};
+
+const chartTypeFromPaletteId = (id?: string): ChartType | null => {
+  if (
+    id === "bar" ||
+    id === "line" ||
+    id === "area" ||
+    id === "pie" ||
+    id === "donut"
+  ) {
+    return id;
+  }
+  return null;
+};
+
+const makeChartElement = (chartType: ChartType): SlideElement => {
+  const isCircular = chartType === "pie" || chartType === "donut";
+  const label =
+    chartType === "bar"
+      ? "Bar chart"
+      : chartType === "line"
+        ? "Line chart"
+        : chartType === "area"
+          ? "Area chart"
+          : chartType === "pie"
+            ? "Pie chart"
+            : "Donut chart";
+
+  return {
+    type: "chart",
+    position: { x: 1.05, y: 1.05 },
+    size: { width: isCircular ? 4.4 : 5.2, height: 2.6 },
+    chartType,
+    title: label,
+    color: "7F22FE",
+    axisColor: "D0D5DD",
+    labelColor: "475467",
+    showValues: chartType !== "area",
+    data: [
+      { label: "Q1", value: 38, color: "7F22FE" },
+      { label: "Q2", value: 54, color: "155DFC" },
+      { label: "Q3", value: 47, color: "F59E0B" },
+      { label: "Q4", value: 68, color: "12B76A" },
+    ],
+  };
+};
+
+const createChartInsertElements = (kind?: string): SlideElement[] => {
+  const chartType = chartTypeFromPaletteId(kind);
+  return chartType ? [makeChartElement(chartType)] : [];
 };
 
 const NavButton = ({
@@ -499,19 +545,17 @@ const BlocksPanel = () => {
 const PresentationActions = (props: PresentationActionsProps) => {
   const [activeAction, setActiveAction] = useState<ActionId>("ai");
 
-  const handleTextItemSelect = (item: PaletteItem) => {
+  const insertEditorElements = (elements: SlideElement[], label: string) => {
     if (typeof window === "undefined") return;
     if (typeof props.currentSlide !== "number") {
-      notify.warning("Select a slide", "Choose a slide before adding text.");
+      notify.warning("Select a slide", "Choose a slide before adding content.");
       return;
     }
-
-    const elements = createTextInsertElements(item.id);
     if (elements.length === 0) return;
 
     const detail: TemplateV2InsertElementsDetail = {
       elements,
-      label: item.label,
+      label,
       slideIndex: props.currentSlide,
     };
 
@@ -521,10 +565,18 @@ const PresentationActions = (props: PresentationActionsProps) => {
 
     if (!detail.handled) {
       notify.warning(
-        "Text insert unavailable",
-        "Text blocks can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected."
+        "Insert unavailable",
+        "Content can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected."
       );
     }
+  };
+
+  const handleTextItemSelect = (item: PaletteItem) => {
+    insertEditorElements(createTextInsertElements(item.id), item.label);
+  };
+
+  const handleChartItemSelect = (item: PaletteItem) => {
+    insertEditorElements(createChartInsertElements(item.id), item.label);
   };
 
   return (
@@ -648,10 +700,8 @@ const PresentationActions = (props: PresentationActionsProps) => {
         {activeAction === "charts" && (
           <InsertPanel
             title="Charts"
-            groups={[
-              { label: "Chart Type", items: chartTypeItems },
-              { label: "Components", items: chartComponentItems },
-            ]}
+            groups={[{ label: "Chart Type", items: chartTypeItems }]}
+            onItemSelect={handleChartItemSelect}
           />
         )}
         {activeAction === "tables" && (

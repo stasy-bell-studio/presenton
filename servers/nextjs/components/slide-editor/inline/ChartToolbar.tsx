@@ -55,6 +55,8 @@ export function ChartToolbar({
       >
         <option value="bar">Bar</option>
         <option value="line">Line</option>
+        <option value="area">Area</option>
+        <option value="pie">Pie</option>
         <option value="donut">Donut</option>
       </select>
       <button

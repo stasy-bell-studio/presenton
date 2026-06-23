@@ -92,7 +92,7 @@ export function ChartElement({
               scale={scale}
               showValues={element.showValues ?? false}
             />
-          ) : element.chartType === "line" ? (
+          ) : element.chartType === "line" || element.chartType === "area" ? (
             <LineChartParts
               data={element.data}
               max={max}
@@ -102,6 +102,7 @@ export function ChartElement({
               labelColor={labelColor}
               scale={scale}
               showValues={element.showValues ?? false}
+              fillArea={element.chartType === "area"}
             />
           ) : (
             <DonutChartParts
@@ -111,6 +112,7 @@ export function ChartElement({
               labelColor={labelColor}
               scale={scale}
               showValues={element.showValues ?? false}
+              donut={element.chartType === "donut"}
             />
           )}
         </>
@@ -203,6 +205,7 @@ function LineChartParts({
   labelColor,
   scale,
   showValues,
+  fillArea = false,
 }: {
   data: ChartDatum[];
   max: number;
@@ -212,6 +215,7 @@ function LineChartParts({
   labelColor: string;
   scale: number;
   showValues: boolean;
+  fillArea?: boolean;
 }) {
   const labelBand = 16 * (scale / PX_PER_IN);
   const plotH = Math.max(1, plot.h - labelBand);
@@ -219,6 +223,7 @@ function LineChartParts({
     plot.x + (data.length === 1 ? 0 : (index / (data.length - 1)) * plot.w),
     plot.y + plotH - (datum.value / max) * plotH * 0.82,
   ]);
+  const areaPoints = [plot.x, plot.y + plotH, ...points, plot.x + plot.w, plot.y + plotH];
   return (
     <>
       <Line
@@ -231,6 +236,15 @@ function LineChartParts({
         stroke={axisColor}
         strokeWidth={1}
       />
+      {fillArea ? (
+        <Line
+          points={areaPoints}
+          closed
+          fill={color}
+          opacity={0.18}
+          tension={0.28}
+        />
+      ) : null}
       <Line points={points} stroke={color} strokeWidth={2} tension={0.28} />
       {data.map((datum, index) => {
         const cx =
@@ -284,6 +298,7 @@ function DonutChartParts({
   labelColor,
   scale,
   showValues,
+  donut = true,
 }: {
   data: ChartDatum[];
   plot: Plot;
@@ -291,6 +306,7 @@ function DonutChartParts({
   labelColor: string;
   scale: number;
   showValues: boolean;
+  donut?: boolean;
 }) {
   const total = Math.max(
     1,
@@ -320,24 +336,26 @@ function DonutChartParts({
           key={`${datum.label}-${index}`}
           x={cx}
           y={cy}
-          innerRadius={radius * 0.55}
+          innerRadius={donut ? radius * 0.55 : 0}
           outerRadius={radius}
           angle={angle}
           rotation={rotation}
           fill={withHash(datum.color ?? color)}
         />
       ))}
-      <Text
-        x={cx - radius * 0.5}
-        y={cy - 6 * (scale / PX_PER_IN)}
-        width={radius}
-        height={12 * (scale / PX_PER_IN)}
-        text={String(total)}
-        fontSize={10 * (scale / PX_PER_IN)}
-        fontStyle="bold"
-        align="center"
-        fill={color}
-      />
+      {donut ? (
+        <Text
+          x={cx - radius * 0.5}
+          y={cy - 6 * (scale / PX_PER_IN)}
+          width={radius}
+          height={12 * (scale / PX_PER_IN)}
+          text={String(total)}
+          fontSize={10 * (scale / PX_PER_IN)}
+          fontStyle="bold"
+          align="center"
+          fill={color}
+        />
+      ) : null}
       {data.map((datum, index) => (
         <Group
           key={`${datum.label}-legend-${index}`}

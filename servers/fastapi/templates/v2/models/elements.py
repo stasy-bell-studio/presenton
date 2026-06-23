@@ -70,6 +70,8 @@ class ImageFit(str, Enum):
 class ChartType(str, Enum):
     BAR = "bar"
     LINE = "line"
+    AREA = "area"
+    PIE = "pie"
     DONUT = "donut"
 
 

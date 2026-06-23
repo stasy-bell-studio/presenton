@@ -10,6 +10,7 @@ import {
   LineController,
   LineElement,
   LinearScale,
+  PieController,
   PointElement,
   Title,
   Tooltip,
@@ -31,6 +32,7 @@ Chart.register(
   LineController,
   LineElement,
   LinearScale,
+  PieController,
   PointElement,
   Title,
   Tooltip,
@@ -78,12 +80,16 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
 
     Chart.getChart(canvas)?.destroy();
 
+    const isArea = element.chartType === "area";
+    const isPie = element.chartType === "pie";
     const isDonut = element.chartType === "donut";
     const chart = new Chart(canvas, {
       type:
         element.chartType === "donut"
           ? "doughnut"
-          : element.chartType === "line"
+          : isPie
+            ? "pie"
+          : element.chartType === "line" || isArea
             ? "line"
             : "bar",
       data: {
@@ -92,18 +98,22 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
           {
             label: element.title ?? "Series",
             data: values,
-            backgroundColor: isDonut ? colors : colors.map((color) => color),
+            backgroundColor: isArea
+              ? `${withHash(element.color ?? "D4A24C")}33`
+              : isDonut || isPie
+                ? colors
+                : colors.map((color) => color),
             borderColor:
-              element.chartType === "line"
+              element.chartType === "line" || isArea
                 ? withHash(element.color ?? "D4A24C")
                 : colors,
             borderRadius: element.chartType === "bar" ? 4 : 0,
-            borderWidth: element.chartType === "line" ? 2 : 1,
-            fill: false,
+            borderWidth: element.chartType === "line" || isArea ? 2 : 1,
+            fill: isArea,
             pointBackgroundColor: colors,
             pointBorderColor: "#ffffff",
-            pointRadius: element.chartType === "line" ? 3 : 0,
-            tension: element.chartType === "line" ? 0.28 : 0,
+            pointRadius: element.chartType === "line" || isArea ? 3 : 0,
+            tension: element.chartType === "line" || isArea ? 0.28 : 0,
           },
         ],
       },
@@ -113,7 +123,7 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
         responsive: true,
         plugins: {
           legend: {
-            display: isDonut,
+            display: isDonut || isPie,
             position: "right",
             labels: {
               boxWidth: 8,
@@ -135,7 +145,7 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
           },
           tooltip: { enabled: false },
         },
-        scales: isDonut
+        scales: isDonut || isPie
           ? undefined
           : {
               x: {

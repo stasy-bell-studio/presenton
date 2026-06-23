@@ -31,7 +31,7 @@ export const TextWrapSchema = z.enum(["word", "char", "none"]);
 export const MarkerSchema = z.enum(["bullet", "number", "none"]);
 export const FlexDirectionSchema = z.enum(["row", "column"]);
 export const ImageFitSchema = z.enum(["contain", "cover", "fill"]);
-export const ChartTypeSchema = z.enum(["bar", "line", "donut"]);
+export const ChartTypeSchema = z.enum(["bar", "line", "area", "pie", "donut"]);
 
 export const PositionSchema = z
   .object({
