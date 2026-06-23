@@ -26,7 +26,6 @@ import {
   Sparkles,
   Table2,
   Type,
-  Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -105,15 +104,10 @@ const tableComponentItems = [
 ];
 
 const imageItems = [
-  { label: "Image", icon: Image },
-  { label: "Image + Text", icon: Columns2 },
-  { label: "Image Grid", icon: Grid3X3 },
-];
-
-const imageComponentItems = [
-  { label: "Teams", icon: Users },
-  { label: "Feature Grid", icon: Columns2 },
-];
+  { id: "image", label: "Image", icon: Image },
+  { id: "image-text", label: "Image + Text", icon: Columns2 },
+  { id: "image-grid", label: "Image Grid", icon: Grid3X3 },
+] satisfies PaletteItem[];
 
 const elementItems = [
   { label: "Rectangle", icon: RectangleHorizontal },
@@ -329,6 +323,104 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
 const createChartInsertElements = (kind?: string): SlideElement[] => {
   const chartType = chartTypeFromPaletteId(kind);
   return chartType ? [makeChartElement(chartType)] : [];
+};
+
+const imageRadius = { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 };
+
+const makeImageElement = ({
+  x,
+  y,
+  width,
+  height,
+  name = "Image",
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name?: string;
+}): SlideElement => ({
+  type: "image",
+  position: { x, y },
+  size: { width, height },
+  fit: "cover",
+  name,
+  borderRadius: imageRadius,
+});
+
+const createImageInsertElements = (kind?: string): SlideElement[] => {
+  switch (kind) {
+    case "image":
+      return [
+        makeImageElement({
+          x: 1.05,
+          y: 1.0,
+          width: 4.2,
+          height: 2.7,
+        }),
+      ];
+    case "image-text":
+      return [
+        makeImageElement({
+          x: 0.95,
+          y: 1.0,
+          width: 3.9,
+          height: 2.55,
+        }),
+        makeTextElement({
+          text: "Add a heading",
+          x: 5.1,
+          y: 1.12,
+          width: 3.3,
+          height: 0.5,
+          size: 24,
+          bold: true,
+        }),
+        makeTextElement({
+          text: "Add supporting text for this image.",
+          x: 5.1,
+          y: 1.76,
+          width: 3.35,
+          height: 0.85,
+          size: 16,
+          color: "475467",
+          lineHeight: 1.3,
+        }),
+      ];
+    case "image-grid":
+      return [
+        makeImageElement({
+          x: 1.0,
+          y: 0.95,
+          width: 2.35,
+          height: 1.55,
+          name: "Image 1",
+        }),
+        makeImageElement({
+          x: 3.55,
+          y: 0.95,
+          width: 2.35,
+          height: 1.55,
+          name: "Image 2",
+        }),
+        makeImageElement({
+          x: 1.0,
+          y: 2.7,
+          width: 2.35,
+          height: 1.55,
+          name: "Image 3",
+        }),
+        makeImageElement({
+          x: 3.55,
+          y: 2.7,
+          width: 2.35,
+          height: 1.55,
+          name: "Image 4",
+        }),
+      ];
+    default:
+      return [];
+  }
 };
 
 const NavButton = ({
@@ -579,6 +671,10 @@ const PresentationActions = (props: PresentationActionsProps) => {
     insertEditorElements(createChartInsertElements(item.id), item.label);
   };
 
+  const handleImageItemSelect = (item: PaletteItem) => {
+    insertEditorElements(createImageInsertElements(item.id), item.label);
+  };
+
   return (
     <div className="flex h-full w-full overflow-hidden  bg-white px-2 py-1.5">
       <aside className="flex h-full w-[70px] shrink-0 flex-col items-center border-r border-[#F4F4F5]  py-5">
@@ -716,10 +812,8 @@ const PresentationActions = (props: PresentationActionsProps) => {
         {activeAction === "images" && (
           <InsertPanel
             title="Images"
-            groups={[
-              { label: "Add", items: imageItems },
-              { label: "Components", items: imageComponentItems },
-            ]}
+            groups={[{ label: "Add", items: imageItems }]}
+            onItemSelect={handleImageItemSelect}
           />
         )}
         {activeAction === "elements" && (
