@@ -262,27 +262,6 @@ function TemplateV2KonvaSlideBody({
     }
   }, [surfaceId]);
 
-  useHotkey("Mod+Z", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canUndo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    undo();
-  });
-
-  useHotkey("Mod+Shift+Z", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canRedo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    redo();
-  });
-
-  useHotkey("Mod+Y", (event) => {
-    if (!isEditMode || !isSurfaceActive() || !canRedo) return;
-    event.preventDefault();
-    event.stopPropagation();
-    redo();
-  });
-
   useEffect(() => {
     if (!isEditMode) return;
 
@@ -813,6 +792,15 @@ function TemplateV2KonvaSlideBody({
       }
     >
       {isEditMode ? (
+        <TemplateV2EditorHotkeys
+          canRedo={canRedo}
+          canUndo={canUndo}
+          isSurfaceActive={isSurfaceActive}
+          onRedo={redo}
+          onUndo={undo}
+        />
+      ) : null}
+      {isEditMode ? (
         <input
           ref={imageUploadInputRef}
           accept="image/*"
@@ -855,6 +843,57 @@ function TemplateV2KonvaSlideBody({
       ) : null}
     </div>
   );
+}
+
+function TemplateV2EditorHotkeys({
+  canRedo,
+  canUndo,
+  isSurfaceActive,
+  onRedo,
+  onUndo,
+}: {
+  canRedo: boolean;
+  canUndo: boolean;
+  isSurfaceActive: () => boolean;
+  onRedo: () => void;
+  onUndo: () => void;
+}) {
+  const options = { conflictBehavior: "allow" as const };
+
+  useHotkey(
+    "Mod+Z",
+    (event) => {
+      if (!isSurfaceActive() || !canUndo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onUndo();
+    },
+    options,
+  );
+
+  useHotkey(
+    "Mod+Shift+Z",
+    (event) => {
+      if (!isSurfaceActive() || !canRedo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRedo();
+    },
+    options,
+  );
+
+  useHotkey(
+    "Mod+Y",
+    (event) => {
+      if (!isSurfaceActive() || !canRedo) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onRedo();
+    },
+    options,
+  );
+
+  return null;
 }
 
 function isPrimaryPointer(event: ReactPointerEvent<HTMLDivElement>) {

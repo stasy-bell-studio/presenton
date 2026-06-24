@@ -68,6 +68,17 @@ type LayoutContext = {
   depth: number;
   mode?: RenderMode;
   forcedBox?: ElementBox;
+  transform?: LayoutTransform;
+};
+
+type LayoutTransform = {
+  a: number;
+  b: number;
+  c: number;
+  d: number;
+  e: number;
+  f: number;
+  rotation: number;
 };
 
 type FlexLike = {
@@ -98,6 +109,15 @@ const SOURCE_PX_PER_IN = 128;
 const DECORATIVE_LINE_THICKNESS = 4 / SOURCE_PX_PER_IN;
 const DECORATIVE_LINE_LENGTH = 80 / SOURCE_PX_PER_IN;
 const TEXT_AVERAGE_CHAR_EM = 0.45;
+const IDENTITY_TRANSFORM: LayoutTransform = {
+  a: 1,
+  b: 0,
+  c: 0,
+  d: 1,
+  e: 0,
+  f: 0,
+  rotation: 0,
+};
 const LAYOUT_TYPES = new Set<SlideElement["type"]>([
   "container",
   "flex",
@@ -225,6 +245,7 @@ function resolveContainer(
           element.alignment?.vertical ?? "top",
         );
   const childMode = hasExplicitFrame(element.child) ? "absolute" : "flow";
+  const childTransform = childTransformFor(context, box, element.rotation);
   const child = resolveElementLayoutTree(element.child, {
     rootIndex: context.rootIndex,
     path: `${context.path}.child`,
@@ -233,6 +254,7 @@ function resolveContainer(
     depth: context.depth + 1,
     mode: childMode,
     forcedBox: childBox,
+    transform: childTransform,
   });
 
   return layoutNode(element, element, box, context, containerPaintable(element), [
@@ -245,6 +267,7 @@ function resolveGroup(
   box: ElementBox,
   context: LayoutContext,
 ): ResolvedLayoutNode {
+  const childTransform = childTransformFor(context, box, element.rotation);
   const children = element.children.map((child, index) =>
     resolveElementLayoutTree(child, {
       rootIndex: context.rootIndex,
@@ -254,6 +277,7 @@ function resolveGroup(
       depth: context.depth + 1,
       mode: "absolute",
       forcedBox: relativeChildBox(child, box),
+      transform: childTransform,
     }),
   );
   return layoutNode(element, element, box, context, false, children);
@@ -268,6 +292,8 @@ function resolveFlex(
   sourcePathBase?: string,
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
+  const source = sourceElement ?? (element as SlideElement);
+  const childTransform = childTransformFor(context, box, source.rotation);
   const content = paddedBox(box, element.padding);
   const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = flexBoxes(element, flowChildren.map(({ child }) => child), content);
@@ -284,11 +310,11 @@ function resolveFlex(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
+        transform: childTransform,
       }),
     ),
   ];
 
-  const source = sourceElement ?? (element as SlideElement);
   return layoutNode(source, source, box, context, false, resolvedChildren);
 }
 
@@ -301,6 +327,8 @@ function resolveGrid(
   sourcePathBase?: string,
   sourceElement?: SlideElement,
 ): ResolvedLayoutNode {
+  const source = sourceElement ?? (element as SlideElement);
+  const childTransform = childTransformFor(context, box, source.rotation);
   const content = paddedBox(box, element.padding);
   const flowChildren = children.map((child, index) => ({ child, index }));
   const boxes = gridBoxes(element, flowChildren.map(({ child }) => child), content);
@@ -317,11 +345,11 @@ function resolveGrid(
         depth: context.depth + 1,
         mode: "flow",
         forcedBox: boxes[flowIndex] ?? content,
+        transform: childTransform,
       }),
     ),
   ];
 
-  const source = sourceElement ?? (element as SlideElement);
   return layoutNode(source, source, box, context, false, resolvedChildren);
 }
 
@@ -695,8 +723,13 @@ function layoutNode(
   children: ResolvedLayoutNode[] = [],
 ): ResolvedLayoutNode {
   const normalized = normalizeBox(box);
+  const transformed = transformBox(normalized, contextTransform(context));
   return {
-    element: cloneElementWithBox(element, normalized),
+    element: cloneElementWithBox(
+      element,
+      transformed,
+      contextTransform(context).rotation,
+    ),
     source,
     sourcePath: context.sourcePath ?? context.path,
     rootIndex: context.rootIndex,
@@ -704,8 +737,8 @@ function layoutNode(
     parentPath: context.parentPath,
     depth: context.depth,
     mode: context.mode ?? "absolute",
-    box: normalized,
-    frame: boxToFrame(normalized),
+    box: transformed,
+    frame: boxToFrame(transformed),
     paintable,
     children,
   };
@@ -739,11 +772,88 @@ function containerPaintable(element: ContainerElement) {
 function cloneElementWithBox<T extends SlideElement>(
   element: T,
   box: ElementBox,
+  inheritedRotation = 0,
 ): T {
-  return {
+  const next = {
     ...element,
     ...boxToPositionSize(normalizeBox(box)),
   } as T;
+  if (element.rotation != null || inheritedRotation !== 0) {
+    next.rotation = normalizeRotation((element.rotation ?? 0) + inheritedRotation);
+  }
+  return next;
+}
+
+function contextTransform(context: LayoutContext) {
+  return context.transform ?? IDENTITY_TRANSFORM;
+}
+
+function childTransformFor(
+  context: LayoutContext,
+  box: ElementBox,
+  rotation: number | null | undefined,
+) {
+  return rotateAroundBox(contextTransform(context), box, rotation ?? 0);
+}
+
+function rotateAroundBox(
+  transform: LayoutTransform,
+  box: ElementBox,
+  degrees: number,
+): LayoutTransform {
+  if (!degrees) return transform;
+  const radians = (degrees * Math.PI) / 180;
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const originX = box.x;
+  const originY = box.y;
+  const rotation: LayoutTransform = {
+    a: cos,
+    b: sin,
+    c: -sin,
+    d: cos,
+    e: originX - cos * originX + sin * originY,
+    f: originY - sin * originX - cos * originY,
+    rotation: degrees,
+  };
+  return multiplyTransforms(transform, rotation);
+}
+
+function multiplyTransforms(
+  left: LayoutTransform,
+  right: LayoutTransform,
+): LayoutTransform {
+  return {
+    a: left.a * right.a + left.c * right.b,
+    b: left.b * right.a + left.d * right.b,
+    c: left.a * right.c + left.c * right.d,
+    d: left.b * right.c + left.d * right.d,
+    e: left.a * right.e + left.c * right.f + left.e,
+    f: left.b * right.e + left.d * right.f + left.f,
+    rotation: normalizeRotation(left.rotation + right.rotation),
+  };
+}
+
+function transformBox(box: ElementBox, transform: LayoutTransform): ElementBox {
+  const point = transformPoint(transform, box.x, box.y);
+  return normalizeBox({
+    x: point.x,
+    y: point.y,
+    w: box.w,
+    h: box.h,
+  });
+}
+
+function transformPoint(transform: LayoutTransform, x: number, y: number) {
+  return {
+    x: transform.a * x + transform.c * y + transform.e,
+    y: transform.b * x + transform.d * y + transform.f,
+  };
+}
+
+function normalizeRotation(rotation: number) {
+  const normalized = ((((rotation + 180) % 360) + 360) % 360) - 180;
+  return Object.is(normalized, -0) ? 0 : normalized;
 }
 
 function boxToFrame(box: ElementBox): LayoutFrame {

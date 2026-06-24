@@ -574,7 +574,8 @@ export function ElementLayer({
         <Transformer
           ref={transformerRef}
           rotateEnabled
-          resizeEnabled={canResizeSelection}
+          resizeEnabled
+          enabledAnchors={canResizeSelection ? undefined : []}
           anchorSize={8}
           borderStroke={SELECTION_STROKE}
           anchorFill="#f4f6fa"
@@ -676,6 +677,7 @@ function LayoutRootElement({
       y={y}
       width={width}
       height={height}
+      rotation={element.rotation ?? 0}
       fill="rgba(255,255,255,0.01)"
       {...events}
     />
@@ -727,6 +729,7 @@ function LayoutRootElement({
           y={y}
           width={width}
           height={height}
+          rotation={element.rotation ?? 0}
           stroke={SELECTION_STROKE}
           strokeWidth={1.5}
           listening={false}
