@@ -1,12 +1,26 @@
 import pytest
 from pydantic import ValidationError
 
-from templates.v2.models.elements import Container, Image, Table, Text, TextList
+from templates.v2.models.elements import (
+    Chart,
+    Container,
+    Image,
+    Table,
+    Text,
+    TextList,
+)
 from templates.v2.models.layouts import RawSlideLayout
 
 
 def test_element_models_match_export_schema_changes():
     assert "decorative" not in Container.model_fields
+    assert not {
+        "data",
+        "color",
+        "axis_color",
+        "label_color",
+        "show_values",
+    }.intersection(Chart.model_fields)
 
     with pytest.raises(ValidationError, match="runs"):
         Text.model_validate(
@@ -119,7 +133,6 @@ def test_raw_layout_accepts_reference_converter_element_models():
     image, table, chart = layout.elements
     assert image.opacity == 0.42
     assert table.columns == ["Metric", "Value"]
-    assert chart.data is None
     assert chart.grid is True
     assert chart.series[0].values == [10.0, 12.0]
 

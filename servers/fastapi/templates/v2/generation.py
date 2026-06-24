@@ -76,6 +76,7 @@ Convert the provided raw slide elements to components.
 - Must provide `position` and `size` for elements inside `group` element.
 
 # Chart Rules:
+- Every chart must be represented by `Chart` element.
 - Identify charts from raw pptx json and replace elements forming chart to chart element.
 
 # Schema Rules:
@@ -438,14 +439,19 @@ def _generate_preview_candidate(
                 )
                 return candidate_layout
 
-            response_text = _text_from_content(getattr(response, "content", None))
-            assistant_message = AssistantMessage(
-                content=[response_text] if response_text else None,
-                tool_calls=[tool_call],
-            )
+            response_messages = list(getattr(response, "messages", []) or [])
+            if response_messages:
+                history_messages = response_messages
+            else:
+                response_text = _text_from_content(getattr(response, "content", None))
+                assistant_message = AssistantMessage(
+                    content=[response_text] if response_text else None,
+                    tool_calls=[tool_call],
+                )
+                history_messages = [*attempt_messages, assistant_message]
+
             attempt_messages = [
-                *attempt_messages,
-                assistant_message,
+                *history_messages,
                 ToolResponseMessage(
                     id=tool_call.id,
                     content=["The slide preview was rendered successfully."],

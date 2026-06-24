@@ -6,7 +6,6 @@ import {
   SLIDE_W,
   type Alignment,
   type BorderRadius,
-  type ChartDatum,
   type ChartSeries,
   type Deck,
   type DesignVariable,
@@ -1048,7 +1047,6 @@ function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord 
   const record = asRecord(value);
   if (!record) return raw;
 
-  const data = readArray(record, "data");
   const categories = readArray(record, "categories");
   const series = readArray(record, "series");
   const seriesColors = readArray(record, "seriesColors", "series_colors");
@@ -1063,17 +1061,10 @@ function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord 
     ...raw,
     chart_type: chartType ?? readValue(raw, "chart_type"),
     title: readString(record.title) ?? raw.title,
-    data: data.length > 0 ? data : raw.data,
     categories: categories.length > 0 ? categories : raw.categories,
     series: series.length > 0 ? series : raw.series,
     series_colors:
       seriesColors.length > 0 ? seriesColors : readValue(raw, "series_colors"),
-    color: readValue(record, "color") ?? raw.color,
-    axis_color: readValue(record, "axisColor", "axis_color") ?? raw.axis_color,
-    label_color: readValue(record, "labelColor", "label_color") ?? raw.label_color,
-    show_values:
-      readBoolean(record, "showValues", "show_values") ??
-      readBoolean(raw, "showValues", "show_values"),
     x_axis:
       readBoolean(record, "xAxis", "x_axis") ??
       readBoolean(raw, "xAxis", "x_axis"),
@@ -1287,16 +1278,17 @@ function adaptSvg(raw: UnknownRecord): SlideElement {
 }
 
 function adaptChart(raw: UnknownRecord): SlideElement {
-  const data = readArray(raw, "data").map(adaptChartDatum).slice(0, 8);
   const categories = adaptChartCategories(readArray(raw, "categories"));
   const series = readArray(raw, "series")
     .map(adaptChartSeries)
     .filter((item): item is ChartSeries => item != null);
-  const color = readColor(raw.color);
-  const fallbackData =
-    data.length > 0
-      ? data
-      : chartDataFromSeries(categories, series, color).slice(0, 8);
+  const seriesColors = readArray(raw, "seriesColors", "series_colors")
+    .map(readColor)
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 12);
+  const color = seriesColors[0] ?? null;
+  const data = chartDataFromSeries(categories, series, color).slice(0, 8);
+  const dataLabels = readBoolean(raw, "dataLabels", "data_labels");
 
   return {
     ...baseElement(raw),
@@ -1309,16 +1301,13 @@ function adaptChart(raw: UnknownRecord): SlideElement {
         "chart_type",
       ) ??
       "bar",
-    data: fallbackData.length > 0 ? fallbackData : [{ label: "Data", value: 0 }],
+    data: data.length > 0 ? data : [{ label: "Data", value: 0 }],
     title: truncateString(readString(raw.title) ?? "", 80) || null,
     color,
-    axisColor: readColor(readValue(raw, "axisColor", "axis_color")),
-    labelColor: readColor(readValue(raw, "labelColor", "label_color")),
-    showValues: readBoolean(raw, "showValues", "show_values"),
-    seriesColors: readArray(raw, "seriesColors", "series_colors")
-      .map(readColor)
-      .filter((item): item is string => Boolean(item))
-      .slice(0, 12),
+    axisColor: null,
+    labelColor: null,
+    showValues: dataLabels,
+    seriesColors,
     xAxis: readBoolean(raw, "xAxis", "x_axis"),
     yAxis: readBoolean(raw, "yAxis", "y_axis"),
     xAxisTitle:
@@ -1333,7 +1322,7 @@ function adaptChart(raw: UnknownRecord): SlideElement {
       ) || null,
     categories,
     series,
-    dataLabels: readBoolean(raw, "dataLabels", "data_labels"),
+    dataLabels,
     grid: readBoolean(raw, "grid"),
     source: truncateString(readString(raw.source) ?? "", 120) || null,
   };
@@ -1780,16 +1769,6 @@ function adaptTableCells(value: unknown[]): TableCell[] {
   return cells.length > 0 ? cells : [{ text: "" }];
 }
 
-function adaptChartDatum(value: unknown): ChartDatum {
-  const record = asRecord(value) ?? {};
-  const label = truncateString(readString(record.label) ?? "", 40) || "Data";
-  return stripNullish({
-    label,
-    value: clamp(readNumber(record, "value") ?? 0, -1_000_000, 1_000_000),
-    color: readColor(record.color),
-  }) as ChartDatum;
-}
-
 function adaptChartCategories(value: unknown[]): string[] {
   return value
     .map((item, index) =>
@@ -1973,12 +1952,7 @@ function serializeTemplateV2Element(
         ...base,
         type: "chart",
         chart_type: element.chartType,
-        data: element.data,
         title: element.title,
-        color: element.color,
-        axis_color: element.axisColor,
-        label_color: element.labelColor,
-        show_values: element.showValues,
         series_colors: element.seriesColors,
         x_axis: element.xAxis,
         y_axis: element.yAxis,
@@ -1986,7 +1960,7 @@ function serializeTemplateV2Element(
         y_axis_title: element.yAxisTitle,
         categories: element.categories,
         series: element.series,
-        data_labels: element.dataLabels,
+        data_labels: element.dataLabels ?? element.showValues,
         grid: element.grid,
         source: element.source,
       });
@@ -2233,22 +2207,8 @@ function templateV2ContentUpdater(
     return () =>
       stripNullish({
         title: element.title ?? null,
-        chart_type: element.chartType,
-        data: element.data,
-        color: element.color,
-        axis_color: element.axisColor,
-        label_color: element.labelColor,
-        show_values: element.showValues,
         categories: element.categories,
         series: element.series,
-        series_colors: element.seriesColors,
-        x_axis: element.xAxis,
-        y_axis: element.yAxis,
-        x_axis_title: element.xAxisTitle,
-        y_axis_title: element.yAxisTitle,
-        data_labels: element.dataLabels,
-        grid: element.grid,
-        source: element.source,
       });
   }
   return null;

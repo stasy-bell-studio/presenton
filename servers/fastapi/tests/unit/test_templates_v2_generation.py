@@ -328,6 +328,57 @@ def test_generate_preview_candidate_returns_last_preview_tool_json(monkeypatch, 
     )
 
 
+def test_generate_preview_candidate_preserves_provider_response_messages(monkeypatch):
+    preview_tool_call = AssistantToolCall(
+        id="preview-call-1",
+        name="previewSlide",
+        arguments=json.dumps(_generated_layout("first_candidate")),
+    )
+    preserved_assistant_message = AssistantMessage(
+        content=["provider-preserved-context"],
+        tool_calls=[preview_tool_call],
+    )
+    initial_messages = [
+        SystemMessage(content=GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT),
+        UserMessage(content="{}"),
+    ]
+    client = _FakeClient(
+        responses=[
+            _FakeResponse(
+                None,
+                messages=[*initial_messages, preserved_assistant_message],
+                tool_calls=[preview_tool_call],
+            ),
+            _FakeResponse(_generated_layout("final_candidate")),
+        ]
+    )
+
+    monkeypatch.setattr(
+        PreviewSlideTool,
+        "render",
+        lambda _self, _layout: ImageContentPart(
+            data=b"rendered-preview",
+            mime_type="image/png",
+        ),
+    )
+
+    result = _generate_preview_candidate(
+        client=client,
+        model="test-model",
+        messages=initial_messages,
+        label="slide layout",
+        preview_tool=PreviewSlideTool(),
+        validation_retries=1,
+    )
+
+    assert result == SlideLayout.model_validate(_generated_layout("final_candidate"))
+    follow_up_messages = client.calls[1]["messages"]
+    assert follow_up_messages[2] is preserved_assistant_message
+    assert follow_up_messages[3].id == "preview-call-1"
+    assert follow_up_messages[4].content[0].data == b"rendered-preview"
+    assert "Original slide image:" not in follow_up_messages[4].content
+
+
 def test_generate_slide_layout_allows_second_preview_then_returns_final_json(
     monkeypatch,
     caplog,
@@ -634,12 +685,6 @@ def test_direct_generation_prompt_uses_decorative_element_metadata():
     assert "`decorative=true`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     assert "`decorative=false`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     assert "Do not set `decorative` on `container`" in (
-        GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
-    )
-    assert "Text elements must include `runs`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
-    assert "Text-list elements must include `items`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
-    assert "Image elements must include `data`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
-    assert "Table elements must use `columns` as `list[str]`" in (
         GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     )
 

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import partial
@@ -185,6 +186,20 @@ def _coerce_generated_slide_layouts(generated_layouts: Any) -> SlideLayouts:
     return SlideLayouts.model_validate(generated_layouts)
 
 
+def _with_randomized_layout_ids(layouts: SlideLayouts) -> SlideLayouts:
+    return SlideLayouts(
+        layouts=[
+            layout.model_copy(
+                deep=True,
+                update={
+                    "id": f"{layout.id}_{random.randint(0, 9999):04d}",
+                },
+            )
+            for layout in layouts.layouts
+        ]
+    )
+
+
 @TEMPLATES_V2_ROUTER.get("", response_model=TemplateV2ListResponse)
 async def list_templates_v2(
     page: int = Query(default=1, ge=1),
@@ -299,6 +314,7 @@ async def create_template_v2(
         raw_layouts,
         request.slide_image_urls,
     )
+    generated_layouts = _with_randomized_layout_ids(generated_layouts)
     merged_components = await _merge_generated_components(generated_layouts)
     raw_layouts_json = pptx_json.model_dump(mode="json", exclude_none=True)
     template = TemplateV2(

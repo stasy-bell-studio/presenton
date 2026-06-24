@@ -129,7 +129,10 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
     ) as generate_mock, patch(
         "api.v2.templates.router.merge_similar_components",
         new=Mock(return_value=MERGED_COMPONENTS),
-    ) as merge_mock:
+    ) as merge_mock, patch(
+        "api.v2.templates.router.random.randint",
+        return_value=4801,
+    ) as randint_mock:
         template = asyncio.run(
             create_template_v2(
                 CreateTemplateV2Request(
@@ -143,14 +146,26 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
 
     convert_mock.assert_awaited_once_with(str(pptx_path))
     generate_mock.assert_called_once()
-    merge_mock.assert_called_once_with(GENERATED_LAYOUTS)
+    randint_mock.assert_called_once_with(1000, 9999)
+    merge_mock.assert_called_once()
+    merged_layouts_arg = merge_mock.call_args.args[0]
+    assert merged_layouts_arg.layouts[0].id == "slide_1_4801"
     assert template.name == "quarterly-review"
     assert template.raw_layouts == RAW_LAYOUTS
     assert template.components is None
     assert template.merged_components == MERGED_COMPONENTS.model_dump(
         mode="json", exclude_none=True
     )
-    assert template.layouts == TEMPLATE_LAYOUTS
+    assert GENERATED_LAYOUTS.layouts[0].id == "slide_1"
+    expected_layouts = {
+        "layouts": [
+            {
+                **TEMPLATE_LAYOUTS["layouts"][0],
+                "id": "slide_1_4801",
+            }
+        ]
+    }
+    assert template.layouts == expected_layouts
     assert template.assets == {
         "fonts": {"Inter": "Inter"},
         "slide_image_urls": ["/app_data/images/slide-1.png"],

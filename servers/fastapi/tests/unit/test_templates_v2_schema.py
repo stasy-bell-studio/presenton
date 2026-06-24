@@ -69,7 +69,8 @@ def test_extract_slide_schema_from_layout_extracts_editable_content():
                             "decorative": False,
                             "name": "chart",
                             "chart_type": "bar",
-                            "data": [],
+                            "categories": ["Q1", "Q2"],
+                            "series": [{"name": "Revenue", "values": [10, 12]}],
                         },
                     ],
                 },
@@ -102,17 +103,34 @@ def test_extract_slide_schema_from_layout_extracts_editable_content():
                         },
                     },
                     "chart": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "label": {"type": "string"},
-                                "value": {"type": "number"},
-                                "color": {"type": "string"},
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {
+                            "title": {"type": ["string", "null"]},
+                            "categories": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "maxItems": 24,
                             },
-                            "required": ["label", "value"],
-                            "additionalProperties": False,
+                            "series": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "additionalProperties": False,
+                                    "properties": {
+                                        "name": {"type": "string"},
+                                        "values": {
+                                            "type": "array",
+                                            "items": {"type": "number"},
+                                            "maxItems": 24,
+                                        },
+                                    },
+                                    "required": ["name", "values"],
+                                },
+                                "maxItems": 12,
+                            },
                         },
+                        "required": ["categories", "series"],
                     },
                 },
                 "required": ["bullets", "chart"],
@@ -247,6 +265,14 @@ def test_get_component_schema_extracts_generated_component_content():
                 "min_rows": 1,
                 "max_rows": 3,
             },
+            {
+                "type": "chart",
+                "decorative": False,
+                "name": "trend",
+                "chart_type": "line",
+                "categories": ["Q1", "Q2"],
+                "series": [{"name": "Revenue", "values": [10, 12]}],
+            },
         ],
     }
 
@@ -306,8 +332,41 @@ def test_get_component_schema_extracts_generated_component_content():
                 "x-element-type": "table",
                 "x-element-path": "elements.2",
             },
+            "trend": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "title": {"type": ["string", "null"]},
+                    "categories": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "maxItems": 24,
+                    },
+                    "series": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "name": {"type": "string"},
+                                "values": {
+                                    "type": "array",
+                                    "items": {"type": "number"},
+                                    "maxItems": 24,
+                                },
+                            },
+                            "required": ["name", "values"],
+                        },
+                        "maxItems": 12,
+                    },
+                },
+                "required": ["categories", "series"],
+                "title": "Trend",
+                "x-element-type": "chart",
+                "x-element-path": "elements.3",
+            },
         },
-        "required": ["headline", "icon", "metrics"],
+        "required": ["headline", "icon", "metrics", "trend"],
     }
 
 

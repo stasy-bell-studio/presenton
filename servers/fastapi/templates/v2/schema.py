@@ -211,17 +211,7 @@ def _content_schema_for_element(element: dict[str, Any]) -> dict[str, Any]:
         )
 
     if element_type == "chart":
-        return {
-            "type": "array",
-            "items": _object_schema(
-                {
-                    "label": {"type": "string"},
-                    "value": {"type": "number"},
-                    "color": {"type": "string"},
-                },
-                required=["label", "value"],
-            ),
-        }
+        return _chart_content_schema()
 
     raise ValueError(f"unsupported content element type: {element_type}")
 
@@ -946,27 +936,7 @@ def _component_content_field_schema(field: dict[str, Any]) -> dict[str, Any]:
             "required": ["columns", "rows"],
         }
     elif element_type == "chart":
-        schema = {
-            "type": "object",
-            "additionalProperties": False,
-            "properties": {
-                "title": {"type": ["string", "null"]},
-                "data": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "properties": {
-                            "label": {"type": "string"},
-                            "value": {"type": "number"},
-                            "color": {"type": ["string", "null"]},
-                        },
-                        "required": ["label", "value"],
-                    },
-                },
-            },
-            "required": ["data"],
-        }
+        schema = _chart_content_schema()
     else:
         schema = {}
 
@@ -988,6 +958,39 @@ def _without_none_values(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_none_values(item) for item in value]
     return value
+
+
+def _chart_content_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "title": {"type": ["string", "null"]},
+            "categories": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": 24,
+            },
+            "series": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "name": {"type": "string"},
+                        "values": {
+                            "type": "array",
+                            "items": {"type": "number"},
+                            "maxItems": 24,
+                        },
+                    },
+                    "required": ["name", "values"],
+                },
+                "maxItems": 12,
+            },
+        },
+        "required": ["categories", "series"],
+    }
 
 
 def _component_content_field_title(name: str) -> str:

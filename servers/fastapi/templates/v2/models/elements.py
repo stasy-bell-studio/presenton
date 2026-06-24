@@ -136,12 +136,6 @@ class Shadow(BaseModel):
     offset_y: Optional[float] = None
 
 
-class ChartDatum(BaseModel):
-    label: str
-    value: float
-    color: Optional[str] = None
-
-
 class ChartSeries(BaseModel):
     name: str
     values: list[float]
@@ -275,13 +269,6 @@ class Chart(BaseModel):
     chart_type: ChartType
     title: Optional[str] = None
 
-    # Legacy/editor chart model.
-    data: Optional[list[ChartDatum]] = None
-    color: Optional[str] = None
-    axis_color: Optional[str] = None
-    label_color: Optional[str] = None
-    show_values: Optional[bool] = None
-
     # PPTX chart model emitted by the template-v2 converter.
     series_colors: Optional[list[str]] = None
     x_axis: Optional[bool] = None
@@ -374,7 +361,6 @@ __all__ = [
     "Alignment",
     "BorderRadius",
     "Chart",
-    "ChartDatum",
     "ChartSeries",
     "ChartType",
     "Container",
