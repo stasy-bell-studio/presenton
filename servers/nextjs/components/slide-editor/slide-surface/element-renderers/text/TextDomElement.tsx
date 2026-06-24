@@ -71,7 +71,7 @@ export function TextDomElement({
                 scale,
               ),
               ...textBoxStyle,
-              overflow: "hidden",
+              overflow: element.font?.wrap === "none" ? "visible" : "hidden",
               whiteSpace: element.font?.wrap === "none" ? "pre" : "pre-wrap",
               wordBreak:
                 element.font?.wrap === "none" ? "normal" : "break-word",

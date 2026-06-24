@@ -15,7 +15,13 @@ import { templates as templateGroups, getTemplatesByTemplateName } from "@/app/p
 import { setupImageUrlConverter } from "@/utils/image-url-converter";
 import { TemplateV2LayoutPreview } from "../../custom-template/components/EachSlide/TemplateV2LayoutPreview";
 
-const GroupLayoutPreview = () => {
+type GroupLayoutPreviewProps = {
+  useKonvaTemplateV2Preview?: boolean;
+};
+
+const GroupLayoutPreview = ({
+  useKonvaTemplateV2Preview = false,
+}: GroupLayoutPreviewProps) => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -284,7 +290,10 @@ const GroupLayoutPreview = () => {
                 </div>
 
                 <div className="p-6 flex justify-center overflow-x-auto">
-                  <TemplateV2LayoutPreview layout={layout} />
+                  <TemplateV2LayoutPreview
+                    layout={layout}
+                    useKonvaRenderer={useKonvaTemplateV2Preview}
+                  />
                 </div>
               </Card>
             ))}

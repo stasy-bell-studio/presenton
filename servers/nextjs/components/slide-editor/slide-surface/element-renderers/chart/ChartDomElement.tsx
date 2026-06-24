@@ -81,6 +81,7 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
     const isArea = element.chartType === "area";
     const isPie = element.chartType === "pie";
     const isDonut = element.chartType === "donut";
+    const isCircular = isPie || isDonut;
     const showDataLabels = element.showValues ?? element.dataLabels ?? false;
     const chartType: SupportedChartJsType =
       element.chartType === "donut"
@@ -99,14 +100,15 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
       withHash(chartPointColor(element, index)),
     );
     const datasets = (
-      isPie || isDonut
+      isCircular
         ? [
             {
               label: pieDataset.name,
               data: pieDataset.values,
               backgroundColor: pieColors,
               borderColor: "#ffffff",
-              borderWidth: 1,
+              borderWidth: 0,
+              hoverOffset: 0,
             },
           ]
         : resolvedDatasets.map((dataset, index) => {
@@ -145,7 +147,7 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
         responsive: true,
         plugins: {
           legend: {
-            display: isDonut || isPie || resolvedDatasets.length > 1,
+            display: !isCircular && resolvedDatasets.length > 1,
             position: "right",
             labels: {
               boxWidth: 8,
@@ -167,7 +169,10 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
           },
           tooltip: { enabled: false },
         },
-        scales: isDonut || isPie
+        layout: {
+          padding: isCircular ? 0 : 4,
+        },
+        scales: isCircular
           ? undefined
           : {
               x: {
@@ -218,11 +223,11 @@ function ChartCanvas({ element, scale }: { element: ChartEl; scale: number }) {
     <div
       style={{
         ...elementBoxStyle(element, scale),
-        background: "rgba(255,255,255,0.92)",
-        border: `1px solid ${withHash(element.axisColor ?? "9AA7BD")}`,
-        borderRadius: 6,
         overflow: "hidden",
-        padding: 8 * (scale / PX_PER_IN),
+        padding:
+          element.chartType === "pie" || element.chartType === "donut"
+            ? 0
+            : 4 * (scale / PX_PER_IN),
       }}
     >
       <canvas

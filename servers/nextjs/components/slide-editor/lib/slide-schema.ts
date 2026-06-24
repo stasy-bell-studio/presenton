@@ -9,6 +9,119 @@ export const HexColorSchema = z
   .string()
   .regex(/^#?[0-9A-Fa-f]{6}$/, "Use 6-digit hex colors, with or without #.");
 
+type UnknownRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeAliases(
+  value: unknown,
+  aliases: Record<string, string>,
+): unknown {
+  if (!isRecord(value)) return value;
+  const next: UnknownRecord = { ...value };
+  Object.entries(aliases).forEach(([snakeKey, camelKey]) => {
+    if (next[camelKey] === undefined && next[snakeKey] !== undefined) {
+      next[camelKey] = next[snakeKey];
+    }
+    if (snakeKey !== camelKey) delete next[snakeKey];
+  });
+  return next;
+}
+
+function normalizeElementAliases(
+  value: unknown,
+  aliases: Record<string, string> = {},
+) {
+  return normalizeAliases(value, {
+    component_id: "componentId",
+    component_instance_id: "componentInstanceId",
+    component_description: "componentDescription",
+    component_slot: "componentSlot",
+    design_variables: "designVariables",
+    ...aliases,
+  });
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value
+        .map((item, index) =>
+          readString(item) ?? readString(isRecord(item) ? item.label : null) ??
+          `Item ${index + 1}`,
+        )
+        .filter(Boolean)
+    : [];
+}
+
+function normalizeChartSeriesArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item, index) => {
+      if (!isRecord(item)) return null;
+      const values = Array.isArray(item.values)
+        ? item.values
+            .map(readNumber)
+            .filter((entry): entry is number => entry != null)
+        : [];
+      if (values.length === 0) return null;
+      return {
+        name: readString(item.name) ?? `Series ${index + 1}`,
+        values,
+      };
+    })
+    .filter((item): item is { name: string; values: number[] } => Boolean(item));
+}
+
+function normalizeChartDatumArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (!isRecord(item)) return null;
+      const label = readString(item.label) ?? "Data";
+      const numberValue = readNumber(item.value);
+      if (numberValue == null) return null;
+      return {
+        label,
+        value: numberValue,
+        color: readString(item.color) ?? undefined,
+      };
+    })
+    .filter(
+      (
+        item,
+      ): item is { label: string; value: number; color: string | undefined } =>
+        Boolean(item),
+    );
+}
+
+function chartDataFromInput(categories: string[], series: { values: number[] }[]) {
+  const first = series[0];
+  if (!first) return [{ label: "Data", value: 0 }];
+  const labels =
+    categories.length > 0
+      ? categories
+      : first.values.map((_, index) => `Item ${index + 1}`);
+  return labels.slice(0, 8).map((label, index) => ({
+    label,
+    value: first.values[index] ?? 0,
+  }));
+}
+
 export const ThemeRoleSchema = z.enum([
   "background",
   "surface",
@@ -58,8 +171,18 @@ export const PaddingSchema = z
   })
   .strict();
 
-export const LayoutItemSchema = z
-  .object({
+export const LayoutItemSchema = z.preprocess(
+  (value) =>
+    normalizeAliases(value, {
+      min_width: "minWidth",
+      max_width: "maxWidth",
+      min_height: "minHeight",
+      max_height: "maxHeight",
+      column_span: "columnSpan",
+      row_span: "rowSpan",
+      align_self: "alignSelf",
+    }),
+  z.object({
     grow: z.number().min(0).max(12).nullish(),
     shrink: z.number().min(0).max(12).nullish(),
     basis: z.number().positive().max(SLIDE_W).nullish(),
@@ -71,7 +194,8 @@ export const LayoutItemSchema = z
     rowSpan: z.number().int().min(1).max(12).nullish(),
     alignSelf: LayoutAlignmentSchema.nullish(),
   })
-  .strict();
+    .strict(),
+);
 
 export const AlignmentSchema = z
   .object({
@@ -80,8 +204,23 @@ export const AlignmentSchema = z
   })
   .strict();
 
-export const FontSchema = z
-  .object({
+export const FontSchema = z.preprocess(
+  (value) => {
+    const next = normalizeAliases(value, {
+      line_height: "lineHeight",
+      letter_spacing: "letterSpacing",
+      font_weight: "fontWeight",
+    });
+    if (!isRecord(next)) return next;
+    const fontWeight = readNumber(next.fontWeight);
+    const normalized: UnknownRecord = { ...next };
+    delete normalized.fontWeight;
+    if (normalized.bold === undefined && fontWeight != null) {
+      normalized.bold = fontWeight >= 600;
+    }
+    return normalized;
+  },
+  z.object({
     family: z.string().min(1).max(80).nullish(),
     size: z.number().min(6).max(360).nullish(),
     color: HexColorSchema.nullish(),
@@ -93,7 +232,8 @@ export const FontSchema = z
     wrap: TextWrapSchema.nullish(),
     ellipsis: z.boolean().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
 export const FillSchema = z
   .object({
@@ -120,15 +260,21 @@ export const BorderRadiusSchema = z
   })
   .strict();
 
-export const ShadowSchema = z
-  .object({
+export const ShadowSchema = z.preprocess(
+  (value) =>
+    normalizeAliases(value, {
+      offset_x: "offsetX",
+      offset_y: "offsetY",
+    }),
+  z.object({
     color: HexColorSchema.nullish(),
     blur: z.number().min(0).max(100).nullish(),
     opacity: z.number().min(0).max(1).nullish(),
     offsetX: z.number().min(-2).max(2).nullish(),
     offsetY: z.number().min(-2).max(2).nullish(),
   })
-  .strict();
+    .strict(),
+);
 
 export const ChartDatumSchema = z
   .object({
@@ -152,12 +298,28 @@ export const TextRunSchema = z
   })
   .strict();
 
-export const TextListItemSchema = z
-  .object({
+export const TextListItemSchema = z.preprocess(
+  (value) => {
+    if (typeof value === "string") {
+      return { type: "text", text: value };
+    }
+    if (Array.isArray(value)) {
+      const text = value
+        .map((run) => readString(isRecord(run) ? run.text : null) ?? "")
+        .join("");
+      return { type: "text", text: text || "List item" };
+    }
+    if (isRecord(value) && value.type === undefined && value.text !== undefined) {
+      return { ...value, type: "text" };
+    }
+    return value;
+  },
+  z.object({
     type: z.literal("text"),
     text: z.string().min(1).max(180),
   })
-  .strict();
+    .strict(),
+);
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -188,6 +350,7 @@ export const DesignVariableSchema = z
 
 const elementBaseShape = {
   decorative: z.boolean().nullish(),
+  name: z.string().min(1).max(120).nullish(),
   position: PositionSchema.nullish(),
   size: SizeSchema.nullish(),
   rotation: z.number().min(-360).max(360).nullish(),
@@ -207,8 +370,13 @@ const requiredElementBaseShape = {
   size: SizeSchema,
 };
 
-export const TextElementSchema = z
-  .object({
+export const TextElementSchema = z.preprocess(
+  (value) =>
+    normalizeElementAliases(value, {
+      max_length: "maxLength",
+      min_length: "minLength",
+    }),
+  z.object({
     type: z.literal("text"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
@@ -219,10 +387,12 @@ export const TextElementSchema = z
     maxLength: z.number().nullish(),
     minLength: z.number().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
 type ElementBaseOutput = {
   decorative?: boolean | null | undefined;
+  name?: string | null | undefined;
   position?: z.infer<typeof PositionSchema> | null | undefined;
   size?: z.infer<typeof SizeSchema> | null | undefined;
   rotation?: number | null | undefined;
@@ -319,8 +489,13 @@ type GroupElementOutput = RequiredElementBaseOutput & {
   minChildren?: number | null | undefined;
 };
 
-export const ContainerElementSchema: z.ZodType<ContainerElementOutput> = z
-  .object({
+export const ContainerElementSchema: z.ZodType<ContainerElementOutput> =
+  z.preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        border_radius: "borderRadius",
+      }),
+    z.object({
     type: z.literal("container"),
     ...elementBaseShape,
     alignment: AlignmentSchema.nullish(),
@@ -332,10 +507,16 @@ export const ContainerElementSchema: z.ZodType<ContainerElementOutput> = z
       .lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema)
       .nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
-export const ImageElementSchema = z
-  .object({
+export const ImageElementSchema = z.preprocess(
+  (value) =>
+    normalizeElementAliases(value, {
+      border_radius: "borderRadius",
+      isIcon: "is_icon",
+    }),
+  z.object({
     type: z.literal("image"),
     ...elementBaseShape,
     data: z.string().nullish(),
@@ -345,10 +526,18 @@ export const ImageElementSchema = z
     color: z.string().nullish(),
     is_icon: z.boolean().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const TextListElementSchema = z
-  .object({
+export const TextListElementSchema = z.preprocess(
+  (value) =>
+    normalizeElementAliases(value, {
+      max_items: "maxItems",
+      min_items: "minItems",
+      max_item_length: "maxItemLength",
+      min_item_length: "minItemLength",
+    }),
+  z.object({
     type: z.literal("text-list"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
@@ -359,10 +548,34 @@ export const TextListElementSchema = z
     maxItemLength: z.number().nullish(),
     minItemLength: z.number().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const TableCellSchema = z
-  .object({
+export const TableCellSchema = z.preprocess(
+  (value) => {
+    if (typeof value === "string" || typeof value === "number") {
+      return { text: String(value) };
+    }
+    if (!isRecord(value)) return value;
+
+    const normalized = normalizeAliases(value, {
+      max_length: "maxLength",
+      min_length: "minLength",
+    });
+    if (!isRecord(normalized)) return normalized;
+
+    const textRecord = isRecord(normalized.text) ? normalized.text : null;
+    return {
+      ...normalized,
+      text: textRecord
+        ? readString(textRecord.text) ?? ""
+        : readString(normalized.text) ?? null,
+      font:
+        normalized.font ??
+        (textRecord && isRecord(textRecord.font) ? textRecord.font : undefined),
+    };
+  },
+  z.object({
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
     font: FontSchema.nullish(),
@@ -370,10 +583,18 @@ export const TableCellSchema = z
     maxLength: z.number().nullish(),
     minLength: z.number().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const TableElementSchema = z
-  .object({
+export const TableElementSchema = z.preprocess(
+  (value) =>
+    normalizeElementAliases(value, {
+      max_columns: "maxColumns",
+      min_columns: "minColumns",
+      max_rows: "maxRows",
+      min_rows: "minRows",
+    }),
+  z.object({
     type: z.literal("table"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
@@ -384,46 +605,119 @@ export const TableElementSchema = z
     maxRows: z.number().nullish(),
     minRows: z.number().nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const RectangleElementSchema = z
-  .object({
+export const RectangleElementSchema = z.preprocess(
+  (value) =>
+    normalizeElementAliases(value, {
+      border_radius: "borderRadius",
+    }),
+  z.object({
     type: z.literal("rectangle"),
     ...elementBaseShape,
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
     borderRadius: BorderRadiusSchema.nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const EllipseElementSchema = z
-  .object({
+export const EllipseElementSchema = z.preprocess(
+  (value) => normalizeElementAliases(value),
+  z.object({
     type: z.literal("ellipse"),
     ...elementBaseShape,
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const LineElementSchema = z
-  .object({
+export const LineElementSchema = z.preprocess(
+  (value) => normalizeElementAliases(value),
+  z.object({
     type: z.literal("line"),
     ...elementBaseShape,
     stroke: StrokeSchema,
   })
-  .strict();
+    .strict(),
+);
 
-export const SvgElementSchema = z
-  .object({
+export const SvgElementSchema = z.preprocess(
+  (value) => normalizeElementAliases(value),
+  z.object({
     type: z.literal("svg"),
     ...elementBaseShape,
     svg: z.string().min(1).max(20_000),
     name: z.string().max(120).nullish(),
   })
-  .strict();
+    .strict(),
+);
 
-export const ChartElementSchema = z
-  .object({
+export const ChartElementSchema = z.preprocess(
+  (value) => {
+    const normalized = normalizeElementAliases(value, {
+      chart_type: "chartType",
+      axis_color: "axisColor",
+      label_color: "labelColor",
+      show_values: "showValues",
+      series_colors: "seriesColors",
+      x_axis: "xAxis",
+      y_axis: "yAxis",
+      x_axis_title: "xAxisTitle",
+      y_axis_title: "yAxisTitle",
+      data_labels: "dataLabels",
+    });
+    if (!isRecord(normalized)) return normalized;
+
+    const categories = normalizeStringArray(normalized.categories);
+    const series = normalizeChartSeriesArray(normalized.series);
+    const data = normalizeChartDatumArray(normalized.data);
+    const dataCategories = data.map((datum) => datum.label).filter(Boolean);
+    const dataSeries =
+      data.length > 0
+        ? [
+            {
+              name: readString(normalized.title) ?? "Series 1",
+              values: data.map((datum) => datum.value),
+            },
+          ]
+        : [];
+    const dataColors = data
+      .map((datum) => datum.color)
+      .filter((color): color is string => Boolean(color));
+    const existingSeriesColors = Array.isArray(normalized.seriesColors)
+      ? normalized.seriesColors
+      : [];
+    const nextCategories =
+      categories.length > 0
+        ? categories
+        : dataCategories.length > 0
+          ? dataCategories
+          : [];
+    const nextSeries =
+      series.length > 0
+        ? series
+        : dataSeries.length > 0
+          ? dataSeries
+          : [];
+    const next: UnknownRecord = {
+      ...normalized,
+      ...(nextCategories.length > 0 ? { categories: nextCategories } : {}),
+      ...(nextSeries.length > 0 ? { series: nextSeries } : {}),
+      ...(existingSeriesColors.length > 0
+        ? {}
+        : dataColors.length > 0
+          ? { seriesColors: dataColors }
+          : {}),
+    };
+    if (!Array.isArray(next.data) || next.data.length === 0) {
+      next.data = chartDataFromInput(nextCategories, nextSeries);
+    }
+    return next;
+  },
+  z.object({
     type: z.literal("chart"),
     ...elementBaseShape,
     chartType: ChartTypeSchema,
@@ -444,10 +738,21 @@ export const ChartElementSchema = z
     grid: z.boolean().nullish(),
     source: z.string().max(120).nullish(),
   })
-  .strict();
+    .strict(),
+);
 
 export const FlexElementSchema: z.ZodType<FlexElementOutput> = z
-  .object({
+  .preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        align_items: "alignItems",
+        justify_content: "justifyContent",
+        column_gap: "columnGap",
+        row_gap: "rowGap",
+        max_children: "maxChildren",
+        min_children: "minChildren",
+      }),
+    z.object({
     type: z.literal("flex"),
     ...requiredElementBaseShape,
     direction: FlexDirectionSchema,
@@ -464,10 +769,21 @@ export const FlexElementSchema: z.ZodType<FlexElementOutput> = z
     maxChildren: z.number().nullish(),
     minChildren: z.number().nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
 export const GridElementSchema: z.ZodType<GridElementOutput> = z
-  .object({
+  .preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        align_items: "alignItems",
+        justify_items: "justifyItems",
+        column_gap: "columnGap",
+        row_gap: "rowGap",
+        max_children: "maxChildren",
+        min_children: "minChildren",
+      }),
+    z.object({
     type: z.literal("grid"),
     ...requiredElementBaseShape,
     columns: z.number().min(1),
@@ -484,10 +800,21 @@ export const GridElementSchema: z.ZodType<GridElementOutput> = z
     maxChildren: z.number().nullish(),
     minChildren: z.number().nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
 export const ListViewElementSchema: z.ZodType<ListViewElementOutput> = z
-  .object({
+  .preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        align_items: "alignItems",
+        justify_content: "justifyContent",
+        column_gap: "columnGap",
+        row_gap: "rowGap",
+        max_count: "maxCount",
+        min_count: "minCount",
+      }),
+    z.object({
     type: z.literal("list-view"),
     ...elementBaseShape,
     direction: FlexDirectionSchema.nullish(),
@@ -502,10 +829,21 @@ export const ListViewElementSchema: z.ZodType<ListViewElementOutput> = z
     maxCount: z.number().nullish(),
     minCount: z.number().nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
 export const GridViewElementSchema: z.ZodType<GridViewElementOutput> = z
-  .object({
+  .preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        align_items: "alignItems",
+        justify_items: "justifyItems",
+        column_gap: "columnGap",
+        row_gap: "rowGap",
+        max_count: "maxCount",
+        min_count: "minCount",
+      }),
+    z.object({
     type: z.literal("grid-view"),
     ...elementBaseShape,
     columns: z.number().min(1),
@@ -521,10 +859,17 @@ export const GridViewElementSchema: z.ZodType<GridViewElementOutput> = z
     maxCount: z.number().nullish(),
     minCount: z.number().nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
 export const GroupElementSchema: z.ZodType<GroupElementOutput> = z
-  .object({
+  .preprocess(
+    (value) =>
+      normalizeElementAliases(value, {
+        max_children: "maxChildren",
+        min_children: "minChildren",
+      }),
+    z.object({
     type: z.literal("group"),
     ...requiredElementBaseShape,
     children: z.array(
@@ -533,7 +878,8 @@ export const GroupElementSchema: z.ZodType<GroupElementOutput> = z
     maxChildren: z.number().nullish(),
     minChildren: z.number().nullish(),
   })
-  .strict();
+      .strict(),
+  );
 
 type SlideElementOutput =
   | z.infer<typeof TextElementSchema>

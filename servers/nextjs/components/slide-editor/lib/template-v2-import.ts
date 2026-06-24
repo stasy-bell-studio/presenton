@@ -22,6 +22,7 @@ import {
   type SlideElement,
   type Stroke,
   type TableCell,
+  type TextElement,
   type TextListItem,
   type TextRun,
 } from "./slide-schema";
@@ -1128,7 +1129,7 @@ function adaptElement(value: unknown): SlideElement | null {
 
 function adaptText(raw: UnknownRecord): SlideElement {
   const font = adaptFont(readRecord(raw, "font"));
-  return {
+  const element: TextElement = {
     ...baseElement(raw),
     type: "text",
     font: font && font.lineHeight == null ? { ...font, lineHeight: 1 } : font,
@@ -1139,6 +1140,7 @@ function adaptText(raw: UnknownRecord): SlideElement {
     maxLength: readNumber(raw, "maxLength", "max_length"),
     minLength: readNumber(raw, "minLength", "min_length"),
   };
+  return widenSingleLineTextElement(element);
 }
 
 function adaptContainer(raw: UnknownRecord): SlideElement {
@@ -1725,6 +1727,34 @@ function adaptTextRuns(value: unknown[], fallbackText?: string | null): TextRun[
   return [{ text: truncateString(fallbackText || "Text", 700) }];
 }
 
+function widenSingleLineTextElement(element: TextElement): TextElement {
+  if (!element.position || !element.size) return element;
+
+  const text = element.runs.map((run) => run.text).join("");
+  const displayText = text.replace(/\*\*|__/g, "").trim();
+  if (!displayText || displayText.includes("\n") || displayText.length > 48) {
+    return element;
+  }
+
+  const wrap = element.font?.wrap;
+  const oneLineBox = (element.size.height ?? 0) <= 0.55;
+  if (wrap !== "none" && !oneLineBox) return element;
+
+  const fontSize = element.font?.size ?? 18;
+  const averageGlyphWidth = element.font?.bold ? 0.6 : 0.54;
+  const estimatedWidth = (fontSize / 72) * averageGlyphWidth * displayText.length;
+  const requiredWidth = round(Math.min(SLIDE_W - element.position.x, estimatedWidth + 0.12));
+  if (requiredWidth <= element.size.width + 0.01) return element;
+
+  return {
+    ...element,
+    size: {
+      ...element.size,
+      width: clamp(requiredWidth, element.size.width, SLIDE_W),
+    },
+  };
+}
+
 function adaptTextListItems(value: unknown[]): TextListItem[] {
   const items = value
     .map((item) => {
@@ -1747,6 +1777,9 @@ function adaptTextListItems(value: unknown[]): TextListItem[] {
 function adaptTableCells(value: unknown[]): TableCell[] {
   const cells = value
     .map((item) => {
+      if (typeof item === "string" || typeof item === "number") {
+        return { text: truncateString(String(item), 80) } satisfies TableCell;
+      }
       const record = asRecord(item);
       if (!record) return null;
       const textValue = record.text;
