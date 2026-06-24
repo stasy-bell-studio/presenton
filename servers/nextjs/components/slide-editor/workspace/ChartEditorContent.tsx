@@ -35,6 +35,9 @@ const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
   { label: "Pie Chart", value: "pie" },
   { label: "Donut Chart", value: "donut" },
 ];
+const DATA_MODAL_CHART_PREVIEW_WIDTH = 274;
+const DATA_MODAL_CHART_PREVIEW_HEIGHT =
+  (DATA_MODAL_CHART_PREVIEW_WIDTH / SLIDE_W) * SLIDE_H;
 
 export function ChartEditorContent({
   chart,
@@ -551,13 +554,19 @@ function ChartDataModal({
               value={chart.chartType}
               onChange={(chartType) => onChange({ ...chart, chartType })}
             />
-            <div className="mt-7 overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]">
-              <div className="pointer-events-none h-[210px]">
+            <div className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]">
+              <div
+                className="pointer-events-none relative overflow-hidden"
+                style={{
+                  height: DATA_MODAL_CHART_PREVIEW_HEIGHT,
+                  width: DATA_MODAL_CHART_PREVIEW_WIDTH,
+                }}
+              >
                 <SlideSurface
-                  height={210}
+                  height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
                   interactive={false}
                   slide={previewSlide}
-                  width={330}
+                  width={DATA_MODAL_CHART_PREVIEW_WIDTH}
                 />
               </div>
             </div>
