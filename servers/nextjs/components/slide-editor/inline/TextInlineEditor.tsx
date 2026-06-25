@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TextSlideElement } from "../state";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
 import {
@@ -7,7 +7,6 @@ import {
   setTextContent,
   textContent,
 } from "../lib/element-model";
-import { fitFontToBox } from "../lib/textMeasure";
 import { inlineStyles } from "./inlineStyles";
 
 export function TextInlineEditor({
@@ -28,11 +27,6 @@ export function TextInlineEditor({
   const elementText = textContent(element);
   const [draft, setDraft] = useState(elementText);
   const elementTextRef = useRef(elementText);
-  const effectiveFontSize = useMemo(
-    () => fitFontToBox(element, box.h),
-    [box.h, element],
-  );
-
   useEffect(() => {
     if (elementText === elementTextRef.current) return;
     elementTextRef.current = elementText;
@@ -70,7 +64,7 @@ export function TextInlineEditor({
         height: box.h * scale,
         color: withHash(font.color),
         fontFamily: `${font.family}, Helvetica, sans-serif`,
-        fontSize: effectiveFontSize * PT_TO_PX * (scale / PX_PER_IN),
+        fontSize: font.size * PT_TO_PX * (scale / PX_PER_IN),
         fontWeight: font.bold ? 700 : 400,
         fontStyle: font.italic ? "italic" : "normal",
         textAlign: element.alignment?.horizontal ?? "left",

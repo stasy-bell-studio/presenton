@@ -3,18 +3,12 @@ import type { Font, TableElement as TableEl } from "../../lib/slide-schema";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../../editorUtils";
 import { elementFont, tableRowsAsStrings } from "../../lib/element-model";
 import { renderMarkdownTextRuns } from "../../lib/markdown-text";
-import { fitFontToBox } from "../../lib/textMeasure";
 import { rotationProps, shadowProps } from "./elementVisuals";
 import {
   geometry,
   type ElementCommonProps,
   type TableInteractionProps,
 } from "./types";
-
-const TABLE_MIN_FONT_SIZE_PT = 5.5;
-const TABLE_MAX_FONT_SIZE_PT = 14;
-const TABLE_CELL_PADDING_X_IN = 0.08;
-const TABLE_CELL_PADDING_Y_IN = 0.04;
 
 export function TableElement({
   element,
@@ -89,14 +83,8 @@ export function TableElement({
                 },
               ]);
               const renderedText = renderedRuns.map((run) => run.text).join("");
-              const effectiveFontSize = fitTableFontToCell({
-                font: cellFont,
-                text: renderedText,
-                widthIn: colW / scale,
-                heightIn: rowH / scale,
-              });
               const cellFontSize =
-                effectiveFontSize * PT_TO_PX * (scale / PX_PER_IN);
+                (cellFont.size ?? font.size) * PT_TO_PX * (scale / PX_PER_IN);
               const isBold = renderedRuns.some((run) => run.font?.bold);
               const isItalic = renderedRuns.some((run) => run.font?.italic);
               return (
@@ -172,55 +160,6 @@ function tableCellFont(
     wrap: cellFont?.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont?.ellipsis ?? tableFont.ellipsis,
   };
-}
-
-function fitTableFontToCell({
-  font,
-  heightIn,
-  text,
-  widthIn,
-}: {
-  font: Font;
-  heightIn: number;
-  text: string;
-  widthIn: number;
-}) {
-  const authoredSize = clampNumber(
-    font.size ?? TABLE_MAX_FONT_SIZE_PT,
-    TABLE_MIN_FONT_SIZE_PT,
-    TABLE_MAX_FONT_SIZE_PT,
-  );
-  const innerHeight = Math.max(0.05, heightIn - TABLE_CELL_PADDING_Y_IN * 2);
-  const innerWidth = Math.max(0.1, widthIn - TABLE_CELL_PADDING_X_IN * 2);
-  const rowHeightCap = Math.max(
-    TABLE_MIN_FONT_SIZE_PT,
-    Math.min(
-      TABLE_MAX_FONT_SIZE_PT,
-      (innerHeight * 72 * 0.78) / (font.lineHeight ?? 1.12),
-    ),
-  );
-
-  return Math.min(
-    rowHeightCap,
-    fitFontToBox(
-      {
-        text: text || " ",
-        fontFace: font.family,
-        fontSize: authoredSize,
-        bold: font.bold,
-        italic: font.italic,
-        lineHeight: font.lineHeight,
-        charSpacing: font.letterSpacing,
-        wrap: font.wrap,
-        w: innerWidth,
-      },
-      innerHeight,
-    ),
-  );
-}
-
-function clampNumber(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
 }
 
 function colorWithOpacity(color: string, opacity?: number | null) {

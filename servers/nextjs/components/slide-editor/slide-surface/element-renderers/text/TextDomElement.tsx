@@ -1,10 +1,9 @@
-import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
-import type { Font, TextElement, TextRun } from "../../../lib/slide-schema";
-import { elementBox, textContent } from "../../../lib/element-model";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
+import type { Font, TextRun } from "../../../lib/slide-schema";
+import { textContent } from "../../../lib/element-model";
 import { rootPath, type ElementPath } from "../../../lib/element-path";
 import type { ResolvedLayoutItem } from "../../../lib/layout-resolver";
 import { renderMarkdownTextRuns } from "../../../lib/markdown-text";
-import { fitFontToBox } from "../../../lib/textMeasure";
 import {
   DomElementLayer,
   elementBoxStyle,
@@ -28,26 +27,6 @@ export function TextDomElement({
     (editingTextIndex != null ? rootPath(editingTextIndex) : null);
   const renderSemanticRichTextForPptx = isPptxExportRender();
 
-  // Pre-compute the effective (post-shrink) fontSize for every text
-  // element on this slide. The DOM overlay is what the user actually sees
-  // in the interactive editor, so without shrinking here the preview
-  // overflows visibly while the export silently fits the text — diverging
-  // from PPTX export, PDF export, and presentation mode.
-  const effectiveFontSizes = useMemo(() => {
-    const sizes = new Map<string, number>();
-    items.forEach((item) => {
-      const element = item.element;
-      if (element.type !== "text") return;
-      sizes.set(
-        item.path,
-        item.mode === "flow"
-          ? element.font?.size ?? computeEffectiveFontSize(element)
-          : computeEffectiveFontSize(element),
-      );
-    });
-    return sizes;
-  }, [items]);
-
   return (
     <DomElementLayer>
       {items.map((item) => {
@@ -57,8 +36,6 @@ export function TextDomElement({
         }
 
         const valign = element.alignment?.vertical ?? "top";
-        const effective =
-          effectiveFontSizes.get(item.path) ?? element.font?.size;
         const renderedRuns = renderMarkdownTextRuns(element.runs);
         const renderedText = textContent({ ...element, runs: renderedRuns });
         return (
@@ -66,10 +43,7 @@ export function TextDomElement({
             key={item.path}
             style={{
               ...elementBoxStyle(element, scale),
-              ...fontStyle(
-                { font: { ...(element.font ?? {}), size: effective } },
-                scale,
-              ),
+              ...fontStyle({ font: element.font ?? {} }, scale),
               ...textBoxStyle,
               overflow: element.font?.wrap === "none" ? "visible" : "hidden",
               whiteSpace: element.font?.wrap === "none" ? "pre" : "pre-wrap",
@@ -91,8 +65,7 @@ export function TextDomElement({
                 {renderedRuns.length > 1 ||
                 renderedRuns.some((run) => run.font) ? (
                   <RichTextRuns
-                    baseFont={{ ...(element.font ?? {}), size: effective }}
-                    fontScale={fontScale(element.font?.size, effective)}
+                    baseFont={element.font ?? {}}
                     preferBaseColor={shouldPreferBaseColor(renderedRuns)}
                     runs={renderedRuns}
                     scale={scale}
@@ -141,13 +114,11 @@ function semanticRunContent(run: TextRun): ReactNode {
 
 function RichTextRuns({
   baseFont,
-  fontScale,
   preferBaseColor,
   runs,
   scale,
 }: {
   baseFont: Font;
-  fontScale: number;
   preferBaseColor: boolean;
   runs: TextRun[];
   scale: number;
@@ -165,10 +136,6 @@ function RichTextRuns({
                 ...(preferBaseColor && baseFont.color
                   ? { color: baseFont.color }
                   : {}),
-                size:
-                  run.font?.size != null
-                    ? run.font.size * fontScale
-                    : baseFont.size,
               },
             },
             scale,
@@ -188,18 +155,6 @@ function shouldPreferBaseColor(runs: TextRun[]) {
       .filter((color): color is string => Boolean(color)),
   );
   return colors.size <= 1;
-}
-
-function fontScale(
-  authoredSize: number | null | undefined,
-  fittedSize: number | null | undefined,
-) {
-  if (authoredSize == null || authoredSize <= 0 || fittedSize == null) return 1;
-  return fittedSize / authoredSize;
-}
-
-function computeEffectiveFontSize(element: TextElement): number {
-  return fitFontToBox(element, elementBox(element).h);
 }
 
 const textBoxStyle: CSSProperties = {

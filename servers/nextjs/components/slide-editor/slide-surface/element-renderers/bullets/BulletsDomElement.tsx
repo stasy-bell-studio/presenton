@@ -1,10 +1,9 @@
-import { Fragment, useMemo, type CSSProperties, type ReactNode } from "react";
+import { Fragment, type CSSProperties, type ReactNode } from "react";
 import { textListStrings } from "../../../lib/element-model";
 import { rootPath, type ElementPath } from "../../../lib/element-path";
 import type { ResolvedLayoutItem } from "../../../lib/layout-resolver";
 import { renderMarkdownTextRuns } from "../../../lib/markdown-text";
 import type { TextRun } from "../../../lib/slide-schema";
-import { fitBulletsFontToBox } from "../../../lib/textMeasure";
 import {
   DomElementLayer,
   elementBoxStyle,
@@ -27,20 +26,6 @@ export function BulletsDomElement({
     editingBulletsPath ??
     (editingBulletsIndex != null ? rootPath(editingBulletsIndex) : null);
 
-  // Pre-compute the effective fontSize for every bullets element on this
-  // slide. Same rationale as TextDomElement: the DOM overlay is what the
-  // user sees in the editor, so without shrinking here the preview
-  // overflows while presentation/export views auto-fit.
-  const effectiveFontSizes = useMemo(() => {
-    const sizes = new Map<string, number>();
-    items.forEach((item) => {
-      const element = item.element;
-      if (element.type !== "text-list") return;
-      sizes.set(item.path, fitBulletsFontToBox(element));
-    });
-    return sizes;
-  }, [items]);
-
   return (
     <DomElementLayer>
       {items.map((item) => {
@@ -48,8 +33,6 @@ export function BulletsDomElement({
         if (element.type !== "text-list" || item.sourcePath === editingPath) {
           return null;
         }
-        const effective =
-          effectiveFontSizes.get(item.path) ?? element.font?.size;
         const items = textListStrings(element);
 
         return (
@@ -61,7 +44,6 @@ export function BulletsDomElement({
                 {
                   font: {
                     ...(element.font ?? {}),
-                    size: effective,
                     lineHeight: element.font?.lineHeight ?? 1.3,
                   },
                 },

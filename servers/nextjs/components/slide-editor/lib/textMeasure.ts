@@ -17,6 +17,85 @@ import { renderMarkdownTextContent } from "./markdown-text";
 const PX_PER_INCH = 96;
 const PT_TO_PX = PX_PER_INCH / 72;
 const DEFAULT_LINE_HEIGHT = 1.15;
+const TEXT_HEIGHT_CACHE_LIMIT = 1500;
+const TEXT_LINES_CACHE_LIMIT = 500;
+
+const textHeightCache = new Map<string, number>();
+const textLinesCache = new Map<string, string[]>();
+let fontCacheInvalidationRegistered = false;
+
+function clearTextMeasureCaches() {
+  textHeightCache.clear();
+  textLinesCache.clear();
+}
+
+function ensureFontCacheInvalidation() {
+  if (fontCacheInvalidationRegistered || typeof document === "undefined") {
+    return;
+  }
+
+  const fonts = document.fonts;
+  if (!fonts) return;
+
+  fontCacheInvalidationRegistered = true;
+  fonts.addEventListener?.("loadingdone", clearTextMeasureCaches);
+  fonts.addEventListener?.("loadingerror", clearTextMeasureCaches);
+  void fonts.ready.then(clearTextMeasureCaches).catch(() => undefined);
+}
+
+function getCachedValue<T>(cache: Map<string, T>, key: string): T | undefined {
+  if (!cache.has(key)) return undefined;
+  const value = cache.get(key) as T;
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
+}
+
+function setCachedValue<T>(
+  cache: Map<string, T>,
+  key: string,
+  value: T,
+  limit: number,
+) {
+  if (cache.has(key)) cache.delete(key);
+  cache.set(key, value);
+
+  while (cache.size > limit) {
+    const oldestKey = cache.keys().next().value as string | undefined;
+    if (oldestKey === undefined) return;
+    cache.delete(oldestKey);
+  }
+}
+
+function roundCacheNumber(value: number) {
+  return Number.isFinite(value) ? Math.round(value * 1000) / 1000 : 0;
+}
+
+function textLayoutCacheKey(
+  kind: "height" | "lines",
+  spec: TextLayoutSpec,
+  {
+    font,
+    lineHeightPx,
+    letterSpacingPx,
+    widthPx,
+  }: {
+    font: string;
+    lineHeightPx: number;
+    letterSpacingPx: number;
+    widthPx: number;
+  },
+) {
+  return JSON.stringify([
+    kind,
+    spec.text,
+    font,
+    roundCacheNumber(lineHeightPx),
+    roundCacheNumber(letterSpacingPx),
+    roundCacheNumber(widthPx),
+    spec.wrap ?? "word",
+  ]);
+}
 
 // Konva's text fontFamily falls back through "Arial, Helvetica, sans-serif";
 // the first family is what actually drives wrapping, so that's what we
@@ -96,17 +175,35 @@ function normalizeTextSpec(spec: TextLayoutSpec | TextElement): TextLayoutSpec {
  */
 export function measureTextHeightInches(spec: TextLayoutSpec): number | null {
   if (typeof window === "undefined") return null;
+  ensureFontCacheInvalidation();
   const fontSizePx = spec.fontSize * PT_TO_PX;
   const lhMul = spec.lineHeight ?? DEFAULT_LINE_HEIGHT;
   const lineHeightPx = fontSizePx * lhMul;
   const widthPx = spec.w * PX_PER_INCH;
   const letterSpacingPx = ((spec.charSpacing ?? 0) / 100) * PT_TO_PX;
+  const font = fontShorthand(fontSizePx, spec);
+  const cacheKey = textLayoutCacheKey("height", spec, {
+    font,
+    lineHeightPx,
+    letterSpacingPx,
+    widthPx,
+  });
+  const cached = getCachedValue(textHeightCache, cacheKey);
+  if (cached !== undefined) return cached;
+
   try {
-    const prepared = prepare(spec.text, fontShorthand(fontSizePx, spec), {
+    const prepared = prepare(spec.text, font, {
       letterSpacing: letterSpacingPx || undefined,
     });
     const { height } = layout(prepared, widthPx, lineHeightPx);
-    return height / PX_PER_INCH;
+    const measured = height / PX_PER_INCH;
+    setCachedValue(
+      textHeightCache,
+      cacheKey,
+      measured,
+      TEXT_HEIGHT_CACHE_LIMIT,
+    );
+    return measured;
   } catch {
     return null;
   }
@@ -241,22 +338,35 @@ export function wrapTextElementLines(el: TextElement): string[] {
   const spec = textLayoutSpec(el);
   if (spec.wrap === "none") return [spec.text];
   if (typeof window === "undefined") return [spec.text];
+  ensureFontCacheInvalidation();
   const fontSizePx = spec.fontSize * PT_TO_PX;
   const lhMul = spec.lineHeight ?? DEFAULT_LINE_HEIGHT;
   const lineHeightPx = fontSizePx * lhMul;
   const widthPx = spec.w * PX_PER_INCH;
   const letterSpacingPx = ((spec.charSpacing ?? 0) / 100) * PT_TO_PX;
+  const font = fontShorthand(fontSizePx, spec);
+  const cacheKey = textLayoutCacheKey("lines", spec, {
+    font,
+    lineHeightPx,
+    letterSpacingPx,
+    widthPx,
+  });
+  const cached = getCachedValue(textLinesCache, cacheKey);
+  if (cached) return [...cached];
+
   try {
     const prepared = prepareWithSegments(
       spec.text,
-      fontShorthand(fontSizePx, spec),
+      font,
       {
         letterSpacing: letterSpacingPx || undefined,
       },
     );
     const { lines } = layoutWithLines(prepared, widthPx, lineHeightPx);
     if (!lines.length) return [spec.text];
-    return lines.map((line) => line.text);
+    const wrapped = lines.map((line) => line.text);
+    setCachedValue(textLinesCache, cacheKey, wrapped, TEXT_LINES_CACHE_LIMIT);
+    return [...wrapped];
   } catch {
     return [spec.text];
   }

@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import { Group, Rect, Text } from "react-konva";
 import type { BulletsElement as BulletsEl } from "../../lib/slide-schema";
 import { elementFont, textListStrings } from "../../lib/element-model";
@@ -6,7 +5,6 @@ import {
   renderMarkdownTextContent,
   renderMarkdownTextRuns,
 } from "../../lib/markdown-text";
-import { fitBulletsFontToBox } from "../../lib/textMeasure";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../../editorUtils";
 import { rotationProps, shadowProps } from "./elementVisuals";
 import { geometry, type ElementCommonProps } from "./types";
@@ -29,15 +27,8 @@ export function BulletsElement({
     scale,
     selected,
   );
-  // Same shrink-to-fit the DOM overlay uses, so the Konva render path
-  // (PDF export, presentation, thumbnails) matches the editor preview
-  // for bullets that don't fit at their authored size.
-  const effectiveFontSizePt = useMemo(
-    () => fitBulletsFontToBox(element),
-    [element],
-  );
   const font = elementFont(element);
-  const bulletFontSize = effectiveFontSizePt * PT_TO_PX * (scale / PX_PER_IN);
+  const bulletFontSize = font.size * PT_TO_PX * (scale / PX_PER_IN);
   const lineHeight = font.lineHeight ?? 1.3;
   const itemGap = 0.05 * scale;
   const linePx = bulletFontSize * lineHeight;
