@@ -15,14 +15,7 @@ import { useDispatch } from "react-redux";
 import { useHotkey } from "@tanstack/react-hotkeys";
 import { Provider, useAtomValue, useSetAtom } from "jotai";
 import { useHydrateAtoms } from "jotai/utils";
-import { Loader2, Plus } from "lucide-react";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Loader2 } from "lucide-react";
 import { notify } from "@/components/ui/sonner";
 import {
   adaptTemplateV2LayoutToSlide,
@@ -72,8 +65,6 @@ import { ImagesApi } from "../services/api/images";
 
 export const TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY =
   "__template_v2_konva_slide__";
-export const TEMPLATE_V2_COMPONENT_DRAWER_EVENT =
-  "presenton:template-v2-component-drawer";
 export const TEMPLATE_V2_INSERT_ELEMENTS_EVENT =
   "presenton:template-v2-insert-elements";
 export const TEMPLATE_V2_SURFACE_SELECTED_EVENT =
@@ -140,7 +131,6 @@ type TemplateV2KonvaSlideProps = {
   layout: TemplateV2Layout;
   slide: any;
   isEditMode: boolean;
-  components?: unknown;
   renderIndex?: number;
 };
 
@@ -148,7 +138,6 @@ export function TemplateV2KonvaSlide({
   layout,
   slide,
   isEditMode,
-  components,
   renderIndex,
 }: TemplateV2KonvaSlideProps) {
   const initialSlide = useMemo(
@@ -174,7 +163,6 @@ export function TemplateV2KonvaSlide({
         layout={layout}
         presentationSlide={slide}
         isEditMode={isEditMode}
-        components={components}
         renderIndex={renderIndex}
       />
     </Provider>
@@ -186,14 +174,12 @@ function TemplateV2KonvaSlideBody({
   isEditMode,
   layout,
   presentationSlide,
-  components,
   renderIndex,
 }: {
   initialSlide: KonvaSlideData;
   isEditMode: boolean;
   layout: TemplateV2Layout;
   presentationSlide: any;
-  components?: unknown;
   renderIndex?: number;
 }) {
   const dispatch = useDispatch();
@@ -211,7 +197,6 @@ function TemplateV2KonvaSlideBody({
   const lastTextPointerRef = useRef<{ path: ElementPath; ts: number } | null>(
     null,
   );
-  const [componentDrawerOpen, setComponentDrawerOpen] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const initialDeck = useMemo(
     () =>
@@ -239,10 +224,6 @@ function TemplateV2KonvaSlideBody({
   const setEditingChartIndex = useSetAtom(editingChartIndexAtom);
   const setEditingChartPath = useSetAtom(editingChartPathAtom);
   const activeSlide = deck.slides[0];
-  const componentItems = useMemo(
-    () => extractTemplateV2ComponentItems(components),
-    [components],
-  );
   const lastSyncedSlideRef = useRef(JSON.stringify(activeSlide));
   const isSurfaceActive = useCallback(
     () =>
@@ -308,44 +289,6 @@ function TemplateV2KonvaSlideBody({
       }),
     );
   }, [activeSlide, dispatch, isEditMode, layout, presentationSlide]);
-
-  useEffect(() => {
-    if (!isEditMode) return;
-
-    const handleOpenComponentDrawer = (event: Event) => {
-      const detail = (event as CustomEvent<TemplateV2ComponentDrawerDetail>)
-        .detail;
-      if (!detail) return;
-
-      const slideId = presentationSlide.id ? String(presentationSlide.id) : null;
-      const eventSlideId =
-        detail.slideId !== undefined && detail.slideId !== null
-          ? String(detail.slideId)
-          : null;
-      if (eventSlideId && slideId && eventSlideId !== slideId) return;
-      if (
-        !eventSlideId &&
-        typeof detail.slideIndex === "number" &&
-        (surfaceSlideIndex == null || detail.slideIndex !== surfaceSlideIndex)
-      ) {
-        return;
-      }
-
-      activateSurface();
-      setComponentDrawerOpen(true);
-    };
-
-    window.addEventListener(
-      TEMPLATE_V2_COMPONENT_DRAWER_EVENT,
-      handleOpenComponentDrawer,
-    );
-    return () => {
-      window.removeEventListener(
-        TEMPLATE_V2_COMPONENT_DRAWER_EVENT,
-        handleOpenComponentDrawer,
-      );
-    };
-  }, [activateSurface, isEditMode, presentationSlide.id, surfaceSlideIndex]);
 
   useEffect(() => {
     if (!isEditMode) return;
@@ -466,18 +409,6 @@ function TemplateV2KonvaSlideBody({
     surfaceSlideIndex,
     updateElementAtPath,
   ]);
-
-  const handleInsertComponent = (item: TemplateV2ComponentItem) => {
-    if (item.elements.length === 0) {
-      notify.warning("Component unavailable", "This component has no elements.");
-      return;
-    }
-
-    activateSurface();
-    insertElements(item.elements);
-    setComponentDrawerOpen(false);
-    notify.success("Component added", `${item.name} was added to this slide.`);
-  };
 
   const openImageUpload = useCallback(
     (index: number, path?: ElementPath) => {
@@ -958,14 +889,6 @@ function TemplateV2KonvaSlideBody({
           </div>
         </div>
       ) : null}
-      {isEditMode ? (
-        <TemplateV2ComponentsDrawer
-          components={componentItems}
-          open={componentDrawerOpen}
-          onInsert={handleInsertComponent}
-          onOpenChange={setComponentDrawerOpen}
-        />
-      ) : null}
     </div>
   );
 }
@@ -1137,221 +1060,4 @@ function mergeDesignVariablesIntoElement(
   }
 
   return next;
-}
-
-type TemplateV2ComponentDrawerDetail = {
-  slideId?: string | null;
-  slideIndex?: number | null;
-};
-
-type TemplateV2ComponentItem = {
-  key: string;
-  name: string;
-  description: string;
-  variantCount: number;
-  previewSlide: KonvaSlideData | null;
-  elements: SlideElement[];
-};
-
-function TemplateV2ComponentsDrawer({
-  components,
-  open,
-  onInsert,
-  onOpenChange,
-}: {
-  components: TemplateV2ComponentItem[];
-  open: boolean;
-  onInsert: (component: TemplateV2ComponentItem) => void;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const componentCountLabel = `${components.length} component${
-    components.length === 1 ? "" : "s"
-  }`;
-  const variantCount = components.reduce(
-    (total, component) => total + component.variantCount,
-    0,
-  );
-  const variantCountLabel = `${variantCount} variant${
-    variantCount === 1 ? "" : "s"
-  }`;
-
-  return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        side="right"
-        className="z-[1200] flex w-[360px] max-w-[92vw] flex-col gap-0 overflow-hidden bg-white p-0 font-syne sm:max-w-[360px]"
-      >
-        <SheetHeader className="border-b border-[#ECECF1] px-5 py-4 text-left">
-          <SheetTitle className="text-base font-medium text-[#191919]">
-            Components
-          </SheetTitle>
-          <SheetDescription className="text-xs text-[#777780]">
-            {componentCountLabel} · {variantCountLabel}
-          </SheetDescription>
-        </SheetHeader>
-
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          {components.length === 0 ? (
-            <div className="flex min-h-[180px] items-center justify-center rounded-lg border border-dashed border-[#DADAE2] px-4 text-center text-sm text-[#777780]">
-              No reusable components found.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {components.map((component) => (
-                <div
-                  key={component.key}
-                  className="overflow-hidden rounded-lg border border-[#E6E6ED] bg-white shadow-[0_1px_2px_rgba(16,24,40,0.04)]"
-                >
-                  <div className="relative aspect-video overflow-hidden bg-[#F7F7FA]">
-                    {component.previewSlide ? (
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                        <SlideSurface
-                          height={140}
-                          interactive={false}
-                          slide={component.previewSlide}
-                          width={249}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-xs text-[#777780]">
-                        Preview unavailable
-                      </div>
-                    )}
-                  </div>
-                  <div className="space-y-3 p-3">
-                    <div className="space-y-1">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <p className="min-w-0 flex-1 truncate text-sm font-medium text-[#191919]">
-                          {component.name}
-                        </p>
-                        <span className="shrink-0 rounded-md border border-[#E4E4EC] bg-[#F8F8FA] px-2 py-0.5 text-[11px] font-medium leading-5 text-[#66666F]">
-                          {formatVariantCount(component.variantCount)}
-                        </span>
-                      </div>
-                      {component.description ? (
-                        <p className="max-h-10 overflow-hidden text-xs leading-5 text-[#66666F]">
-                          {component.description}
-                        </p>
-                      ) : null}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onInsert(component)}
-                      className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-[#191919] text-sm font-medium text-white transition hover:bg-[#2A2A2A]"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Insert
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </SheetContent>
-    </Sheet>
-  );
-}
-
-function extractTemplateV2ComponentItems(
-  payload: unknown,
-): TemplateV2ComponentItem[] {
-  const rawComponents = extractRawTemplateV2Components(payload);
-  return rawComponents
-    .map((component, index) => buildTemplateV2ComponentItem(component, index))
-    .filter((item): item is TemplateV2ComponentItem => Boolean(item));
-}
-
-function extractRawTemplateV2Components(payload: unknown): Record<string, unknown>[] {
-  if (Array.isArray(payload)) {
-    return payload.filter(isRecord);
-  }
-
-  const record = isRecord(payload) ? payload : null;
-  if (Array.isArray(record?.components)) {
-    return record.components.filter(isRecord);
-  }
-
-  if (Array.isArray(record?.layouts)) {
-    return record.layouts
-      .filter(isRecord)
-      .flatMap((layout) =>
-        Array.isArray(layout.components) ? layout.components.filter(isRecord) : [],
-      );
-  }
-
-  return [];
-}
-
-function buildTemplateV2ComponentItem(
-  component: Record<string, unknown>,
-  index: number,
-): TemplateV2ComponentItem | null {
-  const rawElements = Array.isArray(component.elements) ? component.elements : [];
-  if (rawElements.length === 0) return null;
-
-  const name = readString(component.id) || `component_${index + 1}`;
-  const description = readString(component.description) || "";
-  const variantCount = countTemplateV2ComponentVariants(component);
-
-  try {
-    const previewSlide = adaptTemplateV2LayoutToSlide(
-      {
-        id: name,
-        description,
-        components: [component],
-      },
-      index,
-    );
-    return {
-      key: `${name}-${index}`,
-      name,
-      description,
-      variantCount,
-      previewSlide,
-      elements: previewSlide.elements,
-    };
-  } catch (error) {
-    console.error("Could not adapt template v2 component:", error);
-    return {
-      key: `${name}-${index}`,
-      name,
-      description,
-      variantCount,
-      previewSlide: null,
-      elements: [],
-    };
-  }
-}
-
-function countTemplateV2ComponentVariants(component: Record<string, unknown>) {
-  const variables = Array.isArray(component.design_variables)
-    ? component.design_variables
-    : Array.isArray(component.designVariables)
-      ? component.designVariables
-      : [];
-
-  return Math.max(
-    1,
-    variables
-      .filter(isRecord)
-      .map((variable) =>
-        Array.isArray(variable.options) && variable.options.length > 0
-          ? variable.options.length
-          : 1,
-      )
-      .reduce((total, count) => total * count, 1),
-  );
-}
-
-function formatVariantCount(count: number) {
-  return `${count} variant${count === 1 ? "" : "s"}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
