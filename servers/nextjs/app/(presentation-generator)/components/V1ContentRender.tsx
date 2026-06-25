@@ -8,9 +8,8 @@ import { validate as uuidValidate } from 'uuid';
 import { getLayoutByLayoutId } from "@/app/presentation-templates";
 import { useCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
 import { updateSlideContent } from "@/store/slices/presentationGeneration";
-import { useDispatch, useSelector } from "react-redux";
+import { useDispatch } from "react-redux";
 import { Loader2 } from "lucide-react";
-import { RootState } from "@/store/store";
 import {
     type TemplateV2Layout,
 } from "@/components/slide-editor/lib/template-v2-import";
@@ -35,9 +34,6 @@ export const V1ContentRender = ({
 }) => {
     const dispatch = useDispatch();
     const containerRef = useRef<HTMLDivElement | null>(null);
-    const presentationComponents = useSelector(
-        (state: RootState) => state.presentationGeneration.presentationData?.components
-    );
 
     const layoutGroup = typeof slide.layout_group === "string" ? slide.layout_group : "";
     const slideLayout = typeof slide.layout === "string" ? slide.layout : "";
@@ -97,7 +93,6 @@ export const V1ContentRender = ({
                     layout={BLANK_TEMPLATE_V2_LAYOUT}
                     slide={slide}
                     isEditMode={isEditMode}
-                    components={presentationComponents}
                     renderIndex={renderIndex}
                 />
             </SlideErrorBoundary>
@@ -124,7 +119,6 @@ export const V1ContentRender = ({
                     layout={templateV2Layout}
                     slide={slide}
                     isEditMode={isEditMode}
-                    components={presentationComponents}
                     renderIndex={renderIndex}
                 />
             </SlideErrorBoundary>

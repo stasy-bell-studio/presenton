@@ -27,7 +27,6 @@ import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { addToHistory } from "@/store/slices/undoRedoSlice";
 import NewSlide from "./NewSlide";
 import SlideScale from "../../components/PresentationRender";
-import { TEMPLATE_V2_COMPONENT_DRAWER_EVENT } from "../../components/TemplateV2KonvaSlide";
 
 interface SlideContentProps {
   slide: any;
@@ -65,18 +64,6 @@ const SlideContent = ({
     : slideLayoutGroup || slideLayoutTemplateId;
   const isTemplateV2Slide = slideTemplateId.startsWith("template-v2");
   const canEditSlideWithPrompt = !isTemplateV2Slide;
-
-  const openTemplateV2ComponentDrawer = () => {
-    if (typeof window === "undefined") return;
-    window.dispatchEvent(
-      new CustomEvent(TEMPLATE_V2_COMPONENT_DRAWER_EVENT, {
-        detail: {
-          slideId: slide.id,
-          slideIndex: slide.index,
-        },
-      })
-    );
-  };
 
   const handleSubmit = async () => {
     if (!editPrompt.trim()) {
@@ -264,18 +251,6 @@ const SlideContent = ({
                 boxShadow: "0 2px 13.2px 0 rgba(0, 0, 0, 0.10)",
               }}
             >
-              {isTemplateV2Slide && (
-                <button
-                  type="button"
-                  onClick={openTemplateV2ComponentDrawer}
-                  className="flex px-3.5 py-2.5 items-center justify-center rounded-full bg-[#F7F6F9] font-syne"
-                >
-                  <ToolTip content="Add component">
-                    <PlusIcon className="h-4 w-4" />
-                  </ToolTip>
-                </button>
-              )}
-
               {canEditSlideWithPrompt && (
                 <Popover
                   open={isEditPopoverOpen}
