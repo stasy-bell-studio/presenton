@@ -58,6 +58,7 @@ from utils.image_provider import (
 from utils.llm_client_error_handler import handle_llm_client_exceptions
 from utils.parsers import parse_bool_or_none
 from utils.path_helpers import get_resource_path, get_writable_path
+from utils.sse import safe_sse_stream
 
 _ALL_IMAGE_PROVIDER_PREDICATES = (
     is_pixels_selected,
@@ -177,6 +178,31 @@ def test_sse_typed_frames_encode_json_payloads():
     )
     assert event == "response"
     assert data == {"type": "complete", "k": {"v": 1}}
+
+
+def test_safe_sse_stream_converts_late_exception_to_error_frame():
+    async def broken_stream():
+        yield SSEResponse(
+            event="response",
+            data=json.dumps({"type": "chunk"}),
+        ).to_string()
+        raise RuntimeError("provider failed")
+
+    async def collect():
+        chunks = []
+        async for chunk in safe_sse_stream(
+            broken_stream(),
+            logger=MagicMock(),
+            error_detail="Stream failed",
+        ):
+            chunks.append(chunk)
+        return chunks
+
+    chunks = asyncio.run(collect())
+    assert len(chunks) == 2
+    event, data = _parse_sse_frame(chunks[-1])
+    assert event == "response"
+    assert data == {"type": "error", "detail": "Stream failed"}
 
 
 @pytest.mark.parametrize("theme", [{}, None])
