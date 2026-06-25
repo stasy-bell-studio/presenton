@@ -39,6 +39,10 @@ async def _run_sync_in_test(func, *args, **kwargs):
     return func(*args, **kwargs)
 
 
+def _fake_corrupted_pptx_bytes() -> bytes:
+    return b"this is not a valid powerpoint zip package"
+
+
 def test_build_google_fonts_stylesheet_url_includes_regular_and_bold_weights():
     assert (
         pptx_font_utils.build_google_fonts_stylesheet_url("Open Sans")
@@ -77,6 +81,33 @@ def test_check_fonts_in_pptx_rejects_oversize_after_read_when_size_missing(
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == "File size must be less than 100MB."
+
+
+def test_check_fonts_in_pptx_rejects_corrupted_pptx():
+    upload = DummyUploadFile("corrupted.pptx", content=_fake_corrupted_pptx_bytes())
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(fonts_and_slides_preview.check_fonts_in_pptx_handler(upload))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == fonts_and_slides_preview.INVALID_PPTX_UPLOAD_ERROR
+
+
+def test_upload_fonts_and_preview_rejects_corrupted_pptx():
+    upload = DummyUploadFile("corrupted.pptx", content=_fake_corrupted_pptx_bytes())
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(
+            fonts_and_slides_preview.upload_fonts_and_preview_handler(
+                pptx_file=upload,
+                font_files=[],
+                original_font_names=[],
+                get_slide_images=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == fonts_and_slides_preview.INVALID_PPTX_UPLOAD_ERROR
 
 
 def test_build_google_fonts_stylesheet_url_sorts_and_deduplicates_weights():
