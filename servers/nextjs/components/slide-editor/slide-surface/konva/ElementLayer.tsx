@@ -49,6 +49,11 @@ type ComponentPress = {
   point: PressPoint;
   timer: ReturnType<typeof setTimeout>;
 };
+type DragOverlayInteraction = {
+  target: NonNullable<SurfaceInteractionTarget>;
+  x: number;
+  y: number;
+};
 
 const COMPONENT_LONG_PRESS_MS = 550;
 const COMPONENT_LONG_PRESS_MOVE_TOLERANCE = 8;
@@ -218,19 +223,31 @@ export function ElementLayer({
 
   // Pretext-measured overflow set, only computed in the live editor — never
   // on export rasters, since the badge is a UI affordance, not deck content.
+  const resolvedLayoutItems = useMemo(() => resolveSlideLayout(slide), [slide]);
+  const chartOverlayTargets = useMemo(() => {
+    const paths = new Set<ElementPath>();
+    const rootIndexes = new Set<number>();
+    resolvedLayoutItems.forEach((item) => {
+      if (item.element.type !== "chart") return;
+      paths.add(item.sourcePath);
+      rootIndexes.add(item.rootIndex);
+    });
+    return { paths, rootIndexes };
+  }, [resolvedLayoutItems]);
   const overflowingIndices = useMemo(() => {
     if (!interactive) return null;
     const out = new Set<number>();
-    resolveSlideLayout(slide).forEach((item) => {
+    resolvedLayoutItems.forEach((item) => {
       if (item.element.type === "text" && textElementOverflows(item.element)) {
         out.add(item.rootIndex);
       }
     });
     return out;
-  }, [interactive, slide]);
+  }, [interactive, resolvedLayoutItems]);
 
   const [hoveredOverflow, setHoveredOverflow] = useState<number | null>(null);
   const componentPressRef = useRef<ComponentPress | null>(null);
+  const dragOverlayRef = useRef<DragOverlayInteraction | null>(null);
   const surfaceInteractionTargetRef = useRef<SurfaceInteractionTarget>(null);
   const lastClickRef = useRef<{ path: ElementPath; ts: number } | null>(null);
   const suppressSelectRef = useRef<Set<number> | null>(null);
@@ -259,6 +276,7 @@ export function ElementLayer({
   useEffect(
     () => () => {
       clearComponentPress();
+      dragOverlayRef.current = null;
       if (surfaceInteractionTargetRef.current) {
         onSurfaceInteractionChange?.(null);
       }
@@ -271,10 +289,20 @@ export function ElementLayer({
 
   const setSurfaceInteractionTarget = (target: SurfaceInteractionTarget) => {
     const current = surfaceInteractionTargetRef.current;
+    const keyForTarget = (item: SurfaceInteractionTarget) => {
+      if (!item) return "";
+      const offset = item.overlayOffset
+        ? `:${item.overlayOffset.x},${item.overlayOffset.y}`
+        : "";
+      const frame = item.overlayFrame
+        ? `:${item.overlayFrame.x},${item.overlayFrame.y},${item.overlayFrame.width},${item.overlayFrame.height},${item.overlayFrame.rotation}`
+        : "";
+      return `${item.path}:${item.rootIndexes.join(",")}${offset}${frame}`;
+    };
     const currentKey = current
-      ? `${current.path}:${current.rootIndexes.join(",")}`
+      ? keyForTarget(current)
       : "";
-    const nextKey = target ? `${target.path}:${target.rootIndexes.join(",")}` : "";
+    const nextKey = target ? keyForTarget(target) : "";
     if (currentKey === nextKey) return;
     surfaceInteractionTargetRef.current = target;
     onSurfaceInteractionChange?.(target);
@@ -287,6 +315,33 @@ export function ElementLayer({
         : [index];
     return { path, rootIndexes };
   };
+
+  const interactionContainsChartOverlay = (
+    target: NonNullable<SurfaceInteractionTarget>,
+  ) => {
+    if (!isRootPath(target.path)) {
+      return chartOverlayTargets.paths.has(target.path);
+    }
+    return target.rootIndexes.some((rootIndex) =>
+      chartOverlayTargets.rootIndexes.has(rootIndex),
+    );
+  };
+
+  const chartOverlayFrameForNode = (node: Konva.Node) => ({
+    x: node.x(),
+    y: node.y(),
+    width: Math.max(1, node.width() * Math.abs(node.scaleX())),
+    height: Math.max(1, node.height() * Math.abs(node.scaleY())),
+    rotation: node.rotation(),
+  });
+
+  const chartOverlayInteractionForTransform = (
+    target: NonNullable<SurfaceInteractionTarget>,
+    node: Konva.Node,
+  ): SurfaceInteractionTarget =>
+    interactionContainsChartOverlay(target)
+      ? { ...target, overlayFrame: chartOverlayFrameForNode(node) }
+      : target;
 
   const suppressNextSelect = (indexes: number[]) => {
     if (suppressSelectTimerRef.current) {
@@ -438,15 +493,33 @@ export function ElementLayer({
     },
     onTouchEnd: clearComponentPress,
     onTouchCancel: clearComponentPress,
-    onDragStart: () => {
+    onDragStart: (event: Konva.KonvaEventObject<DragEvent>) => {
       clearComponentPress();
-      setSurfaceInteractionTarget(interactionTargetFor(index, path));
+      const target = interactionTargetFor(index, path);
+      const useChartOverlay = interactionContainsChartOverlay(target);
+      dragOverlayRef.current = useChartOverlay
+        ? { target, x: event.target.x(), y: event.target.y() }
+        : null;
+      setSurfaceInteractionTarget(
+        useChartOverlay ? { ...target, overlayOffset: { x: 0, y: 0 } } : target,
+      );
       startGroupDrag(index);
     },
     onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => {
+      const overlay = dragOverlayRef.current;
+      if (overlay) {
+        setSurfaceInteractionTarget({
+          ...overlay.target,
+          overlayOffset: {
+            x: event.target.x() - overlay.x,
+            y: event.target.y() - overlay.y,
+          },
+        });
+      }
       moveGroupDrag(index, event);
     },
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
+      dragOverlayRef.current = null;
       if (endGroupDrag(index, event)) {
         setSurfaceInteractionTarget(null);
         return;
@@ -464,9 +537,23 @@ export function ElementLayer({
       else onChangeAtPath?.(path, next);
       setSurfaceInteractionTarget(null);
     },
-    onTransformStart: () => {
+    onTransformStart: (event: Konva.KonvaEventObject<Event>) => {
       clearComponentPress();
-      setSurfaceInteractionTarget(interactionTargetFor(index, path));
+      dragOverlayRef.current = null;
+      setSurfaceInteractionTarget(
+        chartOverlayInteractionForTransform(
+          interactionTargetFor(index, path),
+          event.target,
+        ),
+      );
+    },
+    onTransform: (event: Konva.KonvaEventObject<Event>) => {
+      const target = interactionTargetFor(index, path);
+      if (!interactionContainsChartOverlay(target)) return;
+      setSurfaceInteractionTarget({
+        ...target,
+        overlayFrame: chartOverlayFrameForNode(event.target),
+      });
     },
     onTransformEnd: (event: Konva.KonvaEventObject<Event>) => {
       const node = event.target;
@@ -501,6 +588,7 @@ export function ElementLayer({
           : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      dragOverlayRef.current = null;
       setSurfaceInteractionTarget(null);
     },
   });
@@ -584,6 +672,20 @@ export function ElementLayer({
     return activeSurfaceInteraction.rootIndexes.includes(rootIndex);
   };
 
+  const canUseChartDomOverlayForPath = (path: ElementPath) => {
+    if (
+      !activeSurfaceInteraction?.overlayOffset &&
+      !activeSurfaceInteraction?.overlayFrame
+    ) {
+      return false;
+    }
+    if (!isRootPath(activeSurfaceInteraction.path)) {
+      return path === activeSurfaceInteraction.path;
+    }
+    const rootIndex = rootIndexFromPath(path);
+    return activeSurfaceInteraction.rootIndexes.includes(rootIndex);
+  };
+
   const renderModeForPath = (
     renderMode: "canvas" | "proxy",
     path: ElementPath,
@@ -594,11 +696,14 @@ export function ElementLayer({
       {slide.elements.map((el, index) => {
         const path = rootPath(index);
         const forceCanvasForElement = shouldForceCanvasForPath(path);
+        const chartUsesDomOverlay = canUseChartDomOverlayForPath(path);
         const elementBulletsRenderMode = renderModeForPath(
           bulletsRenderMode,
           path,
         );
-        const elementChartRenderMode = renderModeForPath(chartRenderMode, path);
+        const elementChartRenderMode = chartUsesDomOverlay
+          ? chartRenderMode
+          : renderModeForPath(chartRenderMode, path);
         const elementTableRenderMode = renderModeForPath(tableRenderMode, path);
         const elementTextRenderMode = renderModeForPath(textRenderMode, path);
 
@@ -608,6 +713,7 @@ export function ElementLayer({
             element={el}
             bulletsRenderMode={elementBulletsRenderMode}
             chartRenderMode={elementChartRenderMode}
+            canUseChartDomOverlayForPath={canUseChartDomOverlayForPath}
             forceCanvasRenderForPath={shouldForceCanvasForPath}
             index={index}
             scale={scale}
@@ -639,7 +745,7 @@ export function ElementLayer({
             textRenderMode={elementTextRenderMode}
             selected={selectedPath === path}
             editing={
-              !forceCanvasForElement &&
+              !(forceCanvasForElement && !chartUsesDomOverlay) &&
               (editingTextIndex === index ||
                 editingBulletsIndex === index ||
                 editingChartIndex === index ||
@@ -853,11 +959,13 @@ const passiveEvents: ElementEvents = {
   onDragMove: () => undefined,
   onDragEnd: () => undefined,
   onTransformStart: () => undefined,
+  onTransform: () => undefined,
   onTransformEnd: () => undefined,
 };
 
 function LayoutRootElement({
   bulletsRenderMode,
+  canUseChartDomOverlayForPath,
   chartRenderMode,
   element,
   events,
@@ -874,6 +982,7 @@ function LayoutRootElement({
   textRenderMode,
 }: {
   bulletsRenderMode?: "canvas" | "proxy";
+  canUseChartDomOverlayForPath: (path: ElementPath) => boolean;
   chartRenderMode?: "canvas" | "proxy";
   element: SlideElement;
   events: ElementEvents;
@@ -946,7 +1055,9 @@ function LayoutRootElement({
               : bulletsRenderMode
           }
           chartRenderMode={
-            forceCanvasRenderForPath(item.sourcePath)
+            canUseChartDomOverlayForPath(item.sourcePath)
+              ? chartRenderMode
+              : forceCanvasRenderForPath(item.sourcePath)
               ? "canvas"
               : chartRenderMode
           }

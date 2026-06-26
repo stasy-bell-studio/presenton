@@ -18,10 +18,11 @@ export type ElementEvents = {
   onTouchMove?: (event: Konva.KonvaEventObject<TouchEvent>) => void;
   onTouchEnd?: () => void;
   onTouchCancel?: () => void;
-  onDragStart: () => void;
+  onDragStart: (event: Konva.KonvaEventObject<DragEvent>) => void;
   onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => void;
   onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => void;
   onTransformStart: (event: Konva.KonvaEventObject<Event>) => void;
+  onTransform?: (event: Konva.KonvaEventObject<Event>) => void;
   onTransformEnd: (event: Konva.KonvaEventObject<Event>) => void;
 };
 
@@ -41,6 +42,14 @@ export type TableInteractionProps = {
 export type SurfaceInteractionTarget = {
   path: ElementPath;
   rootIndexes: number[];
+  overlayFrame?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  };
+  overlayOffset?: { x: number; y: number };
 } | null;
 
 export function geometry(
