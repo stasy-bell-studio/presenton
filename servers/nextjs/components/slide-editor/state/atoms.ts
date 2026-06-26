@@ -1,7 +1,7 @@
 import { atom } from "jotai";
 import { selectAtom } from "jotai/utils";
 import { atomWithImmer } from "jotai-immer";
-import type { Slide, SlideElement } from "../lib/slide-schema";
+import type { Deck, Slide, SlideElement } from "../lib/slide-schema";
 import {
   getElementAtPath,
   rootIndexFromPath,
@@ -10,7 +10,6 @@ import {
 } from "../lib/element-path";
 import { resolveSlideLayout } from "../lib/layout-resolver";
 import { textElementOverflows } from "../lib/textMeasure";
-import { neoGeneralDeck } from "../templates/neo-general";
 
 export type ExportMode = "native" | "keynote" | "raster";
 export type TextSlideElement = Extract<SlideElement, { type: "text" }>;
@@ -32,9 +31,43 @@ export type TableCellSelection = {
 
 // --- Primitive atoms ----------------------------------------------------
 
+const editorBootstrapDeck: Deck = {
+  title: "Untitled presentation",
+  description: "",
+  theme: {
+    background: "FFFFFF",
+    surface: "F8FAFC",
+    primary: "7C51F8",
+    secondary: "111827",
+    accent: "F59E0B",
+    text: "111827",
+    muted: "64748B",
+  },
+  slides: [
+    {
+      title: "Slide 1",
+      background: "FFFFFF",
+      elements: [
+        {
+          type: "text",
+          position: { x: 0.7, y: 0.7 },
+          size: { width: 4.4, height: 0.7 },
+          runs: [{ text: "New slide" }],
+          font: {
+            family: "Arial",
+            size: 32,
+            bold: true,
+            color: "111827",
+          },
+        },
+      ],
+    },
+  ],
+};
+
 // Immer-backed: writers receive a draft of the Deck they can mutate directly.
 // Embedded editor surfaces seed the active deck via `useHydrateAtoms`.
-export const deckAtom = atomWithImmer(neoGeneralDeck);
+export const deckAtom = atomWithImmer(editorBootstrapDeck);
 export const activeSlideIndexAtom = atom(0);
 export const selectedAtom = atom(-1);
 export const selectedPathAtom = atom<ElementPath | null>(null);
