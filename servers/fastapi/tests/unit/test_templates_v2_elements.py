@@ -22,6 +22,7 @@ def test_element_models_match_export_schema_changes():
         "label_color",
         "show_values",
     }.intersection(Chart.model_fields)
+    assert {"base_color", "highlight_color"}.issubset(Infographic.model_fields)
 
     with pytest.raises(ValidationError, match="runs"):
         Text.model_validate(
@@ -96,11 +97,15 @@ def test_element_models_match_export_schema_changes():
             "min_value": 0,
             "max_value": 100,
             "value": 70,
+            "base_color": "E5E7EB",
+            "highlight_color": "2563EB",
         }
     )
     assert infographic.type == "infographic"
     assert infographic.decorative is False
     assert infographic.infographic_type.value == "progress_bar"
+    assert infographic.base_color == "E5E7EB"
+    assert infographic.highlight_color == "2563EB"
 
     with pytest.raises(ValidationError):
         Infographic.model_validate(

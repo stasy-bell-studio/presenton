@@ -1408,6 +1408,10 @@ function adaptInfographic(raw: UnknownRecord): SlideElement {
     minValue,
     maxValue,
     value: readNumber(raw, "value") ?? minValue,
+    baseColor: readColor(readValue(raw, "baseColor", "base_color")),
+    highlightColor: readColor(
+      readValue(raw, "highlightColor", "highlight_color"),
+    ),
   };
 }
 
@@ -2087,6 +2091,8 @@ function serializeTemplateV2Element(
         min_value: element.minValue,
         max_value: element.maxValue,
         value: element.value,
+        base_color: element.baseColor,
+        highlight_color: element.highlightColor,
       });
     case "flex":
       return serializeTemplateV2ChildrenElement(

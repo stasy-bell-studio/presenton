@@ -311,8 +311,8 @@ class Infographic(BaseModel):
     value: float
 
     # Design
-    track_color: Optional[str] = None
-    thumb_color: Optional[str] = None
+    base_color: Optional[str] = None
+    highlight_color: Optional[str] = None
 
     # Schema
     decorative: bool

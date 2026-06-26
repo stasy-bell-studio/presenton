@@ -65,6 +65,8 @@ function ProgressBarParts({
 }) {
   const progress = valueProgress(element);
   const radius = Math.min(height / 2, 8);
+  const baseColor = element.baseColor ?? GAUGE_BACKGROUND;
+  const highlightColor = element.highlightColor ?? GAUGE_FOREGROUND;
 
   return (
     <>
@@ -72,13 +74,13 @@ function ProgressBarParts({
         width={width}
         height={height}
         cornerRadius={radius}
-        fill={withHash(GAUGE_BACKGROUND)}
+        fill={withHash(baseColor)}
       />
       <Rect
         width={width * progress}
         height={height}
         cornerRadius={radius}
-        fill={withHash(GAUGE_FOREGROUND)}
+        fill={withHash(highlightColor)}
       />
     </>
   );
@@ -105,6 +107,8 @@ function GaugeParts({
   const valueText = String(Math.round(element.value));
   const start = pointOnCircle(centerX, centerY, middleRadius, 180);
   const end = pointOnCircle(centerX, centerY, middleRadius, 180 + valueAngle);
+  const baseColor = element.baseColor ?? GAUGE_BACKGROUND;
+  const highlightColor = element.highlightColor ?? GAUGE_FOREGROUND;
 
   return (
     <>
@@ -115,19 +119,19 @@ function GaugeParts({
         outerRadius={outerRadius}
         angle={180}
         rotation={180}
-        fill={withHash(GAUGE_BACKGROUND)}
+        fill={withHash(baseColor)}
       />
       <Circle
         x={start.x}
         y={start.y}
         radius={capRadius}
-        fill={withHash(GAUGE_BACKGROUND)}
+        fill={withHash(baseColor)}
       />
       <Circle
         x={pointOnCircle(centerX, centerY, middleRadius, 360).x}
         y={pointOnCircle(centerX, centerY, middleRadius, 360).y}
         radius={capRadius}
-        fill={withHash(GAUGE_BACKGROUND)}
+        fill={withHash(baseColor)}
       />
       {valueAngle > 0 ? (
         <>
@@ -138,19 +142,19 @@ function GaugeParts({
             outerRadius={outerRadius}
             angle={valueAngle}
             rotation={180}
-            fill={withHash(GAUGE_FOREGROUND)}
+            fill={withHash(highlightColor)}
           />
           <Circle
             x={start.x}
             y={start.y}
             radius={capRadius}
-            fill={withHash(GAUGE_FOREGROUND)}
+            fill={withHash(highlightColor)}
           />
           <Circle
             x={end.x}
             y={end.y}
             radius={capRadius}
-            fill={withHash(GAUGE_FOREGROUND)}
+            fill={withHash(highlightColor)}
           />
         </>
       ) : null}

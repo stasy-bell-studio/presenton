@@ -748,6 +748,8 @@ export const InfographicElementSchema = z.preprocess(
       infographic_type: "infographicType",
       max_value: "maxValue",
       min_value: "minValue",
+      base_color: "baseColor",
+      highlight_color: "highlightColor",
     }),
   z.object({
     type: z.literal("infographic"),
@@ -756,6 +758,8 @@ export const InfographicElementSchema = z.preprocess(
     maxValue: z.number(),
     minValue: z.number(),
     value: z.number(),
+    baseColor: HexColorSchema.nullish(),
+    highlightColor: HexColorSchema.nullish(),
   })
     .strict(),
 );

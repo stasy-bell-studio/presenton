@@ -241,6 +241,8 @@ export const ELEMENT_REGISTRY = {
       minValue: 0,
       maxValue: 100,
       value: 65,
+      baseColor: "E5E7EB",
+      highlightColor: "2563EB",
     }),
   },
   table: {
