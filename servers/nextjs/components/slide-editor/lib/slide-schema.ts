@@ -517,6 +517,8 @@ export const ImageElementSchema = z.preprocess(
       border_radius: "borderRadius",
       flip_h: "flipH",
       flip_v: "flipV",
+      focus_x: "focusX",
+      focus_y: "focusY",
       isIcon: "is_icon",
     }),
   z.object({
@@ -527,6 +529,8 @@ export const ImageElementSchema = z.preprocess(
     data: z.string().nullish(),
     name: z.string().max(120).nullish(),
     fit: ImageFitSchema.nullish(),
+    focusX: z.number().nullish(),
+    focusY: z.number().nullish(),
     borderRadius: BorderRadiusSchema.nullish(),
     color: z.string().nullish(),
     is_icon: z.boolean().nullish(),

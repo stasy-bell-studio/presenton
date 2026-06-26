@@ -23,10 +23,14 @@ def test_image_element_accepts_flip_flags():
             "data": "/app_data/images/hero.png",
             "flip_h": True,
             "flip_v": False,
+            "focus_x": 20.0,
+            "focus_y": 75.0,
         }
     )
     assert image.flip_h is True
     assert image.flip_v is False
+    assert image.focus_x == 20.0
+    assert image.focus_y == 75.0
 
     layout = RawSlideLayout.model_validate(
         {
@@ -41,6 +45,8 @@ def test_image_element_accepts_flip_flags():
                     "data": "/app_data/images/hero.png",
                     "flip_h": True,
                     "flip_v": False,
+                    "focus_x": 20.0,
+                    "focus_y": 75.0,
                 }
             ],
         }
@@ -48,6 +54,8 @@ def test_image_element_accepts_flip_flags():
     layout_image = layout.elements[0]
     assert layout_image.flip_h is True
     assert layout_image.flip_v is False
+    assert layout_image.focus_x == 20.0
+    assert layout_image.focus_y == 75.0
 
 
 def test_element_models_match_export_schema_changes():

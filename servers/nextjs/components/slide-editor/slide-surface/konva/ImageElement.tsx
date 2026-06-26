@@ -100,6 +100,8 @@ function SlideImagePicture({
   const fit = element.fit ?? "contain";
   const naturalRatio = image.width / image.height || 1;
   const boxRatio = width / height || 1;
+  const focusX = clampPercent(element.focusX ?? 50) / 100;
+  const focusY = clampPercent(element.focusY ?? 50) / 100;
 
   let drawW = width;
   let drawH = height;
@@ -108,18 +110,18 @@ function SlideImagePicture({
   if (fit === "contain") {
     if (naturalRatio > boxRatio) {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) / 2;
+      offsetY = (height - drawH) * focusY;
     } else {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) / 2;
+      offsetX = (width - drawW) * focusX;
     }
   } else if (fit === "cover") {
     if (naturalRatio > boxRatio) {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) / 2;
+      offsetX = (width - drawW) * focusX;
     } else {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) / 2;
+      offsetY = (height - drawH) * focusY;
     }
   }
 
@@ -144,6 +146,10 @@ function SlideImagePicture({
       />
     </Group>
   );
+}
+
+function clampPercent(value: number) {
+  return Math.min(100, Math.max(0, value));
 }
 
 async function tintImageWithAlpha(

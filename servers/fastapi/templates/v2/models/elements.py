@@ -189,6 +189,8 @@ class Image(BaseModel):  # Konva Image
     opacity: Optional[float] = None
     data: str
     fit: Optional[ImageFit] = None
+    focus_x: Optional[float] = None
+    focus_y: Optional[float] = None
     border_radius: Optional[BorderRadius] = None
     color: Optional[str] = None
 

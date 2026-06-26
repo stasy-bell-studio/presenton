@@ -183,6 +183,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
     readRecord(element.borderRadius ?? element.border_radius),
   );
   const fit = imageFit(element.fit);
+  const objectPosition = imageObjectPosition(element);
   const flipH = readBoolean(element.flipH ?? element.flip_h);
   const flipV = readBoolean(element.flipV ?? element.flip_v);
   const transform = imageFlipTransform(flipH, flipV);
@@ -204,6 +205,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
           display: "block",
           height: "100%",
           objectFit: fit,
+          objectPosition,
           transform,
           width: "100%",
         }}
@@ -215,14 +217,14 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
             backgroundColor: color,
             inset: 0,
             maskImage: `url(${resolvedSrc})`,
-            maskPosition: "center",
+            maskPosition: objectPosition ?? "center",
             maskRepeat: "no-repeat",
             maskSize: fit === "fill" ? "100% 100%" : fit,
             pointerEvents: "none",
             position: "absolute",
             transform,
             WebkitMaskImage: `url(${resolvedSrc})`,
-            WebkitMaskPosition: "center",
+            WebkitMaskPosition: objectPosition ?? "center",
             WebkitMaskRepeat: "no-repeat",
             WebkitMaskSize: fit === "fill" ? "100% 100%" : fit,
           }}
@@ -685,6 +687,20 @@ function imageFit(value: unknown): React.CSSProperties["objectFit"] {
     return value;
   }
   return "contain";
+}
+
+function imageObjectPosition(
+  element: TemplateV2Element,
+): React.CSSProperties["objectPosition"] {
+  const focusX = clampPercent(readNumber(element.focusX ?? element.focus_x));
+  const focusY = clampPercent(readNumber(element.focusY ?? element.focus_y));
+  if (focusX == null && focusY == null) return undefined;
+  return `${focusX ?? 50}% ${focusY ?? 50}%`;
+}
+
+function clampPercent(value: number | null) {
+  if (value == null) return null;
+  return Math.min(100, Math.max(0, value));
 }
 
 function imageFlipTransform(flipH: boolean, flipV: boolean) {
