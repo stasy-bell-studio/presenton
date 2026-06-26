@@ -4,6 +4,7 @@ import {
   DeckSchema,
   SLIDE_H,
   SLIDE_W,
+  SlideSchema,
   type Alignment,
   type BorderRadius,
   type ChartSeries,
@@ -32,6 +33,7 @@ const SOURCE_H = 720;
 const X_SCALE = SLIDE_W / SOURCE_W;
 const Y_SCALE = SLIDE_H / SOURCE_H;
 const SOURCE_PX_TO_PT = (72 * SLIDE_W) / SOURCE_W;
+const TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY = "__template_v2_konva_slide__";
 
 type UnknownRecord = Record<string, unknown>;
 type AdaptedPosition = { x: number; y: number };
@@ -86,32 +88,6 @@ const LAYOUT_ALIGNMENT_VALUES = new Set([
   "center",
   "stretch",
 ]);
-const GENERATED_VALUE_ELEMENT_TYPES = new Set([
-  "text",
-  "image",
-  "text-list",
-  "table",
-  "chart",
-]);
-const GENERATED_TABLE_TEXT_FONT = {
-  family: "Sniglet",
-  size: 12,
-  color: "#082314",
-};
-const GENERATED_TABLE_HEADER_FONT = {
-  ...GENERATED_TABLE_TEXT_FONT,
-  bold: true,
-};
-const GENERATED_TABLE_CELL_FILL = {
-  color: "#F8F4E9",
-  opacity: 1,
-};
-const GENERATED_TABLE_CELL_STROKE = {
-  color: "#D8D3C4",
-  opacity: 1,
-  width: 1,
-};
-
 export function adaptTemplateV2ResponseToDeck(
   template: TemplateV2ImportResponse,
 ): Deck {
@@ -168,10 +144,6 @@ export function adaptGeneratedTemplateV2PresentationToDeck(
   const presentationRecord = asRecord(presentation) ?? {};
   const layoutPayload = readValue(presentationRecord, "layout");
   const layouts = extractTemplateV2Layouts(layoutPayload);
-  if (layouts.length === 0) {
-    throw new Error("Generated presentation did not include template v2 layouts.");
-  }
-
   const layoutById = new Map(
     layouts
       .map((layout) => [readString(layout.id), layout] as const)
@@ -181,18 +153,35 @@ export function adaptGeneratedTemplateV2PresentationToDeck(
     .filter(isRecord)
     .sort((a, b) => (readNumber(a, "index") ?? 0) - (readNumber(b, "index") ?? 0));
 
+  if (layouts.length === 0 && generatedSlides.length === 0) {
+    throw new Error("Generated presentation did not include template v2 slides.");
+  }
+
   const slides =
     generatedSlides.length > 0
       ? generatedSlides.slice(0, 50).map((slide, index) => {
+          const storedSlide = readStoredKonvaSlideFromContent(
+            readValue(slide, "content"),
+          );
+          if (storedSlide) {
+            return storedSlide;
+          }
+
+          const uiLayout = readGeneratedSlideUiLayout(slide);
+          if (uiLayout) {
+            return adaptLayoutToSlide(uiLayout, index);
+          }
+
           const layoutId = readString(slide.layout);
           const layout =
             (layoutId ? layoutById.get(layoutId) : null) ??
             layouts[index % layouts.length];
-          const content = asRecord(slide.content) ?? {};
-          return adaptLayoutToSlide(
-            applyGeneratedSlideContentToLayout(layout, content),
-            index,
-          );
+          if (!layout) {
+            throw new Error(
+              `Generated slide ${index + 1} did not include a renderable template v2 layout.`,
+            );
+          }
+          return adaptLayoutToSlide(layout, index);
         })
       : layouts.slice(0, 50).map(adaptLayoutToSlide);
 
@@ -219,6 +208,21 @@ export function adaptGeneratedTemplateV2PresentationToDeck(
   }
 
   return parsed.data;
+}
+
+function readGeneratedSlideUiLayout(slide: UnknownRecord): TemplateV2Layout | null {
+  const ui = asRecord(readValue(slide, "ui"));
+  return ui ? (ui as TemplateV2Layout) : null;
+}
+
+function readStoredKonvaSlideFromContent(content: unknown): Slide | null {
+  const rawContent = asRecord(content);
+  if (!rawContent) return null;
+
+  const parsed = SlideSchema.safeParse(
+    rawContent[TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY],
+  );
+  return parsed.success ? normalizeTemplateV2Slide(parsed.data) : null;
 }
 
 export function extractTemplateV2Layouts(value: unknown): TemplateV2Layout[] {
@@ -410,35 +414,13 @@ export function serializeTemplateV2LayoutFromSlide(
   };
 }
 
-export function extractTemplateV2ContentFromSlide(
+export function serializeTemplateV2ContentFromSlide(
   slide: Slide,
   currentContent: unknown,
-  legacyEditorStateKey?: string,
+  editorStateKey: string,
 ): Record<string, unknown> {
   const content = cloneJsonRecord(currentContent);
-  if (legacyEditorStateKey) delete content[legacyEditorStateKey];
-
-  const componentGroups = slide.elements.filter(
-    (element): element is GroupElement =>
-      element.type === "group" && Boolean(element.component_id),
-  );
-  const componentKeys = templateComponentContentKeys(
-    componentGroups.map((group) => ({ id: group.component_id })),
-  );
-
-  componentGroups.forEach((element, index) => {
-    const componentKey = componentKeys[index];
-    const componentContent = isRecord(content[componentKey])
-      ? cloneJsonRecord(content[componentKey])
-      : componentKey === element.component_id && isRecord(content[element.component_id])
-        ? cloneJsonRecord(content[element.component_id])
-      : {};
-    updateTemplateV2ContentFromElement(element, componentContent);
-    content[componentKey] = componentContent;
-  });
-  if (legacyEditorStateKey) {
-    content[legacyEditorStateKey] = normalizeTemplateV2Slide(slide);
-  }
+  content[editorStateKey] = normalizeTemplateV2Slide(slide);
   return content;
 }
 
@@ -763,342 +745,6 @@ function localizeRawElementToFrame(
   }
 
   return localized;
-}
-
-export function applyGeneratedSlideContentToLayout(
-  layout: TemplateV2Layout,
-  content: Record<string, unknown>,
-): TemplateV2Layout {
-  const rawLayout = asRecord(layout);
-  if (!rawLayout) return layout;
-
-  const components = readArray(rawLayout, "components");
-  if (components.length === 0) {
-    return rawLayout as TemplateV2Layout;
-  }
-
-  const componentKeys = templateComponentContentKeys(components);
-  return {
-    ...rawLayout,
-    components: components.map((component, index) => {
-      const rawComponent = asRecord(component);
-      if (!rawComponent) return component;
-
-      const componentContent =
-        asRecord(content[componentKeys[index]]) ??
-        asRecord(content[readString(rawComponent.id) ?? ""]) ??
-        {};
-
-      return {
-        ...rawComponent,
-        elements: readArray(rawComponent, "elements").map((element) =>
-          applyGeneratedContentToElement(element, componentContent),
-        ),
-      };
-    }),
-  } as TemplateV2Layout;
-}
-
-function templateComponentContentKeys(components: unknown[]): string[] {
-  const ids = components.map((component, index) => {
-    const id = readString(asRecord(component)?.id);
-    return id || `component_${index}`;
-  });
-  const counts = new Map<string, number>();
-  ids.forEach((id) => counts.set(id, (counts.get(id) ?? 0) + 1));
-
-  const indexes = new Map<string, number>();
-  const used = new Set<string>();
-  return ids.map((id) => {
-    const occurrenceIndex = indexes.get(id) ?? 0;
-    indexes.set(id, occurrenceIndex + 1);
-    const base = (counts.get(id) ?? 0) > 1 ? `${id}_${occurrenceIndex}` : id;
-
-    let key = base;
-    let suffix = 1;
-    while (used.has(key)) {
-      key = `${base}_${suffix}`;
-      suffix += 1;
-    }
-    used.add(key);
-    return key;
-  });
-}
-
-function applyGeneratedContentToElement(
-  element: unknown,
-  content: UnknownRecord,
-): unknown {
-  const raw = asRecord(element);
-  if (!raw) return element;
-
-  const type = readString(raw.type);
-  const name = readString(raw.name);
-  const value = name ? content[name] : undefined;
-  const nestedContent = asRecord(value) ?? content;
-
-  if (
-    readDecorative(raw) === false &&
-    name &&
-    value !== undefined &&
-    GENERATED_VALUE_ELEMENT_TYPES.has(type ?? "")
-  ) {
-    return applyGeneratedContentValue(raw, value);
-  }
-
-  if (type === "container") {
-    return {
-      ...raw,
-      child: applyGeneratedContentToElement(readValue(raw, "child"), nestedContent),
-    };
-  }
-
-  if (type === "flex" || type === "grid" || type === "group") {
-    const children = readArray(raw, "children");
-    return {
-      ...raw,
-      children: applyGeneratedContentToChildren(children, value, nestedContent),
-    };
-  }
-
-  return raw;
-}
-
-function applyGeneratedContentToChildren(
-  children: unknown[],
-  value: unknown,
-  content: UnknownRecord,
-): unknown[] {
-  if (Array.isArray(value) && children.length > 0) {
-    return value.map((item, index) =>
-      applyGeneratedContentToElement(
-        children[Math.min(index, children.length - 1)],
-        asRecord(item) ?? {},
-      ),
-    );
-  }
-
-  return children.map((child) => applyGeneratedContentToElement(child, content));
-}
-
-function applyGeneratedContentValue(
-  raw: UnknownRecord,
-  value: unknown,
-): UnknownRecord {
-  const type = readString(raw.type);
-  switch (type) {
-    case "text":
-      return applyGeneratedText(raw, value);
-    case "image":
-      return applyGeneratedImage(raw, value);
-    case "text-list":
-      return applyGeneratedTextList(raw, value);
-    case "table":
-      return applyGeneratedTable(raw, value);
-    case "chart":
-      return applyGeneratedChart(raw, value);
-    default:
-      return raw;
-  }
-}
-
-function applyGeneratedText(raw: UnknownRecord, value: unknown): UnknownRecord {
-  const text =
-    readString(value) ??
-    readString(asRecord(value)?.text) ??
-    (typeof value === "number" ? String(value) : null);
-  if (!text) return raw;
-
-  const runs = readArray(raw, "runs");
-  const firstRun = asRecord(runs[0]) ?? {};
-  return {
-    ...raw,
-    text,
-    runs: [{ ...firstRun, text }],
-  };
-}
-
-function applyGeneratedImage(raw: UnknownRecord, value: unknown): UnknownRecord {
-  const record = asRecord(value);
-  if (!record) return raw;
-
-  const url =
-    readString(record.image_url) ??
-    readString(record.icon_url) ??
-    readString(record.__image_url__) ??
-    readString(record.__icon_url__) ??
-    readString(record.url);
-
-  if (!url) return raw;
-  return {
-    ...raw,
-    data: resolveBackendAssetUrl(url),
-  };
-}
-
-function applyGeneratedTextList(
-  raw: UnknownRecord,
-  value: unknown,
-): UnknownRecord {
-  if (!Array.isArray(value)) return raw;
-  return {
-    ...raw,
-    items: value
-      .map((item) => readString(item) ?? readString(asRecord(item)?.text))
-      .filter((item): item is string => Boolean(item))
-      .map((text) => ({ type: "text", text })),
-  };
-}
-
-function applyGeneratedTable(raw: UnknownRecord, value: unknown): UnknownRecord {
-  const record = asRecord(value);
-  if (!record) return raw;
-
-  const templateColumns = readArray(raw, "columns");
-  const templateRows = readArray(raw, "rows").filter(
-    (row): row is unknown[] => Array.isArray(row),
-  );
-  const generatedColumns = readArray(record, "columns").map(readTableTextValue);
-  const generatedRows = readArray(record, "rows").map((row) =>
-    (Array.isArray(row) ? row : []).map(readTableTextValue),
-  );
-  const fallbackRow =
-    templateRows[templateRows.length - 1] ?? templateColumns;
-
-  return {
-    ...raw,
-    columns:
-      generatedColumns.length > 0
-        ? mergeGeneratedTableRowToLength(
-            templateColumns,
-            generatedColumns,
-            true,
-          )
-        : templateColumns,
-    rows:
-      generatedRows.length > 0
-        ? generatedRows.map((row, index) =>
-            mergeGeneratedTableRowToLength(
-              templateRows[index] ?? fallbackRow,
-              row,
-              false,
-            ),
-          )
-        : templateRows,
-  };
-}
-
-function mergeGeneratedTableRowToLength(
-  templateCells: unknown[],
-  generatedTexts: Array<string | null>,
-  isHeader: boolean,
-): unknown[] {
-  const fallbackCell = templateCells[templateCells.length - 1];
-  return generatedTexts.map((text, index) => {
-    const cell = templateCells[index] ?? fallbackCell;
-    return replaceTableCellText(cell ?? null, text ?? "", isHeader);
-  });
-}
-
-function replaceTableCellText(
-  cell: unknown,
-  text: string,
-  isHeader: boolean,
-): unknown {
-  const rawCell = asRecord(cell);
-  const font = isHeader ? GENERATED_TABLE_HEADER_FONT : GENERATED_TABLE_TEXT_FONT;
-  if (!rawCell) {
-    return {
-      color: GENERATED_TABLE_CELL_FILL,
-      stroke: GENERATED_TABLE_CELL_STROKE,
-      font,
-      runs: [{ text, font }],
-    };
-  }
-
-  const runs = readArray(rawCell, "runs");
-  const firstRun = asRecord(runs[0]) ?? {};
-  const runFont = asRecord(firstRun.font);
-  const nextFont = runFont ?? readRecord(rawCell, "font") ?? font;
-  return stripNullish({
-    ...rawCell,
-    color: rawCell.color ?? rawCell.fill ?? GENERATED_TABLE_CELL_FILL,
-    stroke: rawCell.stroke ?? GENERATED_TABLE_CELL_STROKE,
-    font: rawCell.font ?? nextFont,
-    runs: [{ ...firstRun, text, font: nextFont }],
-    text: undefined,
-    fill: undefined,
-  });
-}
-
-function readTableTextValue(value: unknown): string | null {
-  const record = asRecord(value);
-  const runs = readArray(record ?? {}, "runs");
-  const runText = runs
-    .map((run) => readString(asRecord(run)?.text) ?? "")
-    .join("");
-  const text =
-    readPrimitiveTableText(value) ??
-    (runText ? runText : null) ??
-    readPrimitiveTableText(readValue(record ?? {}, "text")) ??
-    readPrimitiveTableText(readValue(record ?? {}, "value"));
-
-  return text ? truncateString(text, 80) : null;
-}
-
-function readPrimitiveTableText(value: unknown): string | null {
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  return null;
-}
-
-function applyGeneratedChart(raw: UnknownRecord, value: unknown): UnknownRecord {
-  const record = asRecord(value);
-  if (!record) return raw;
-
-  const categories = readArray(record, "categories");
-  const series = readArray(record, "series");
-  const seriesColors = readArray(record, "series_colors");
-  const chartType = readEnum(
-    record,
-    ["bar", "line", "area", "pie", "donut"],
-    "chart_type",
-  );
-
-  return stripNullish({
-    ...raw,
-    chart_type: chartType ?? readValue(raw, "chart_type"),
-    title: readString(record.title) ?? raw.title,
-    categories: categories.length > 0 ? categories : raw.categories,
-    series: series.length > 0 ? series : raw.series,
-    series_colors:
-      seriesColors.length > 0 ? seriesColors : readValue(raw, "series_colors"),
-    axis_color:
-      readString(readValue(record, "axis_color")) ??
-      readString(readValue(raw, "axis_color")),
-    x_axis:
-      readBoolean(record, "x_axis") ??
-      readBoolean(raw, "x_axis"),
-    y_axis:
-      readBoolean(record, "y_axis") ??
-      readBoolean(raw, "y_axis"),
-    x_axis_title:
-      readValue(record, "x_axis_title") ??
-      readValue(raw, "x_axis_title"),
-    y_axis_title:
-      readValue(record, "y_axis_title") ??
-      readValue(raw, "y_axis_title"),
-    data_labels:
-      readBoolean(record, "data_labels") ??
-      readBoolean(raw, "data_labels"),
-    data_labels_color:
-      readString(readValue(record, "data_labels_color")) ??
-      readString(readValue(raw, "data_labels_color")),
-    grid: readBoolean(record, "grid") ?? readBoolean(raw, "grid"),
-    source: readString(record.source) ?? raw.source,
-  });
 }
 
 function adaptElement(value: unknown): SlideElement | null {
@@ -1706,14 +1352,6 @@ function textRun(text: string, font?: Font | null): TextRun {
   return stripNullish({ text, font }) as TextRun;
 }
 
-function textListItemText(item: TextListItem): string {
-  return item.map((run) => run.text).join("");
-}
-
-function tableCellText(cell: TableCell): string {
-  return cell.runs.map((run) => run.text).join("");
-}
-
 function adaptTextRun(item: unknown): TextRun | null {
   const record = asRecord(item);
   if (!record) return null;
@@ -2214,116 +1852,6 @@ function sourceDistance(value: number | null | undefined, scale: number) {
 
 function sourceNumber(value: number) {
   return Math.round(value * 10000) / 10000;
-}
-
-function updateTemplateV2ContentFromElement(
-  element: SlideElement,
-  componentContent: Record<string, unknown>,
-) {
-  const slot = readString(element.component_slot);
-  const updater = templateV2ContentUpdater(element);
-  if (slot && updater) {
-    if (!updateMatchingTemplateV2Content(componentContent, slot, updater)) {
-      componentContent[slot] = updater(undefined);
-    }
-  }
-
-  if ("children" in element && Array.isArray(element.children)) {
-    element.children.forEach((child) =>
-      updateTemplateV2ContentFromElement(child, componentContent),
-    );
-  }
-  if (element.type === "container" && element.child) {
-    updateTemplateV2ContentFromElement(element.child, componentContent);
-  }
-}
-
-type TemplateV2ContentUpdater = (currentValue: unknown) => unknown;
-
-function templateV2ContentUpdater(
-  element: SlideElement,
-): TemplateV2ContentUpdater | null {
-  if (element.decorative !== false) return null;
-  if (element.type === "text") {
-    return () => element.runs.map((run) => run.text).join("");
-  }
-  if (element.type === "image" && element.data) {
-    return (currentValue) => {
-      const value: UnknownRecord = {
-        ...(isRecord(currentValue) ? currentValue : {}),
-      };
-      delete value.__icon_url__;
-      delete value.__image_url__;
-      value[element.is_icon ? "icon_url" : "image_url"] = element.data;
-      return value;
-    };
-  }
-  if (element.type === "text-list") {
-    return () => element.items.map(textListItemText);
-  }
-  if (element.type === "table") {
-    return () => ({
-      columns: element.columns.map(tableCellText),
-      rows: element.rows.map((row) => row.map(tableCellText)),
-    });
-  }
-  if (element.type === "chart") {
-    return () =>
-      stripNullish({
-        title: element.title ?? null,
-        categories: element.categories,
-        series: element.series,
-      });
-  }
-  return null;
-}
-
-function updateMatchingTemplateV2Content(
-  value: unknown,
-  slot: string,
-  updater: TemplateV2ContentUpdater,
-): boolean {
-  const candidates = templateV2ContentSlotCandidates(slot);
-  if (isRecord(value)) {
-    for (const candidate of candidates) {
-      if (Object.prototype.hasOwnProperty.call(value, candidate)) {
-        value[candidate] = updater(value[candidate]);
-        return true;
-      }
-    }
-    return Object.values(value).some((child) =>
-      updateMatchingTemplateV2Content(child, slot, updater),
-    );
-  }
-  if (Array.isArray(value)) {
-    const preferredIndex = templateV2RepeatedContentIndex(slot);
-    if (
-      preferredIndex != null &&
-      preferredIndex < value.length &&
-      updateMatchingTemplateV2Content(value[preferredIndex], slot, updater)
-    ) {
-      return true;
-    }
-    return value.some(
-      (child, index) =>
-        index !== preferredIndex &&
-        updateMatchingTemplateV2Content(child, slot, updater),
-    );
-  }
-  return false;
-}
-
-function templateV2ContentSlotCandidates(slot: string): string[] {
-  const withoutNumericToken = slot.replace(/_\d+(?=_|$)/g, "");
-  const withoutPrefix = withoutNumericToken.includes("_")
-    ? withoutNumericToken.slice(withoutNumericToken.indexOf("_") + 1)
-    : withoutNumericToken;
-  return Array.from(new Set([slot, withoutNumericToken, withoutPrefix]));
-}
-
-function templateV2RepeatedContentIndex(slot: string): number | null {
-  const match = slot.match(/_(\d+)(?=_|$)/);
-  return match ? Math.max(0, Number(match[1]) - 1) : null;
 }
 
 function cloneJsonRecord(value: unknown): Record<string, unknown> {
