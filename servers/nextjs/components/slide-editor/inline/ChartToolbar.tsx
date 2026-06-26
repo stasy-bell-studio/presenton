@@ -39,12 +39,12 @@ export function ChartToolbar({
         <select
           aria-label="Chart type"
           title="Chart type"
-          value={element.chartType}
+          value={element.chart_type}
           onChange={(event) =>
-            onChange(index, {
-              ...element,
-              chartType: event.target.value as ChartSlideElement["chartType"],
-            })
+	            onChange(index, {
+	              ...element,
+	              chart_type: event.target.value as ChartSlideElement["chart_type"],
+	            })
           }
           style={{
             ...inlineStyles.select,
@@ -85,11 +85,11 @@ export function ChartToolbar({
           value={element.color ?? "D4A24C"}
           onCommit={(color) => {
             onChange(index, {
-              ...element,
-              color,
-              seriesColors: element.series?.length
-                ? [color, ...(element.seriesColors ?? []).slice(1)]
-                : element.seriesColors,
+	              ...element,
+	              color,
+	              series_colors: element.series?.length
+	                ? [color, ...(element.series_colors ?? []).slice(1)]
+	                : element.series_colors,
               data: chartDataFromSeries(categories, element.series ?? [], color),
             });
           }}

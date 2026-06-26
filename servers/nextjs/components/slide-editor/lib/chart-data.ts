@@ -68,7 +68,7 @@ export function primaryChartData(element: ChartElement): ChartDatum[] {
 
 export function chartSeriesColor(element: ChartElement, index: number) {
   return (
-    element.seriesColors?.[index] ??
+    element.series_colors?.[index] ??
     (index === 0 ? element.color : null) ??
     DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
   );
@@ -76,7 +76,7 @@ export function chartSeriesColor(element: ChartElement, index: number) {
 
 export function chartPointColor(element: ChartElement, index: number) {
   return (
-    element.seriesColors?.[index] ??
+    element.series_colors?.[index] ??
     DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
   );
 }

@@ -228,8 +228,8 @@ function readObjectPath(target: unknown, parts: string[]): unknown {
 
 function matchesElementSelector(element: SlideElement, selector: string) {
   return (
-    element.componentSlot === selector ||
-    element.componentId === selector ||
+    element.component_slot === selector ||
+    element.component_id === selector ||
     element.type === selector
   );
 }

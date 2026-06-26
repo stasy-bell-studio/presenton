@@ -49,9 +49,9 @@ export function SlideStage({
           fill={withHash(slide.background)}
           listening={false}
         />
-        {slide.backgroundImage ? (
+        {slide.background_image ? (
           <SlideBackgroundImagePicture
-            background={slide.backgroundImage}
+            background={slide.background_image}
             width={width}
             height={height}
           />

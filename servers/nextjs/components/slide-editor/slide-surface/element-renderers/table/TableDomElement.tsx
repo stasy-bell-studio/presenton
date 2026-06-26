@@ -28,14 +28,10 @@ export function TableDomElement({
           return null;
         }
 
-        const rows = [element.columns, ...element.rows];
-        const cols = Math.max(1, ...rows.map((row) => row.length));
-        const font = elementFont(element);
-        const tableStroke = element.columns[0]?.stroke ?? element.rows[0]?.[0]?.stroke;
-        const borderColor = colorWithOpacity(
-          tableStroke?.color ?? "D9E2EF",
-          tableStroke?.opacity,
-        );
+	        const rows = [element.columns, ...element.rows];
+	        const cols = Math.max(1, ...rows.map((row) => row.length));
+	        const font = elementFont(element);
+	        const borderColor = colorWithOpacity("D9E2EF");
 
         return (
           <table
@@ -43,8 +39,8 @@ export function TableDomElement({
             style={{
               ...elementBoxStyle(element, scale),
               ...tableStyle,
-              borderColor,
-              borderWidth: tableStroke?.width ?? 1,
+	              borderColor,
+	              borderWidth: 1,
               color: withHash(font.color),
               fontFamily: `${font.family}, Helvetica, sans-serif`,
               fontSize: font.size * PT_TO_PX * (scale / PX_PER_IN),
@@ -71,33 +67,30 @@ export function TableDomElement({
                       selectedCellPath === item.sourcePath &&
                       selectedCell.rowIndex === rowIndex &&
                       selectedCell.colIndex === colIndex;
-                    const cell = row[colIndex] ?? {};
-                    const textAlign = colIndex === 0 ? "left" : "center";
-                    const baseFont = tableCellFont(cell, font, isHeader);
-                    const renderedRuns = renderMarkdownTextRuns([
-                      {
-                        text: cell.text ?? "",
-                        font: baseFont,
-                      },
-                    ]);
+	                    const cell = row[colIndex] ?? { runs: [] };
+	                    const textAlign = colIndex === 0 ? "left" : "center";
+	                    const baseFont = tableCellFont(cell, font, isHeader);
+	                    const renderedRuns = renderMarkdownTextRuns(
+	                      cell.runs.map((run) => ({
+	                        ...run,
+	                        font: run.font ?? baseFont,
+	                      })),
+	                    );
                     const authoredFontSize = baseFont.size ?? font.size;
-                    const cellBorderColor = colorWithOpacity(
-                      cell.stroke?.color ?? borderColor,
-                      cell.stroke?.opacity,
-                    );
+	                    const cellBorderColor = borderColor;
                     return (
                       <td
                         key={colIndex}
                         style={{
                           ...cellStyle,
                           width: `${100 / cols}%`,
-                          height: `${100 / rows.length}%`,
-                          borderColor: cellBorderColor,
-                          borderWidth: cell.stroke?.width ?? 1,
-                          background: colorWithOpacity(
-                            cell.fill?.color ??
-                              (isHeader ? "0B1F3A" : "FFFFFF"),
-                            cell.fill?.opacity,
+	                          height: `${100 / rows.length}%`,
+	                          borderColor: cellBorderColor,
+	                          borderWidth: 1,
+	                          background: colorWithOpacity(
+	                            cell.color?.color ??
+	                              (isHeader ? "0B1F3A" : "FFFFFF"),
+	                            cell.color?.opacity,
                           ),
                           color: withHash(baseFont.color ?? font.color),
                           fontFamily: `${baseFont.family ?? font.family}, Helvetica, sans-serif`,
@@ -105,7 +98,7 @@ export function TableDomElement({
                             authoredFontSize * PT_TO_PX * (scale / PX_PER_IN),
                           fontStyle: baseFont.italic ? "italic" : "normal",
                           fontWeight: baseFont.bold ? 700 : 400,
-                          lineHeight: baseFont.lineHeight ?? 1.12,
+	                          lineHeight: baseFont.line_height ?? 1.12,
                           overflow: isSelected ? "visible" : "hidden",
                           padding: 0,
                           position: "relative",
@@ -232,8 +225,8 @@ function tableCellFont(
     color: cellFont.color ?? tableFont.color,
     bold: cellFont.bold ?? tableFont.bold ?? isHeader,
     italic: cellFont.italic ?? tableFont.italic,
-    lineHeight: cellFont.lineHeight ?? tableFont.lineHeight ?? 1.12,
-    letterSpacing: cellFont.letterSpacing ?? tableFont.letterSpacing,
+    line_height: cellFont.line_height ?? tableFont.lineHeight ?? 1.12,
+    letter_spacing: cellFont.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont.ellipsis ?? tableFont.ellipsis,
   };

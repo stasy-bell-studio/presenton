@@ -4,6 +4,8 @@ import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
+  setTableCellText,
+  tableCellText,
   tableRowsAsStrings,
 } from "../lib/element-model";
 import type { Font, TableCell } from "../lib/slide-schema";
@@ -39,7 +41,7 @@ export function TableInlineEditor({
   );
   const tableFont = elementFont(element);
   const isHeader = rowIndex === 0;
-  const cell = rows[rowIndex]?.[colIndex] ?? { text: "" };
+  const cell = rows[rowIndex]?.[colIndex] ?? { runs: [] };
   const font = tableCellFont(cell, tableFont, isHeader);
   const cellWidth = (box.w * scale) / columnCount;
   const cellHeight = (box.h * scale) / rowCount;
@@ -49,14 +51,14 @@ export function TableInlineEditor({
   const paddingY = Math.max(3, 0.04 * scale);
 
   const updateCellText = (text: string) => {
-    const nextCell = { ...cell, text };
+    const nextCell = setTableCellText(cell, text);
     if (isHeader) {
       onChange(index, {
         ...element,
         columns: Array.from({ length: columnCount }, (_, nextColIndex) =>
-          nextColIndex === colIndex
-            ? nextCell
-            : element.columns[nextColIndex] ?? { text: "" },
+            nextColIndex === colIndex
+              ? nextCell
+              : element.columns[nextColIndex] ?? { runs: [] },
         ),
       });
       return;
@@ -69,7 +71,7 @@ export function TableInlineEditor({
           ? Array.from({ length: columnCount }, (_, nextColIndex) =>
               nextColIndex === colIndex
                 ? nextCell
-                : row[nextColIndex] ?? { text: "" },
+                : row[nextColIndex] ?? { runs: [] },
             )
           : row,
       ),
@@ -80,7 +82,7 @@ export function TableInlineEditor({
     <>
       <textarea
         autoFocus
-        value={cell.text ?? ""}
+        value={tableCellText(cell)}
         onChange={(event) => updateCellText(event.target.value)}
         onBlur={onClose}
         onKeyDown={(event) => {
@@ -102,7 +104,7 @@ export function TableInlineEditor({
           height: cellHeight,
           padding: `${paddingY}px ${paddingX}px`,
           background: withHash(
-            cell.fill?.color ?? (isHeader ? "0B1F3A" : "FFFFFF"),
+            cell.color?.color ?? (isHeader ? "0B1F3A" : "FFFFFF"),
           ),
           color: withHash(font.color ?? tableFont.color),
           fontFamily: `${font.family ?? tableFont.family}, Helvetica, sans-serif`,
@@ -110,7 +112,7 @@ export function TableInlineEditor({
             (font.size ?? tableFont.size) * PT_TO_PX * (scale / PX_PER_IN),
           fontStyle: font.italic ? "italic" : "normal",
           fontWeight: font.bold ? 700 : 400,
-          lineHeight: font.lineHeight ?? 1.12,
+          lineHeight: font.line_height ?? 1.12,
           textAlign: colIndex === 0 ? "left" : "center",
         }}
       />
@@ -153,8 +155,8 @@ function tableCellFont(
     color: cellFont.color ?? tableFont.color,
     bold: cellFont.bold ?? tableFont.bold ?? isHeader,
     italic: cellFont.italic ?? tableFont.italic,
-    lineHeight: cellFont.lineHeight ?? tableFont.lineHeight ?? 1.12,
-    letterSpacing: cellFont.letterSpacing ?? tableFont.letterSpacing,
+    line_height: cellFont.line_height ?? tableFont.lineHeight ?? 1.12,
+    letter_spacing: cellFont.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont.ellipsis ?? tableFont.ellipsis,
   };

@@ -25,8 +25,8 @@ export function elementBoxStyle(
     transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
     transformOrigin: "top left",
     boxShadow: element.shadow
-      ? `${(element.shadow.offsetX ?? 0) * scale}px ${
-          (element.shadow.offsetY ?? 0) * scale
+      ? `${(element.shadow.offset_x ?? 0) * scale}px ${
+          (element.shadow.offset_y ?? 0) * scale
         }px ${(element.shadow.blur ?? 0) * scale}px rgba(${hexToRgb(
           element.shadow.color ?? "000000",
         )}, ${element.shadow.opacity ?? 0.25})`

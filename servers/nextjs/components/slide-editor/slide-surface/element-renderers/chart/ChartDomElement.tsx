@@ -171,7 +171,7 @@ const ChartCanvas = memo(function ChartCanvas({
         ...style,
         overflow: "hidden",
         padding:
-          element.chartType === "pie" || element.chartType === "donut"
+          element.chart_type === "pie" || element.chart_type === "donut"
             ? 0
             : 4 * (scale / PX_PER_IN),
       }}
@@ -195,17 +195,17 @@ function buildChartConfig(
   }>,
   title: string,
 ): ChartRenderConfig {
-    const isArea = element.chartType === "area";
-    const isPie = element.chartType === "pie";
-    const isDonut = element.chartType === "donut";
+    const isArea = element.chart_type === "area";
+    const isPie = element.chart_type === "pie";
+    const isDonut = element.chart_type === "donut";
     const isCircular = isPie || isDonut;
-    const showDataLabels = element.showValues ?? element.dataLabels ?? false;
+    const showDataLabels = element.data_labels ?? element.data_labels ?? false;
     const chartType: SupportedChartJsType =
-      element.chartType === "donut"
+      element.chart_type === "donut"
         ? "doughnut"
         : isPie
           ? "pie"
-          : element.chartType === "line" || isArea
+          : element.chart_type === "line" || isArea
             ? "line"
             : "bar";
     const pieDataset = resolvedDatasets[0] ?? {
@@ -241,13 +241,13 @@ function buildChartConfig(
                     )
                   : color,
               borderColor: color,
-              borderRadius: element.chartType === "bar" ? 4 : 0,
-              borderWidth: element.chartType === "line" || isArea ? 2 : 1,
+              borderRadius: element.chart_type === "bar" ? 4 : 0,
+              borderWidth: element.chart_type === "line" || isArea ? 2 : 1,
               fill: isArea ? index === 0 ? "origin" : false : false,
               pointBackgroundColor: color,
               pointBorderColor: "#ffffff",
-              pointRadius: element.chartType === "line" || isArea ? 3 : 0,
-              tension: element.chartType === "line" || isArea ? 0.28 : 0,
+              pointRadius: element.chart_type === "line" || isArea ? 3 : 0,
+              tension: element.chart_type === "line" || isArea ? 0.28 : 0,
             };
           })
     ) as ChartDataset<SupportedChartJsType, number[]>[];
@@ -268,14 +268,14 @@ function buildChartConfig(
             position: "right",
             labels: {
               boxWidth: 8,
-              color: withHash(element.labelColor ?? "6A7894"),
+              color: withHash(element.data_labels_color ?? "6A7894"),
               font: { family: "Arial, Helvetica, sans-serif", size: 10 },
             },
           },
           title: {
             display: Boolean(title),
             align: "start",
-            color: withHash(element.labelColor ?? "6A7894"),
+            color: withHash(element.data_labels_color ?? "6A7894"),
             font: {
               family: "Arial, Helvetica, sans-serif",
               size: 12,
@@ -287,11 +287,11 @@ function buildChartConfig(
           tooltip: { enabled: false },
           "slide-editor-chart-value-labels": {
             enabled: showDataLabels && !isCircular,
-            color: withHash(element.labelColor ?? "6A7894"),
+            color: withHash(element.data_labels_color ?? "6A7894"),
           },
           "slide-editor-chart-donut-center-label": {
             enabled: isDonut,
-            color: withHash(element.labelColor ?? "172033"),
+            color: withHash(element.data_labels_color ?? "172033"),
             value: centerDonutValue(pieDataset.values),
           },
         } as NonNullable<ChartRenderConfig["options"]>["plugins"],
@@ -302,36 +302,36 @@ function buildChartConfig(
           ? undefined
           : {
               x: {
-                display: element.xAxis ?? true,
-                border: { color: withHash(element.axisColor ?? "9AA7BD") },
+                display: element.x_axis ?? true,
+                border: { color: withHash(element.axis_color ?? "9AA7BD") },
                 grid: { display: false },
                 title: {
-                  display: Boolean(element.xAxisTitle),
-                  text: element.xAxisTitle ?? "",
-                  color: withHash(element.labelColor ?? "6A7894"),
+                  display: Boolean(element.x_axis_title),
+                  text: element.x_axis_title ?? "",
+                  color: withHash(element.data_labels_color ?? "6A7894"),
                 },
                 ticks: {
-                  color: withHash(element.labelColor ?? "6A7894"),
+                  color: withHash(element.data_labels_color ?? "6A7894"),
                   font: { family: "Arial, Helvetica, sans-serif", size: 10 },
                   maxRotation: 0,
                 },
               },
               y: {
-                display: element.yAxis ?? true,
+                display: element.y_axis ?? true,
                 beginAtZero: true,
-                border: { color: withHash(element.axisColor ?? "9AA7BD") },
+                border: { color: withHash(element.axis_color ?? "9AA7BD") },
                 grid: {
                   display: element.grid ?? true,
-                  color: `${withHash(element.axisColor ?? "9AA7BD")}55`,
+                  color: `${withHash(element.axis_color ?? "9AA7BD")}55`,
                   tickBorderDash: [3, 3],
                 },
                 title: {
-                  display: Boolean(element.yAxisTitle),
-                  text: element.yAxisTitle ?? "",
-                  color: withHash(element.labelColor ?? "6A7894"),
+                  display: Boolean(element.y_axis_title),
+                  text: element.y_axis_title ?? "",
+                  color: withHash(element.data_labels_color ?? "6A7894"),
                 },
                 ticks: {
-                  color: withHash(element.labelColor ?? "6A7894"),
+                  color: withHash(element.data_labels_color ?? "6A7894"),
                   font: { family: "Arial, Helvetica, sans-serif", size: 10 },
                 },
               },

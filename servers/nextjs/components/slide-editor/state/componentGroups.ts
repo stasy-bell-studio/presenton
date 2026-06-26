@@ -8,8 +8,8 @@ import { clamp } from "../editorUtils";
 import { elementBox, moveElement } from "../lib/element-model";
 
 export type ComponentRun = {
-  componentId: string;
-  componentInstanceId?: string;
+  component_id: string;
+  component_instance_id?: string;
   start: number;
   end: number;
   indexes: number[];
@@ -20,16 +20,16 @@ export function getComponentRun(
   index: number,
 ): ComponentRun | null {
   const target = elements[index];
-  const componentId = target?.componentId;
+  const componentId = target?.component_id;
   if (!componentId) return null;
-  const componentInstanceId = target.componentInstanceId;
+  const componentInstanceId = target.component_instance_id;
 
   const belongsToRun = (element: SlideElement | undefined) =>
     !!element &&
-    element.componentId === componentId &&
+    element.component_id === componentId &&
     (componentInstanceId
-      ? element.componentInstanceId === componentInstanceId
-      : !element.componentInstanceId);
+      ? element.component_instance_id === componentInstanceId
+      : !element.component_instance_id);
 
   let start = index;
   while (start > 0 && belongsToRun(elements[start - 1])) start -= 1;
@@ -40,8 +40,8 @@ export function getComponentRun(
   }
 
   return {
-    componentId,
-    componentInstanceId: componentInstanceId ?? undefined,
+    component_id: componentId,
+    component_instance_id: componentInstanceId ?? undefined,
     start,
     end,
     indexes: Array.from(
@@ -84,7 +84,7 @@ function componentRunsFor(elements: SlideElement[], componentId: string) {
   const runs: ComponentRun[] = [];
   let index = 0;
   while (index < elements.length) {
-    if (elements[index]?.componentId !== componentId) {
+    if (elements[index]?.component_id !== componentId) {
       index += 1;
       continue;
     }
@@ -93,7 +93,7 @@ function componentRunsFor(elements: SlideElement[], componentId: string) {
       index += 1;
       continue;
     }
-    if (run.componentId === componentId) runs.push(run);
+    if (run.component_id === componentId) runs.push(run);
     index = run.end + 1;
   }
   return runs;

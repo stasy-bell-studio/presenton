@@ -42,10 +42,10 @@ export function BulletsDomElement({
               ...elementBoxStyle(element, scale),
               ...fontStyle(
                 {
-                  font: {
-                    ...(element.font ?? {}),
-                    lineHeight: element.font?.lineHeight ?? 1.3,
-                  },
+	                  font: {
+	                    ...(element.font ?? {}),
+	                    line_height: element.font?.line_height ?? 1.3,
+	                  },
                 },
                 scale,
               ),

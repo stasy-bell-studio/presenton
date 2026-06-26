@@ -36,7 +36,7 @@ export function InfographicElement({
       {...events}
     >
       <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
-      {element.infographicType === "progress_bar" ? (
+      {element.infographic_type === "progress_bar" ? (
         <ProgressBarParts element={element} width={width} height={height} />
       ) : (
         <GaugeParts element={element} width={width} height={height} />
@@ -65,8 +65,8 @@ function ProgressBarParts({
 }) {
   const progress = valueProgress(element);
   const radius = Math.min(height / 2, 8);
-  const baseColor = element.baseColor ?? GAUGE_BACKGROUND;
-  const highlightColor = element.highlightColor ?? GAUGE_FOREGROUND;
+  const baseColor = element.base_color ?? GAUGE_BACKGROUND;
+  const highlightColor = element.highlight_color ?? GAUGE_FOREGROUND;
 
   return (
     <>
@@ -107,8 +107,8 @@ function GaugeParts({
   const valueText = String(Math.round(element.value));
   const start = pointOnCircle(centerX, centerY, middleRadius, 180);
   const end = pointOnCircle(centerX, centerY, middleRadius, 180 + valueAngle);
-  const baseColor = element.baseColor ?? GAUGE_BACKGROUND;
-  const highlightColor = element.highlightColor ?? GAUGE_FOREGROUND;
+  const baseColor = element.base_color ?? GAUGE_BACKGROUND;
+  const highlightColor = element.highlight_color ?? GAUGE_FOREGROUND;
 
   return (
     <>
@@ -176,9 +176,9 @@ function GaugeParts({
 }
 
 function valueProgress(element: InfographicEl) {
-  const range = element.maxValue - element.minValue;
+  const range = element.max_value - element.min_value;
   if (!Number.isFinite(range) || range === 0) return 0;
-  return clamp01((element.value - element.minValue) / range);
+  return clamp01((element.value - element.min_value) / range);
 }
 
 function clamp01(value: number) {

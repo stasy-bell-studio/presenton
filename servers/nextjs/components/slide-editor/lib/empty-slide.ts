@@ -2,17 +2,17 @@ import type { Slide } from "./slide-schema";
 
 export function createEmptySlide({
   background = "#FFFFFF",
-  backgroundRole,
+  background_role,
   title = "Blank Slide",
 }: {
   background?: string;
-  backgroundRole?: Slide["backgroundRole"];
+  background_role?: Slide["background_role"];
   title?: string;
 } = {}): Slide {
   return {
     title,
     background,
-    backgroundRole,
+    background_role,
     elements: [
       {
         type: "rectangle",

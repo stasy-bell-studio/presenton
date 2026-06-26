@@ -100,8 +100,8 @@ function SlideImagePicture({
   const fit = element.fit ?? "contain";
   const naturalRatio = image.width / image.height || 1;
   const boxRatio = width / height || 1;
-  const focusX = clampPercent(element.focusX ?? 50) / 100;
-  const focusY = clampPercent(element.focusY ?? 50) / 100;
+  const focus_x = clampPercent(element.focus_x ?? 50) / 100;
+  const focus_y = clampPercent(element.focus_y ?? 50) / 100;
 
   let drawW = width;
   let drawH = height;
@@ -110,23 +110,23 @@ function SlideImagePicture({
   if (fit === "contain") {
     if (naturalRatio > boxRatio) {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) * focusY;
+      offsetY = (height - drawH) * focus_y;
     } else {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) * focusX;
+      offsetX = (width - drawW) * focus_x;
     }
   } else if (fit === "cover") {
     if (naturalRatio > boxRatio) {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) * focusX;
+      offsetX = (width - drawW) * focus_x;
     } else {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) * focusY;
+      offsetY = (height - drawH) * focus_y;
     }
   }
 
-  const flipH = element.flipH ? -1 : 1;
-  const flipV = element.flipV ? -1 : 1;
+  const flipH = element.flip_h ? -1 : 1;
+  const flipV = element.flip_v ? -1 : 1;
 
   return (
     <Group
@@ -137,8 +137,8 @@ function SlideImagePicture({
     >
       <KonvaImage
         image={image}
-        x={element.flipH ? width - offsetX : offsetX}
-        y={element.flipV ? height - offsetY : offsetY}
+        x={element.flip_h ? width - offsetX : offsetX}
+        y={element.flip_v ? height - offsetY : offsetY}
         width={drawW}
         height={drawH}
         scaleX={flipH}

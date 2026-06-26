@@ -6,11 +6,11 @@ import type {
 import { withHash } from "../../editorUtils";
 
 export function konvaCornerRadius(
-  element: { borderRadius?: CornerRadius | null },
+  element: { border_radius?: CornerRadius | null },
   scale: number,
 ) {
-  if (element.borderRadius) {
-    const r = element.borderRadius;
+  if (element.border_radius) {
+    const r = element.border_radius;
     return [
       r.tl * scale,
       r.tr * scale,
@@ -27,8 +27,8 @@ export function shadowProps(shadow?: Shadow | null, scale = 1) {
     shadowColor: withHash(shadow.color ?? "000000"),
     shadowBlur: (shadow.blur ?? 0) * scale,
     shadowOpacity: shadow.opacity ?? 0.25,
-    shadowOffsetX: (shadow.offsetX ?? 0) * scale,
-    shadowOffsetY: (shadow.offsetY ?? 0) * scale,
+    shadowOffsetX: (shadow.offset_x ?? 0) * scale,
+    shadowOffsetY: (shadow.offset_y ?? 0) * scale,
   };
 }
 

@@ -50,6 +50,21 @@ type ComponentPress = {
   point: PressPoint;
   timer: ReturnType<typeof setTimeout>;
 };
+type DragGhostItem = {
+  element: SlideElement;
+  key: string;
+};
+type DragGhostState = {
+  bounds: Bounds;
+  items: DragGhostItem[];
+  origin: {
+    ghostX: number;
+    ghostY: number;
+    nodeX: number;
+    nodeY: number;
+  };
+  rootIndexes: number[];
+};
 type ElementLayerProps = {
   editingBulletsIndex?: number | null;
   editingChartIndex?: number | null;
@@ -123,6 +138,7 @@ const SELECTION_VERTICAL_SIDE_ANCHORS = new Set([
 const SELECTION_CORNER_HANDLE_SIZE = 18;
 const SELECTION_SIDE_HANDLE_THICKNESS = 9;
 const SELECTION_SIDE_HANDLE_LENGTH = 30;
+const DRAG_GHOST_CACHE_PIXEL_RATIO = 1;
 
 function hashKey(value: string) {
   let hash = 0;
@@ -134,10 +150,10 @@ function hashKey(value: string) {
 
 function slideElementKey(element: SlideElement) {
   const explicitKey =
-    element.componentInstanceId ??
+    element.component_instance_id ??
     element.name ??
-    element.componentSlot ??
-    element.componentId;
+    element.component_slot ??
+    element.component_id;
   return explicitKey ?? `${element.type}-${hashKey(JSON.stringify(element))}`;
 }
 
@@ -262,12 +278,137 @@ function useElementLayerContent({
     path: ElementPath;
     preview: SurfaceInteractionPreview;
   } | null>(null);
+  const dragGhostRef = useRef<Konva.Group | null>(null);
+  const dragGhostCacheFrameRef = useRef<number | null>(null);
+  const dragGhostStateRef = useRef<DragGhostState | null>(null);
+  const [dragGhost, setDragGhost] = useState<DragGhostState | null>(null);
   const surfaceInteractionTargetRef = useRef<SurfaceInteractionTarget>(null);
   const lastClickRef = useRef<{ path: ElementPath; ts: number } | null>(null);
   const suppressSelectRef = useRef<Set<number> | null>(null);
   const suppressSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+
+  const clearDragGhostCache = () => {
+    if (
+      dragGhostCacheFrameRef.current !== null &&
+      typeof window !== "undefined"
+    ) {
+      window.cancelAnimationFrame(dragGhostCacheFrameRef.current);
+      dragGhostCacheFrameRef.current = null;
+    }
+    dragGhostRef.current?.clearCache();
+    dragGhostRef.current?.getLayer()?.batchDraw();
+  };
+
+  const setActiveDragGhost = (next: DragGhostState | null) => {
+    dragGhostStateRef.current = next;
+    setDragGhost(next);
+  };
+
+  const clearDragGhost = () => {
+    clearDragGhostCache();
+    setActiveDragGhost(null);
+  };
+
+  const buildDragGhost = (index: number): DragGhostState | null => {
+    const rootIndexes =
+      selectedIndexes.includes(index) && selectedIndexes.length > 0
+        ? selectedIndexes
+        : [index];
+    const layoutRootIndexes = rootIndexes.filter((rootIndex) => {
+      const root = slide.elements[rootIndex];
+      return root ? isLayoutElement(root) : false;
+    });
+    if (layoutRootIndexes.length === 0) return null;
+
+    const bounds = boundsForRootIndexes(
+      slide.elements,
+      layoutRootIndexes,
+      scale,
+    );
+    if (!bounds) return null;
+
+    const rootIndexSet = new Set(layoutRootIndexes);
+    const offsetX = bounds.x / scale;
+    const offsetY = bounds.y / scale;
+    const items = resolvedLayoutItems.flatMap((item): DragGhostItem[] => {
+      if (!rootIndexSet.has(item.rootIndex)) return [];
+      const itemBox = elementBox(item.element);
+      return [
+        {
+          key: item.path,
+          element: resizeElement(item.element, {
+            x: itemBox.x - offsetX,
+            y: itemBox.y - offsetY,
+          }),
+        },
+      ];
+    });
+
+    if (items.length === 0) return null;
+    const node = nodeRefs.current[index];
+
+    return {
+      bounds,
+      items,
+      origin: {
+        ghostX: bounds.x,
+        ghostY: bounds.y,
+        nodeX: node?.x() ?? bounds.x,
+        nodeY: node?.y() ?? bounds.y,
+      },
+      rootIndexes: layoutRootIndexes,
+    };
+  };
+
+  const startDragGhost = (index: number) => {
+    clearDragGhost();
+    setActiveDragGhost(buildDragGhost(index));
+  };
+
+  const moveDragGhost = (node: Konva.Node) => {
+    const state = dragGhostStateRef.current;
+    const ghost = dragGhostRef.current;
+    if (!state || !ghost) return;
+    const dx = node.x() - state.origin.nodeX;
+    const dy = node.y() - state.origin.nodeY;
+    ghost.position({
+      x: state.origin.ghostX + dx,
+      y: state.origin.ghostY + dy,
+    });
+    ghost.getLayer()?.batchDraw();
+  };
+
+  useEffect(() => {
+    if (!dragGhost) {
+      clearDragGhostCache();
+      return undefined;
+    }
+
+    const cacheGhost = () => {
+      const ghost = dragGhostRef.current;
+      if (!ghost) return;
+      try {
+        ghost.cache({ pixelRatio: DRAG_GHOST_CACHE_PIXEL_RATIO });
+      } catch {
+        ghost.clearCache();
+      }
+      ghost.getLayer()?.batchDraw();
+    };
+
+    if (typeof window === "undefined") {
+      cacheGhost();
+      return clearDragGhostCache;
+    }
+
+    dragGhostCacheFrameRef.current = window.requestAnimationFrame(() => {
+      dragGhostCacheFrameRef.current = null;
+      cacheGhost();
+    });
+
+    return clearDragGhostCache;
+  }, [dragGhost]);
 
   const eventPoint = (
     event: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
@@ -299,6 +440,8 @@ function useElementLayerContent({
       if (chartOverlayFrameRef.current != null) {
         cancelAnimationFrame(chartOverlayFrameRef.current);
       }
+      clearDragGhostCache();
+      dragGhostStateRef.current = null;
     },
     [onSurfaceInteractionChange],
   );
@@ -566,8 +709,10 @@ function useElementLayerContent({
       const target = interactionTargetWithPreview(index, path, el, event.target);
       setSurfaceInteractionTarget(target);
       startGroupDrag(index);
+      startDragGhost(index);
     },
     onDragMove: (event: Konva.KonvaEventObject<DragEvent>) => {
+      moveDragGhost(event.target);
       moveGroupDrag(index, event);
       setSurfaceInteractionTarget(
         interactionTargetWithPreview(index, path, el, event.target),
@@ -575,6 +720,7 @@ function useElementLayerContent({
     },
     onDragEnd: (event: Konva.KonvaEventObject<DragEvent>) => {
       if (endGroupDrag(index, event)) {
+        clearDragGhost();
         setSurfaceInteractionTarget(null);
         return;
       }
@@ -589,6 +735,7 @@ function useElementLayerContent({
       });
       if (path === rootPath(index)) onChange?.(index, next);
       else onChangeAtPath?.(path, next);
+      clearDragGhost();
       setSurfaceInteractionTarget(null);
       if (el.type === "chart") {
         window.requestAnimationFrame(clearChartOverlayPreview);
@@ -630,10 +777,10 @@ function useElementLayerContent({
         nested && (transformed.type === "text" || transformed.type === "text-list")
           ? ({
               ...transformed,
-              layout: {
-                ...(transformed.layout ?? {}),
-                alignSelf: transformed.layout?.alignSelf ?? "flex-start",
-              },
+	              layout: {
+	                ...(transformed.layout ?? {}),
+	                align_self: transformed.layout?.align_self ?? "flex-start",
+	              },
             } as SlideElement)
           : transformed;
       if (path === rootPath(index)) onChange?.(index, next);
@@ -728,6 +875,10 @@ function useElementLayerContent({
     renderMode: "canvas" | "proxy",
     path: ElementPath,
   ) => (shouldForceCanvasForPath(path) ? "canvas" : renderMode);
+  const dragGhostRootIndexes = useMemo(
+    () => new Set(dragGhost?.rootIndexes ?? []),
+    [dragGhost],
+  );
 
   return (
     <>
@@ -750,6 +901,7 @@ function useElementLayerContent({
             bulletsRenderMode={elementBulletsRenderMode}
             chartRenderMode={elementChartRenderMode}
             forceCanvasRenderForPath={shouldForceCanvasForPath}
+            hidden={dragGhostRootIndexes.has(index)}
             index={index}
             scale={scale}
             tableRenderMode={elementTableRenderMode}
@@ -805,7 +957,31 @@ function useElementLayerContent({
           />
         );
       })}
-      {overflowingIndices
+      {dragGhost ? (
+        <Group
+          ref={dragGhostRef}
+          x={dragGhost.bounds.x}
+          y={dragGhost.bounds.y}
+          listening={false}
+        >
+          {dragGhost.items.map((item) => (
+            <KonvaElement
+              key={`drag-ghost-${item.key}`}
+              element={item.element}
+              bulletsRenderMode="canvas"
+              chartRenderMode="canvas"
+              index={-1}
+              scale={scale}
+              selected={false}
+              setRef={() => undefined}
+              tableRenderMode="canvas"
+              textRenderMode="canvas"
+              events={passiveEvents}
+            />
+          ))}
+        </Group>
+      ) : null}
+      {!dragGhost && overflowingIndices
         ? slide.elements.map((el, index) => {
             if (!overflowingIndices.has(index)) return null;
             const box = elementBox(el);
@@ -857,7 +1033,7 @@ function useElementLayerContent({
             );
           })
         : null}
-      {overflowingIndices && hoveredOverflow != null
+      {!dragGhost && overflowingIndices && hoveredOverflow != null
         ? (() => {
             const el = slide.elements[hoveredOverflow];
             if (!el) return null;
@@ -908,7 +1084,7 @@ function useElementLayerContent({
             );
           })()
         : null}
-      {interactive && componentOutlineBounds ? (
+      {interactive && !dragGhost && componentOutlineBounds ? (
         <Rect
           x={componentOutlineBounds.x}
           y={componentOutlineBounds.y}
@@ -922,6 +1098,7 @@ function useElementLayerContent({
         />
       ) : null}
       {interactive &&
+      !dragGhost &&
       !selectedIsComponentContainer &&
       (selectedIndexes.length > 0 || selectedIsNested) ? (
         <Transformer
@@ -939,7 +1116,7 @@ function useElementLayerContent({
           keepRatio={false}
         />
       ) : null}
-      {interactive && selectedBounds && onDelete ? (
+      {interactive && !dragGhost && selectedBounds && onDelete ? (
         <DeleteSelectionButton
           height={height}
           onDelete={onDelete}
@@ -947,7 +1124,7 @@ function useElementLayerContent({
           width={width}
         />
       ) : null}
-      {interactive && normalizedSelectionBox ? (
+      {interactive && !dragGhost && normalizedSelectionBox ? (
         <Rect
           x={normalizedSelectionBox.x}
           y={normalizedSelectionBox.y}
@@ -1004,6 +1181,7 @@ function LayoutRootElement({
   element,
   events,
   forceCanvasRenderForPath,
+  hidden = false,
   index,
   nestedEvents,
   onSelectTableCell,
@@ -1020,6 +1198,7 @@ function LayoutRootElement({
   element: SlideElement;
   events: ElementEvents;
   forceCanvasRenderForPath: (path: ElementPath) => boolean;
+  hidden?: boolean;
   index: number;
   nestedEvents: (item: ResolvedLayoutItem) => ElementEvents;
   onSelectTableCell?: (
@@ -1050,7 +1229,7 @@ function LayoutRootElement({
   const y = box.y * scale;
   const width = box.w * scale;
   const height = box.h * scale;
-  const isComponentRoot = Boolean(element.componentId);
+  const isComponentRoot = Boolean(element.component_id);
   const hitTarget = (
     <Rect
       ref={setRef}
@@ -1067,7 +1246,7 @@ function LayoutRootElement({
 
   return (
     <>
-      {element.type === "container" && (element.fill || element.stroke) ? (
+      {!hidden && element.type === "container" && (element.fill || element.stroke) ? (
         <KonvaElement
           element={element}
           index={index}
@@ -1078,46 +1257,48 @@ function LayoutRootElement({
         />
       ) : null}
       {isComponentRoot ? null : hitTarget}
-      {resolved.map((item) => (
-        <ResolvedKonvaItem
-          key={item.path}
-          item={item}
-          bulletsRenderMode={
-            forceCanvasRenderForPath(item.sourcePath)
-              ? "canvas"
-              : bulletsRenderMode
-          }
-          chartRenderMode={
-            chartRenderMode
-          }
-          index={index}
-          scale={scale}
-          selected={selectedPath === item.sourcePath}
-          tableRenderMode={
-            forceCanvasRenderForPath(item.sourcePath)
-              ? "canvas"
-              : tableRenderMode
-          }
-          textRenderMode={
-            forceCanvasRenderForPath(item.sourcePath) ? "canvas" : textRenderMode
-          }
-          events={nestedEvents(item)}
-          setRef={(node) => setPathRef(item.sourcePath, node)}
-          onTableCellClick={
-            item.element.type === "table"
-              ? (rowIndex, colIndex) =>
-                  onSelectTableCell?.(
-                    index,
-                    rowIndex,
-                    colIndex,
-                    item.sourcePath,
-                  )
-              : undefined
-          }
-        />
-      ))}
+      {hidden
+        ? null
+        : resolved.map((item) => (
+            <ResolvedKonvaItem
+              key={item.path}
+              item={item}
+              bulletsRenderMode={
+                forceCanvasRenderForPath(item.sourcePath)
+                  ? "canvas"
+                  : bulletsRenderMode
+              }
+              chartRenderMode={chartRenderMode}
+              index={index}
+              scale={scale}
+              selected={selectedPath === item.sourcePath}
+              tableRenderMode={
+                forceCanvasRenderForPath(item.sourcePath)
+                  ? "canvas"
+                  : tableRenderMode
+              }
+              textRenderMode={
+                forceCanvasRenderForPath(item.sourcePath)
+                  ? "canvas"
+                  : textRenderMode
+              }
+              events={nestedEvents(item)}
+              setRef={(node) => setPathRef(item.sourcePath, node)}
+              onTableCellClick={
+                item.element.type === "table"
+                  ? (rowIndex, colIndex) =>
+                      onSelectTableCell?.(
+                        index,
+                        rowIndex,
+                        colIndex,
+                        item.sourcePath,
+                      )
+                  : undefined
+              }
+            />
+          ))}
       {isComponentRoot ? hitTarget : null}
-      {selected ? (
+      {!hidden && selected ? (
         <Rect
           x={x}
           y={y}

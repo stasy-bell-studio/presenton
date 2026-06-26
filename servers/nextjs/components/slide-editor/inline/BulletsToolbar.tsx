@@ -48,7 +48,7 @@ export function BulletsToolbar({
         step={0.05}
         value={font.lineHeight ?? 1.3}
         onChange={(event) =>
-          onChange(index, mergeFont(element, { lineHeight: Number(event.target.value) || font.lineHeight || 1.3 }))
+          onChange(index, mergeFont(element, { line_height: Number(event.target.value) || font.lineHeight || 1.3 }))
         }
         style={inlineStyles.numberInput}
       />

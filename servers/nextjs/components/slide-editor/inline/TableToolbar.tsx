@@ -57,7 +57,7 @@ export function TableToolbar({
       ? element.columns[activeColumn]
       : element.rows[activeRow - 1]?.[activeColumn];
   const activeCellFillColor =
-    activeCell?.fill?.color ?? (activeRow === 0 ? "0B1F3A" : "FFFFFF");
+    activeCell?.color?.color ?? (activeRow === 0 ? "0B1F3A" : "FFFFFF");
   const canAddRow = rows.length < 8;
   const canAddColumn = columnCount < 6;
   const canDeleteRow = rows.length > 2;
@@ -152,9 +152,9 @@ export function TableToolbar({
   };
   const updateActiveCellFillColor = (color: string) => {
     const patchCell = (cell: TableCell | undefined): TableCell => ({
-      ...(cell ?? { text: rows[activeRow]?.[activeColumn] ?? "" }),
-      fill: {
-        ...(cell?.fill ?? {}),
+      ...(cell ?? { runs: [] }),
+      color: {
+        ...(cell?.color ?? {}),
         color,
       },
     });
@@ -178,7 +178,7 @@ export function TableToolbar({
               (_, colIndex) =>
                 colIndex === activeColumn
                   ? patchCell(row[colIndex])
-                  : row[colIndex] ?? { text: "" },
+                  : row[colIndex] ?? { runs: [] },
             )
           : row,
       ),

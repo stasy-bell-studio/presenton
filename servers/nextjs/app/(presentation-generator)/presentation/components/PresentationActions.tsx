@@ -253,29 +253,29 @@ const makeTextElement = ({
     family: "Arial",
     size,
     color,
-    bold,
-    italic,
-    lineHeight,
-  },
-});
+	    bold,
+	    italic,
+	    line_height: lineHeight,
+	  },
+	});
 
 const makeBulletListElement = (): SlideElement => ({
   type: "text-list",
   position: { x: 0.95, y: 1.2 },
   size: { width: 5.4, height: 1.5 },
-  marker: "bullet",
-  items: [
-    { type: "text", text: "First point" },
-    { type: "text", text: "Second point" },
-    { type: "text", text: "Third point" },
-  ],
+	  marker: "bullet",
+	  items: [
+	    [{ text: "First point" }],
+	    [{ text: "Second point" }],
+	    [{ text: "Third point" }],
+	  ],
   font: {
     family: "Arial",
-    size: 18,
-    color: "101323",
-    lineHeight: 1.3,
-  },
-});
+	    size: 18,
+	    color: "101323",
+	    line_height: 1.3,
+	  },
+	});
 
 const createTextInsertElements = (kind?: string): SlideElement[] => {
   switch (kind) {
@@ -371,15 +371,15 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
     type: "chart",
     position: { x: 1.05, y: 1.05 },
     size: { width: isCircular ? 4.4 : 5.2, height: 2.6 },
-    chartType,
-    title: label,
-    color: "7F22FE",
-    axisColor: "D0D5DD",
-    labelColor: "475467",
-    showValues: chartType !== "area",
-    categories,
-    series: [{ name: label, values }],
-    seriesColors,
+	    chart_type: chartType,
+	    title: label,
+	    color: "7F22FE",
+	    axis_color: "D0D5DD",
+	    data_labels_color: "475467",
+	    data_labels: chartType !== "area",
+	    categories,
+	    series: [{ name: label, values }],
+	    series_colors: seriesColors,
     data: categories.map((category, index) => ({
       label: category,
       value: values[index] ?? 0,
@@ -417,10 +417,10 @@ const makeImageElement = ({
   type: "image",
   position: { x, y },
   size: { width, height },
-  fit: "cover",
-  name,
-  borderRadius: imageRadius,
-});
+	  fit: "cover",
+	  name,
+	  border_radius: imageRadius,
+	});
 
 const createImageInsertElements = (kind?: string): SlideElement[] => {
   switch (kind) {
@@ -507,7 +507,7 @@ const createElementInsertElements = (kind?: string): SlideElement[] => {
           size: { width: 2.6, height: 1.35 },
           fill: { color: "F4F3FF", opacity: 1 },
           stroke: { color: "7A5AF8", width: 1.5 },
-          borderRadius: { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 },
+	          border_radius: { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 },
         },
       ];
     case "ellipse":

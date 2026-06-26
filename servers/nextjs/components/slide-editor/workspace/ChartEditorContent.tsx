@@ -79,10 +79,10 @@ export function ChartEditorContent({
         <label className="mb-3 block text-[13px] font-medium text-[#191919]">
           Charts
         </label>
-        <ChartTypeSelect
-          value={chart.chartType}
-          onChange={(chartType) => onChange({ ...chart, chartType })}
-        />
+	<ChartTypeSelect
+	  value={chart.chart_type}
+	  onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+	/>
 
         <div className="mt-8 border-t border-[#ECECF1]">
           <div className="grid grid-cols-2">
@@ -275,53 +275,53 @@ function ChartCustomizePanel({
           }
         />
         <ToggleRow
-          checked={chart.showValues ?? chart.dataLabels ?? false}
-          label="Show values"
-          onChange={(checked) =>
-            onChange({ ...chart, showValues: checked, dataLabels: checked })
-          }
-        />
-        <ColorRow
-          label="Label color"
-          value={chart.labelColor ?? "6A7894"}
-          onChange={(labelColor) => onChange({ ...chart, labelColor })}
-        />
+	  checked={chart.data_labels ?? chart.data_labels ?? false}
+	  label="Show values"
+	  onChange={(checked) =>
+	    onChange({ ...chart, data_labels: checked })
+	  }
+	/>
+	<ColorRow
+	  label="Label color"
+	  value={chart.data_labels_color ?? "6A7894"}
+	  onChange={(labelColor) => onChange({ ...chart, data_labels_color: labelColor })}
+	/>
       </PanelSection>
 
       <PanelSection icon={<BarChart3 size={18} />} label="X Axis">
         <ToggleRow
-          checked={chart.xAxis ?? true}
-          label="Show X axis"
-          onChange={(xAxis) => onChange({ ...chart, xAxis })}
+	  checked={chart.x_axis ?? true}
+	  label="Show X axis"
+	  onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
         />
         <label className="block text-[12px] font-medium text-[#686873]">
           Axis title
         </label>
         <input
           className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-          value={chart.xAxisTitle ?? ""}
-          onChange={(event) =>
-            onChange({ ...chart, xAxisTitle: event.target.value || null })
-          }
-        />
+	  value={chart.x_axis_title ?? ""}
+	  onChange={(event) =>
+	    onChange({ ...chart, x_axis_title: event.target.value || null })
+	  }
+	/>
       </PanelSection>
 
       <PanelSection icon={<BarChart3 size={18} />} label="Y Axis">
         <ToggleRow
-          checked={chart.yAxis ?? true}
-          label="Show Y axis"
-          onChange={(yAxis) => onChange({ ...chart, yAxis })}
+	  checked={chart.y_axis ?? true}
+	  label="Show Y axis"
+	  onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
         />
         <label className="block text-[12px] font-medium text-[#686873]">
           Axis title
         </label>
         <input
           className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-          value={chart.yAxisTitle ?? ""}
-          onChange={(event) =>
-            onChange({ ...chart, yAxisTitle: event.target.value || null })
-          }
-        />
+	  value={chart.y_axis_title ?? ""}
+	  onChange={(event) =>
+	    onChange({ ...chart, y_axis_title: event.target.value || null })
+	  }
+	/>
       </PanelSection>
 
       <PanelSection icon={<Settings size={18} />} label="Settings">
@@ -335,9 +335,9 @@ function ChartCustomizePanel({
           value={chart.color ?? "D4A24C"}
           onChange={(color) =>
             onChange({
-              ...chart,
-              color,
-              seriesColors: [color, ...(chart.seriesColors ?? []).slice(1)],
+	      ...chart,
+	      color,
+	      series_colors: [color, ...(chart.series_colors ?? []).slice(1)],
               data: chartDataFromSeries(
                 safeCategoriesForChart(chart),
                 chart.series ?? [],
@@ -347,10 +347,10 @@ function ChartCustomizePanel({
           }
         />
         <ColorRow
-          label="Axis color"
-          value={chart.axisColor ?? "9AA7BD"}
-          onChange={(axisColor) => onChange({ ...chart, axisColor })}
-        />
+	  label="Axis color"
+	  value={chart.axis_color ?? "9AA7BD"}
+	  onChange={(axisColor) => onChange({ ...chart, axis_color: axisColor })}
+	/>
         <label className="block text-[12px] font-medium text-[#686873]">
           Opacity
         </label>
@@ -457,7 +457,7 @@ function ChartDataModal({
   const updateData = (
     nextCategories: string[],
     nextSeries: ChartSeries[],
-    nextSeriesColors = chart.seriesColors ?? [],
+    nextSeriesColors = chart.series_colors ?? [],
   ) => {
     const normalizedCategories = nextCategories
       .map((category, index) => category.trim() || `Item ${index + 1}`)
@@ -471,15 +471,15 @@ function ChartDataModal({
     const seriesColors = normalized.map(
       (_, index) =>
         nextSeriesColors[index] ??
-        chart.seriesColors?.[index] ??
+        chart.series_colors?.[index] ??
         DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
     );
 
     onChange({
-      ...chart,
-      categories: normalizedCategories,
-      series: normalized,
-      seriesColors,
+	    ...chart,
+	    categories: normalizedCategories,
+	    series: normalized,
+	    series_colors: seriesColors,
       data: chartDataFromSeries(
         normalizedCategories,
         normalized,
@@ -549,10 +549,10 @@ function ChartDataModal({
             <label className="mb-3 block text-base font-medium text-[#191919]">
               Charts
             </label>
-            <ChartTypeSelect
-              value={chart.chartType}
-              onChange={(chartType) => onChange({ ...chart, chartType })}
-            />
+	<ChartTypeSelect
+	  value={chart.chart_type}
+	  onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+	/>
             <div className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]">
               <div
                 className="pointer-events-none relative overflow-hidden"
@@ -577,12 +577,12 @@ function ChartDataModal({
               </PanelSection>
               <PanelSection icon={<BarChart3 size={19} />} label="X Axis">
                 <span className="text-sm text-[#777780]">
-                  {chart.xAxis ?? true ? "Visible" : "Hidden"}
+                  {chart.x_axis ?? true ? "Visible" : "Hidden"}
                 </span>
               </PanelSection>
               <PanelSection icon={<BarChart3 size={19} />} label="Y Axis">
                 <span className="text-sm text-[#777780]">
-                  {chart.yAxis ?? true ? "Visible" : "Hidden"}
+                  {chart.y_axis ?? true ? "Visible" : "Hidden"}
                 </span>
               </PanelSection>
               <PanelSection icon={<Settings size={19} />} label="Settings">
@@ -598,7 +598,7 @@ function ChartDataModal({
               categories={categories}
               chartPath={chartPath}
               series={series}
-              seriesColors={chart.seriesColors ?? []}
+              seriesColors={chart.series_colors ?? []}
               onUpdate={updateData}
             />
             <div className="mt-12 flex justify-center">
@@ -861,10 +861,10 @@ function clearChartData(chart: ChartElement): ChartElement {
   const series = [{ name: "Series 1", values: [0] }];
   const color = chart.color ?? DEFAULT_CHART_COLORS[0];
   return {
-    ...chart,
-    categories,
-    series,
-    seriesColors: [color],
+	    ...chart,
+	    categories,
+	    series,
+	    series_colors: [color],
     data: chartDataFromSeries(categories, series, color),
   };
 }

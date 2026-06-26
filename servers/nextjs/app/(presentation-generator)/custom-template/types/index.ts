@@ -123,7 +123,6 @@ export interface TemplateV2Element {
   size?: TemplateV2Size | null;
   fill?: Record<string, unknown> | null;
   stroke?: Record<string, unknown> | null;
-  borderRadius?: Record<string, unknown> | null;
   border_radius?: Record<string, unknown> | null;
   shadow?: Record<string, unknown> | null;
   padding?: Record<string, unknown> | null;
@@ -133,10 +132,10 @@ export interface TemplateV2Element {
   text?: string | null;
   data?: string | null;
   fit?: string | null;
-  flipH?: boolean | string | null;
-  flipV?: boolean | string | null;
   flip_h?: boolean | string | null;
   flip_v?: boolean | string | null;
+  focus_x?: number | string | null;
+  focus_y?: number | string | null;
   color?: string | null;
   child?: TemplateV2Element | null;
   children?: TemplateV2Element[] | null;

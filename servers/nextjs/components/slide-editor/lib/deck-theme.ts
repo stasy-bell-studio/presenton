@@ -180,7 +180,7 @@ export function applyDeckTheme(deck: Deck, nextTheme: DeckTheme): void {
   for (const slide of deck.slides) {
     slide.background = themedColor(
       slide.background,
-      slide.backgroundRole,
+      slide.background_role,
       nextTheme,
       colorMap,
     );
@@ -209,9 +209,9 @@ function applyElementTheme(
 
   if (element.type === "chart") {
     element.color = mapOptionalColor(element.color, colorMap);
-    element.axisColor = mapOptionalColor(element.axisColor, colorMap);
-    element.labelColor = mapOptionalColor(element.labelColor, colorMap);
-    element.seriesColors = element.seriesColors?.map((color) =>
+    element.axis_color = mapOptionalColor(element.axis_color, colorMap);
+    element.data_labels_color = mapOptionalColor(element.data_labels_color, colorMap);
+    element.series_colors = element.series_colors?.map((color) =>
       mapColor(color, colorMap),
     );
     element.data.forEach((datum) => {
@@ -260,9 +260,11 @@ function mapFont(
 }
 
 function mapTableCell(cell: TableCell, colorMap: Map<string, string>): void {
-  if (cell.fill) cell.fill.color = mapColor(cell.fill.color, colorMap);
-  if (cell.stroke) cell.stroke.color = mapColor(cell.stroke.color, colorMap);
+  if (cell.color) cell.color.color = mapColor(cell.color.color, colorMap);
   if (cell.font) mapFont(cell.font, colorMap);
+  cell.runs.forEach((run) => {
+    if (run.font) mapFont(run.font, colorMap);
+  });
 }
 
 function themedColor(

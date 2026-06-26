@@ -231,8 +231,8 @@ export const insertEmptySlideAtom = atom(null, (get, set) => {
   const slide = createEmptySlide({
     background:
       deck.theme?.background ?? currentSlide?.background ?? "#FFFFFF",
-    backgroundRole:
-      deck.theme?.background ? "background" : currentSlide?.backgroundRole,
+    background_role:
+      deck.theme?.background ? "background" : currentSlide?.background_role,
   });
 
   set(pushHistoryAtom, { tag: `insertEmptySlide:${insertAt}` });
@@ -344,7 +344,7 @@ export const insertElementsAtom = atom(
     set(deckAtom, (draft) => {
       const active = draft.slides[activeIdx];
       active.elements.push(...copies);
-      const componentId = copies[0]?.componentId;
+      const componentId = copies[0]?.component_id;
       if (componentId) arrangeRepeatableComponents(active, componentId);
     });
     const indexes = copies.map((_, offset) => startIndex + offset);
@@ -363,9 +363,9 @@ export const duplicateSelectedAtom = atom(null, (get, set) => {
   const selected = getElementAtPath(get(activeSlideAtom), selectedPath);
   if (!selected) return;
   const copy = cloneElement(selected);
-  delete copy.componentId;
-  delete copy.componentInstanceId;
-  delete copy.componentDescription;
+  delete copy.component_id;
+  delete copy.component_instance_id;
+  delete copy.component_description;
   const box = elementBox(selected);
   const moved = resizeElement(copy, {
     x: clamp(box.x + 0.2, 0, SLIDE_W - box.w),
@@ -418,7 +418,7 @@ export const deleteSelectedAtom = atom(null, (get, set) => {
   const affectedComponentIds = [
     ...new Set(
       indexes.flatMap((index) => {
-        const componentId = slide.elements[index]?.componentId;
+        const componentId = slide.elements[index]?.component_id;
         return componentId ? [componentId] : [];
       }),
     ),
@@ -464,7 +464,7 @@ export const deleteSelectedComponentRunAtom = atom(null, (get, set) => {
   set(deckAtom, (draft) => {
     const active = draft.slides[activeIdx];
     active.elements.splice(run.start, run.end - run.start + 1);
-    arrangeRepeatableComponents(active, run.componentId);
+    arrangeRepeatableComponents(active, run.component_id);
   });
 
   const nextCount = slide.elements.length - run.indexes.length;
@@ -520,12 +520,12 @@ function getMovedActiveIndex(active: number, from: number, to: number) {
 }
 
 function assignFreshComponentInstance(elements: SlideElement[]) {
-  const componentId = elements[0]?.componentId;
+  const componentId = elements[0]?.component_id;
   if (!componentId) return;
   const instanceId = `${componentId}:${Date.now().toString(36)}:${componentInstanceCounter++}`;
   for (const element of elements) {
-    if (element.componentId === componentId) {
-      element.componentInstanceId = instanceId;
+    if (element.component_id === componentId) {
+      element.component_instance_id = instanceId;
     }
   }
 }
@@ -533,13 +533,13 @@ function assignFreshComponentInstance(elements: SlideElement[]) {
 function refreshSlideComponentInstances(slide: Slide) {
   const remap = new Map<string, string>();
   for (const element of slide.elements) {
-    if (!element.componentId) continue;
-    const key = element.componentInstanceId ?? element.componentId;
+    if (!element.component_id) continue;
+    const key = element.component_instance_id ?? element.component_id;
     let next = remap.get(key);
     if (!next) {
-      next = `${element.componentId}:slide:${Date.now().toString(36)}:${slideInstanceCounter++}`;
+      next = `${element.component_id}:slide:${Date.now().toString(36)}:${slideInstanceCounter++}`;
       remap.set(key, next);
     }
-    element.componentInstanceId = next;
+    element.component_instance_id = next;
   }
 }

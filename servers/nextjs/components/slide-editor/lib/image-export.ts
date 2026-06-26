@@ -28,7 +28,7 @@ export function walkSlideElements(
 export function collectDeckImageSources(deck: Deck): string[] {
   const sources = new Set<string>();
   for (const slide of deck.slides) {
-    if (slide.backgroundImage?.data) sources.add(slide.backgroundImage.data);
+    if (slide.background_image?.data) sources.add(slide.background_image.data);
     walkSlideElements(slide.elements, (element) => {
       if (element.type === "image" && element.data) sources.add(element.data);
     });
@@ -72,10 +72,10 @@ export async function embedDeckImageData(deck: Deck): Promise<Deck> {
   const updates: Array<Promise<void>> = [];
 
   for (const slide of next.slides) {
-    if (slide.backgroundImage?.data) {
+    if (slide.background_image?.data) {
       updates.push(
-        resolveImageSourceForExport(slide.backgroundImage.data).then((data) => {
-          if (data && slide.backgroundImage) slide.backgroundImage.data = data;
+        resolveImageSourceForExport(slide.background_image.data).then((data) => {
+          if (data && slide.background_image) slide.background_image.data = data;
         }),
       );
     }

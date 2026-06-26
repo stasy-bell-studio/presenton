@@ -34,11 +34,11 @@ function layoutElementKey(element: TemplateV2Element) {
   const record = element as Record<string, unknown>;
   const explicitKey =
     readString(record.name) ??
-    readString(record.componentInstanceId) ??
     readString(record.component_instance_id) ??
-    readString(record.componentId) ??
+    readString(record.component_instance_id) ??
     readString(record.component_id) ??
-    readString(record.componentSlot) ??
+    readString(record.component_id) ??
+    readString(record.component_slot) ??
     readString(record.component_slot);
   return explicitKey ?? `${readString(record.type) ?? "element"}-${hashKey(JSON.stringify(element))}`;
 }
@@ -179,13 +179,11 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
   if (!src) return null;
   const color = readString(element.color);
   const resolvedSrc = resolveBackendAssetUrl(src);
-  const borderRadius = borderRadiusPx(
-    readRecord(element.borderRadius ?? element.border_radius),
-  );
+  const borderRadius = borderRadiusPx(readRecord(element.border_radius));
   const fit = imageFit(element.fit);
   const objectPosition = imageObjectPosition(element);
-  const flipH = readBoolean(element.flipH ?? element.flip_h);
-  const flipV = readBoolean(element.flipV ?? element.flip_v);
+  const flipH = readBoolean(element.flip_h);
+  const flipV = readBoolean(element.flip_v);
   const transform = imageFlipTransform(flipH, flipV);
 
   return (
@@ -567,14 +565,14 @@ function boxStyle(element: TemplateV2Element): React.CSSProperties {
   const fill = readRecord(element.fill);
   const stroke = readRecord(element.stroke);
   const shadow = readRecord(element.shadow);
-  const borderRadius = readRecord(element.borderRadius ?? element.border_radius);
+  const borderRadius = readRecord(element.border_radius);
   const fillColor = readString(fill.color);
   const strokeColor = readString(stroke.color);
   const strokeWidth = readNumber(stroke.width);
   const shadowOpacity = readNumber(shadow.opacity) ?? 0;
   const shadowColor = readString(shadow.color) ?? "#000000";
-  const offsetX = readNumber(shadow.offsetX ?? shadow.offset_x) ?? 0;
-  const offsetY = readNumber(shadow.offsetY ?? shadow.offset_y) ?? 0;
+  const offsetX = readNumber(shadow.offset_x ?? shadow.offset_x) ?? 0;
+  const offsetY = readNumber(shadow.offset_y ?? shadow.offset_y) ?? 0;
   const blur = readNumber(shadow.blur) ?? 0;
 
   return {
@@ -634,7 +632,7 @@ function fontStyle(font: TemplateV2Element["font"]): React.CSSProperties {
 
 function readLineHeight(font: TemplateV2Element["font"]) {
   const record = readRecord(font);
-  return readNumber(record.lineHeight ?? record.line_height);
+  return readNumber(record.line_height ?? record.line_height);
 }
 
 function paddingStyle(padding: Record<string, unknown>): React.CSSProperties {
@@ -692,10 +690,10 @@ function imageFit(value: unknown): React.CSSProperties["objectFit"] {
 function imageObjectPosition(
   element: TemplateV2Element,
 ): React.CSSProperties["objectPosition"] {
-  const focusX = clampPercent(readNumber(element.focusX ?? element.focus_x));
-  const focusY = clampPercent(readNumber(element.focusY ?? element.focus_y));
-  if (focusX == null && focusY == null) return undefined;
-  return `${focusX ?? 50}% ${focusY ?? 50}%`;
+  const focus_x = clampPercent(readNumber(element.focus_x));
+  const focus_y = clampPercent(readNumber(element.focus_y));
+  if (focus_x == null && focus_y == null) return undefined;
+  return `${focus_x ?? 50}% ${focus_y ?? 50}%`;
 }
 
 function clampPercent(value: number | null) {

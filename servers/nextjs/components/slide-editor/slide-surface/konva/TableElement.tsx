@@ -69,19 +69,21 @@ export function TableElement({
       {editing
         ? null
         : rows.map((row, rowIndex) =>
-            Array.from({ length: cols }).map((_, colIndex) => {
-              const isHeader = rowIndex === 0;
-              const cellStyle = rowCells[rowIndex]?.[colIndex];
-              const cellFill =
-                cellStyle?.fill?.color ?? (isHeader ? "0B1F3A" : "FFFFFF");
-              const cellBorder = cellStyle?.stroke?.color ?? "DDE5F0";
-              const cellFont = tableCellFont(cellStyle?.font, font, isHeader);
-              const renderedRuns = renderMarkdownTextRuns([
-                {
-                  text: row[colIndex] ?? "",
-                  font: cellFont,
-                },
-              ]);
+	            Array.from({ length: cols }).map((_, colIndex) => {
+	              const isHeader = rowIndex === 0;
+	              const cellStyle = rowCells[rowIndex]?.[colIndex];
+	              const cellFill =
+	                cellStyle?.color?.color ?? (isHeader ? "0B1F3A" : "FFFFFF");
+	              const cellBorder = "DDE5F0";
+	              const cellFont = tableCellFont(cellStyle?.font, font, isHeader);
+	              const renderedRuns = renderMarkdownTextRuns(
+	                cellStyle?.runs.length
+	                  ? cellStyle.runs.map((run) => ({
+	                      ...run,
+	                      font: run.font ?? cellFont,
+	                    }))
+	                  : [{ text: row[colIndex] ?? "", font: cellFont }],
+	              );
               const renderedText = renderedRuns.map((run) => run.text).join("");
               const cellFontSize =
                 (cellFont.size ?? font.size) * PT_TO_PX * (scale / PX_PER_IN);
@@ -96,17 +98,17 @@ export function TableElement({
                     height={rowH}
                     fill={
                       renderMode === "proxy"
-                        ? "rgba(255,255,255,0.01)"
-                        : colorWithOpacity(cellFill, cellStyle?.fill?.opacity)
+	                        ? "rgba(255,255,255,0.01)"
+	                        : colorWithOpacity(cellFill, cellStyle?.color?.opacity)
                     }
                     stroke={
-                      renderMode === "proxy"
-                        ? "rgba(255,255,255,0)"
-                        : colorWithOpacity(cellBorder, cellStyle?.stroke?.opacity)
-                    }
-                    strokeWidth={
-                      renderMode === "proxy" ? 0 : (cellStyle?.stroke?.width ?? 1)
-                    }
+	                      renderMode === "proxy"
+	                        ? "rgba(255,255,255,0)"
+	                        : colorWithOpacity(cellBorder)
+	                    }
+	                    strokeWidth={
+	                      renderMode === "proxy" ? 0 : 1
+	                    }
                     onClick={(event) => {
                       event.cancelBubble = true;
                       if (!events.onClick(event)) return;
@@ -132,7 +134,7 @@ export function TableElement({
                       }
                       align={colIndex === 0 ? "left" : "center"}
                       verticalAlign="middle"
-                      lineHeight={cellFont.lineHeight ?? 1.12}
+                      lineHeight={cellFont.line_height ?? 1.12}
                       listening={false}
                     />
                   ) : null}
@@ -155,8 +157,8 @@ function tableCellFont(
     color: cellFont?.color ?? tableFont.color,
     bold: cellFont?.bold ?? tableFont.bold ?? isHeader,
     italic: cellFont?.italic ?? tableFont.italic,
-    lineHeight: cellFont?.lineHeight ?? tableFont.lineHeight ?? 1.12,
-    letterSpacing: cellFont?.letterSpacing ?? tableFont.letterSpacing,
+    line_height: cellFont?.line_height ?? tableFont.lineHeight ?? 1.12,
+    letter_spacing: cellFont?.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont?.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont?.ellipsis ?? tableFont.ellipsis,
   };

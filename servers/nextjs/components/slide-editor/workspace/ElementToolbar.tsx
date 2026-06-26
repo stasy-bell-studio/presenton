@@ -106,7 +106,7 @@ const TOOLBAR_RENDERERS = {
 >;
 
 export function ElementToolbar(props: ElementToolbarProps) {
-  if (props.element.designVariables?.length) {
+  if (props.element.design_variables?.length) {
     return (
       <DesignVariablesToolbar
         element={props.element}

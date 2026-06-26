@@ -19,9 +19,8 @@ import { Loader2 } from "lucide-react";
 import { notify } from "@/components/ui/sonner";
 import {
   adaptTemplateV2LayoutToSlide,
-  applyGeneratedSlideContentToLayout,
-  extractTemplateV2ContentFromSlide,
   normalizeTemplateV2Slide,
+  serializeTemplateV2ContentFromSlide,
   serializeTemplateV2LayoutFromSlide,
   type TemplateV2Layout,
 } from "@/components/slide-editor/lib/template-v2-import";
@@ -376,7 +375,7 @@ function useTemplateV2KonvaSlideController({
     const serialized = JSON.stringify(activeSlide);
     if (serialized === lastSyncedSlideRef.current) return;
     lastSyncedSlideRef.current = serialized;
-    const nextContent = extractTemplateV2ContentFromSlide(
+    const nextContent = serializeTemplateV2ContentFromSlide(
       activeSlide,
       presentationSlide.content,
       TEMPLATE_V2_KONVA_SLIDE_CONTENT_KEY,
@@ -1018,31 +1017,27 @@ function buildKonvaSlide(
   layout: TemplateV2Layout,
   slide: any,
 ): KonvaSlideData | null {
-  const content =
-    slide.content && typeof slide.content === "object" ? slide.content : {};
   const storedSlide = readStoredKonvaSlide(slide.content);
   if (storedSlide) {
-    try {
-      const renderedLayout = applyGeneratedSlideContentToLayout(layout, content);
-      const designSlide = adaptTemplateV2LayoutToSlide(
-        renderedLayout,
-        slide.index ?? 0,
-      );
-      return mergeDesignVariablesIntoSlide(storedSlide, designSlide);
-    } catch (error) {
-      console.error("Could not hydrate template v2 design variables:", error);
-      return storedSlide;
-    }
+    return storedSlide;
   }
 
   try {
-    const renderedLayout = applyGeneratedSlideContentToLayout(layout, content);
-
-    return adaptTemplateV2LayoutToSlide(renderedLayout, slide.index ?? 0);
+    return adaptTemplateV2LayoutToSlide(
+      readSlideUiLayout(slide) ?? layout,
+      slide.index ?? 0,
+    );
   } catch (error) {
     console.error("Could not adapt template v2 slide for Konva:", error);
     return null;
   }
+}
+
+function readSlideUiLayout(slide: any): TemplateV2Layout | null {
+  const ui = slide?.ui;
+  return ui && typeof ui === "object" && !Array.isArray(ui)
+    ? (ui as TemplateV2Layout)
+    : null;
 }
 
 function readStoredKonvaSlide(content: unknown): KonvaSlideData | null {
@@ -1055,64 +1050,4 @@ function readStoredKonvaSlide(content: unknown): KonvaSlideData | null {
   ];
   const parsed = SlideSchema.safeParse(candidate);
   return parsed.success ? normalizeTemplateV2Slide(parsed.data) : null;
-}
-
-function mergeDesignVariablesIntoSlide(
-  slide: KonvaSlideData,
-  designSource: KonvaSlideData,
-): KonvaSlideData {
-  return {
-    ...slide,
-    elements: slide.elements.map((element, index) =>
-      mergeDesignVariablesIntoElement(element, designSource.elements[index]),
-    ),
-  };
-}
-
-function mergeDesignVariablesIntoElement(
-  element: SlideElement,
-  designSource: SlideElement | undefined,
-): SlideElement {
-  let next = designSource?.designVariables?.length
-    ? { ...element, designVariables: designSource.designVariables }
-    : element;
-
-  if (
-    "children" in next &&
-    Array.isArray(next.children) &&
-    designSource &&
-    "children" in designSource &&
-    Array.isArray(designSource.children)
-  ) {
-    next = {
-      ...next,
-      children: next.children.map((child, index) =>
-        mergeDesignVariablesIntoElement(child, designSource.children[index]),
-      ),
-    } as SlideElement;
-  }
-
-  if (
-    next.type === "container" &&
-    next.child &&
-    designSource?.type === "container" &&
-    designSource.child
-  ) {
-    next = {
-      ...next,
-      child: mergeDesignVariablesIntoElement(next.child, designSource.child),
-    };
-  }
-
-  if (
-    (next.type === "list-view" || next.type === "grid-view") &&
-    (designSource?.type === "list-view" || designSource?.type === "grid-view")
-  ) {
-    next = {
-      ...next,
-      item: mergeDesignVariablesIntoElement(next.item, designSource.item),
-    } as SlideElement;
-  }
-
-  return next;
 }

@@ -82,25 +82,25 @@ type LayoutTransform = {
 };
 
 type FlexLike = {
-  alignItems?: LayoutAlignment | null;
-  columnGap?: number | null;
+  align_items?: LayoutAlignment | null;
+  column_gap?: number | null;
   direction?: FlexDirection | null;
   gap?: number | null;
-  justifyContent?: LayoutAlignment | null;
+  justify_content?: LayoutAlignment | null;
   padding?: Padding | null;
-  rowGap?: number | null;
+  row_gap?: number | null;
   wrap?: boolean | null;
 };
 
 type GridLike = Pick<
   GridElement | GridViewElement,
-  | "alignItems"
-  | "columnGap"
+  | "align_items"
+  | "column_gap"
   | "columns"
   | "gap"
-  | "justifyItems"
+  | "justify_items"
   | "padding"
-  | "rowGap"
+  | "row_gap"
   | "rows"
 >;
 
@@ -364,11 +364,11 @@ function flexBoxes(
   const mainSize = direction === "row" ? box.w : box.h;
   const crossSize = direction === "row" ? box.h : box.w;
   const mainGap = direction === "row"
-    ? element.columnGap ?? element.gap ?? 0
-    : element.rowGap ?? element.gap ?? 0;
+    ? element.column_gap ?? element.gap ?? 0
+    : element.row_gap ?? element.gap ?? 0;
   const crossGap = direction === "row"
-    ? element.rowGap ?? element.gap ?? 0
-    : element.columnGap ?? element.gap ?? 0;
+    ? element.row_gap ?? element.gap ?? 0
+    : element.column_gap ?? element.gap ?? 0;
 
   const bases = children.map((child) =>
     flexBasis(child, direction, crossSize),
@@ -376,14 +376,14 @@ function flexBoxes(
 
   if (element.wrap) {
     return wrappedFlexBoxes({
-      alignItems: element.alignItems ?? "stretch",
+      alignItems: element.align_items ?? "stretch",
       box,
       bases,
       children,
       crossGap,
       crossSize,
       direction,
-      justifyContent: element.justifyContent ?? "flex-start",
+      justifyContent: element.justify_content ?? "flex-start",
       mainGap,
       mainSize,
     });
@@ -403,7 +403,7 @@ function flexBoxes(
     sizes = sizes.map((size, index) => size + (free * grows[index]) / growTotal);
   } else if (
     free > 0 &&
-    element.justifyContent === "stretch" &&
+    element.justify_content === "stretch" &&
     children.length > 0
   ) {
     sizes = sizes.map((size) => size + free / children.length);
@@ -421,7 +421,7 @@ function flexBoxes(
   const finalUsed =
     sizes.reduce((sum, size) => sum + size, 0) +
     mainGap * Math.max(0, children.length - 1);
-  let cursor = mainOffset(element.justifyContent ?? "flex-start", mainSize, finalUsed);
+  let cursor = mainOffset(element.justify_content ?? "flex-start", mainSize, finalUsed);
 
   return children.map((child, index) => {
     const main = clampMainSize(sizes[index], child, direction);
@@ -429,10 +429,10 @@ function flexBoxes(
       child,
       direction,
       crossSize,
-      element.alignItems ?? "stretch",
+      element.align_items ?? "stretch",
     );
     const crossOffset = alignmentOffset(
-      child.layout?.alignSelf ?? element.alignItems ?? "stretch",
+      child.layout?.align_self ?? element.align_items ?? "stretch",
       crossSize,
       cross,
     );
@@ -575,7 +575,7 @@ function wrappedFlexBoxes({
       const cross = childCrossSize(child, direction, lineCross, alignItems);
       const crossOffset =
         crossCursor +
-        alignmentOffset(child.layout?.alignSelf ?? alignItems, lineCross, cross);
+        alignmentOffset(child.layout?.align_self ?? alignItems, lineCross, cross);
       result[index] = flexPlacedBox(
         box,
         direction,
@@ -601,8 +601,8 @@ function gridBoxes(
   if (children.length === 0) return [];
 
   const columns = Math.max(1, Math.trunc(element.columns));
-  const columnGap = element.columnGap ?? element.gap ?? 0;
-  const rowGap = element.rowGap ?? element.gap ?? 0;
+  const columnGap = element.column_gap ?? element.gap ?? 0;
+  const rowGap = element.row_gap ?? element.gap ?? 0;
   const placements = placeGridChildren(children, columns, element.rows ?? null);
   const rows = Math.max(
     element.rows ?? 1,
@@ -619,8 +619,8 @@ function gridBoxes(
       w: cellW * placement.columnSpan + columnGap * (placement.columnSpan - 1),
       h: cellH * placement.rowSpan + rowGap * (placement.rowSpan - 1),
     };
-    const justify = child.layout?.alignSelf ?? element.justifyItems ?? "stretch";
-    const align = child.layout?.alignSelf ?? element.alignItems ?? "stretch";
+    const justify = child.layout?.align_self ?? element.justify_items ?? "stretch";
+    const align = child.layout?.align_self ?? element.align_items ?? "stretch";
     const childW =
       justify === "stretch"
         ? area.w
@@ -655,9 +655,9 @@ function placeGridChildren(
   children.forEach((child) => {
     const columnSpan = Math.min(
       columns,
-      Math.max(1, Math.trunc(child.layout?.columnSpan ?? 1)),
+      Math.max(1, Math.trunc(child.layout?.column_span ?? 1)),
     );
-    const rowSpan = Math.max(1, Math.trunc(child.layout?.rowSpan ?? 1));
+    const rowSpan = Math.max(1, Math.trunc(child.layout?.row_span ?? 1));
     let row = 0;
     let col = 0;
 
@@ -763,7 +763,7 @@ function containerPaintable(element: ContainerElement) {
   return Boolean(
     element.fill ||
       element.stroke ||
-      element.borderRadius ||
+      element.border_radius ||
       element.shadow ||
       element.opacity != null,
   );
@@ -925,7 +925,7 @@ function childCrossSize(
     );
   }
 
-  if (alignItems === "stretch" && child.layout?.alignSelf == null) {
+  if (alignItems === "stretch" && child.layout?.align_self == null) {
     return crossSize;
   }
   const value = direction === "row" ? child.size?.height : child.size?.width;
@@ -995,8 +995,8 @@ function clampSize(
   dimension: "width" | "height",
 ) {
   const layout = child.layout;
-  const min = dimension === "width" ? layout?.minWidth : layout?.minHeight;
-  const max = dimension === "width" ? layout?.maxWidth : layout?.maxHeight;
+  const min = dimension === "width" ? layout?.min_width : layout?.min_height;
+  const max = dimension === "width" ? layout?.max_width : layout?.max_height;
   return Math.min(max ?? Number.POSITIVE_INFINITY, Math.max(min ?? 0.01, size));
 }
 

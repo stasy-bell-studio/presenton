@@ -106,8 +106,8 @@ export function elementFont(element: {
     color: element.font?.color ?? DEFAULT_TEXT_COLOR,
     bold: element.font?.bold ?? null,
     italic: element.font?.italic ?? null,
-    lineHeight: element.font?.lineHeight ?? null,
-    letterSpacing: element.font?.letterSpacing ?? null,
+    lineHeight: element.font?.line_height ?? null,
+    letterSpacing: element.font?.letter_spacing ?? null,
     wrap: element.font?.wrap ?? null,
     ellipsis: element.font?.ellipsis ?? null,
   };
@@ -133,7 +133,7 @@ export function mergeFont<T extends { font?: Font | null }>(
 }
 
 export function textListStrings(element: TextListElement): string[] {
-  return element.items.map((item) => item.text);
+  return element.items.map(textListItemText);
 }
 
 export function setTextListStrings(
@@ -142,8 +142,12 @@ export function setTextListStrings(
 ): TextListElement {
   return {
     ...element,
-    items: items.map((text) => ({ type: "text", text })),
+    items: items.map((text) => [textRun(text)]),
   };
+}
+
+export function textListItemText(item: TextListElement["items"][number]): string {
+  return item.map((run) => run.text).join("");
 }
 
 export function fillColor(fill: Fill | null | undefined, fallback = "FFFFFF") {
@@ -174,9 +178,21 @@ export function averageBorderRadius(
 
 export function tableRowsAsStrings(element: TableElement): string[][] {
   return [
-    element.columns.map((cell) => cell.text ?? ""),
-    ...element.rows.map((row) => row.map((cell) => cell.text ?? "")),
+    element.columns.map(tableCellText),
+    ...element.rows.map((row) => row.map(tableCellText)),
   ];
+}
+
+export function tableCellText(cell: TableCell): string {
+  return cell.runs.map((run) => run.text).join("");
+}
+
+export function setTableCellText(cell: TableCell, text: string): TableCell {
+  const first = cell.runs[0];
+  return {
+    ...cell,
+    runs: text ? [textRun(text, first?.font ?? cell.font)] : [],
+  };
 }
 
 export function setTableRowsFromStrings(
@@ -186,18 +202,12 @@ export function setTableRowsFromStrings(
   const [header = [], ...body] = rows;
   const existingRows = tableRowsAsStrings(element);
   const cellFor = (text: string, rowIndex: number, colIndex: number): TableCell => ({
-    ...((rowIndex === 0
+    ...setTableCellText(
+      (rowIndex === 0
       ? element.columns[colIndex]
-      : element.rows[rowIndex - 1]?.[colIndex]) ?? {}),
-    text,
-    fill:
-      rowIndex === 0
-        ? element.columns[colIndex]?.fill
-        : element.rows[rowIndex - 1]?.[colIndex]?.fill,
-    stroke:
-      rowIndex === 0
-        ? element.columns[colIndex]?.stroke
-        : element.rows[rowIndex - 1]?.[colIndex]?.stroke,
+      : element.rows[rowIndex - 1]?.[colIndex]) ?? { runs: [] },
+      text,
+    ),
   });
 
   return {

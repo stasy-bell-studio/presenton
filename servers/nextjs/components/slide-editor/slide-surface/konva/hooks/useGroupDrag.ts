@@ -9,6 +9,8 @@ type GroupDragState = {
   elements: Array<{ index: number; element: SlideElement }>;
 };
 
+const DRAG_CACHE_PIXEL_RATIO = 1;
+
 export function useGroupDrag({
   nodeRefs,
   onChangeMany,
@@ -29,6 +31,51 @@ export function useGroupDrag({
   const groupDragRef = useRef<GroupDragState | null>(null);
   const pendingDragDeltaRef = useRef<{ dx: number; dy: number } | null>(null);
   const dragFrameRef = useRef<number | null>(null);
+  const cacheFrameRef = useRef<number | null>(null);
+  const cachedDragNodesRef = useRef<Konva.Node[]>([]);
+
+  const clearDragNodeCache = () => {
+    if (cacheFrameRef.current !== null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(cacheFrameRef.current);
+      cacheFrameRef.current = null;
+    }
+    cachedDragNodesRef.current.forEach((node) => {
+      node.clearCache();
+      node.getLayer()?.batchDraw();
+    });
+    cachedDragNodesRef.current = [];
+  };
+
+  const cacheDragNodes = (indexes: number[]) => {
+    clearDragNodeCache();
+
+    cachedDragNodesRef.current = indexes.flatMap((index) => {
+      const node = nodeRefs.current[index];
+      if (!node) return [];
+
+      try {
+        node.cache({ pixelRatio: DRAG_CACHE_PIXEL_RATIO });
+        return [node];
+      } catch {
+        node.clearCache();
+        return [];
+      }
+    });
+  };
+
+  const scheduleDragNodeCache = (indexes: number[]) => {
+    if (typeof window === "undefined") {
+      cacheDragNodes(indexes);
+      return;
+    }
+    if (cacheFrameRef.current !== null) {
+      window.cancelAnimationFrame(cacheFrameRef.current);
+    }
+    cacheFrameRef.current = window.requestAnimationFrame(() => {
+      cacheFrameRef.current = null;
+      cacheDragNodes(indexes);
+    });
+  };
 
   const applyGroupDragDelta = (
     groupDrag: GroupDragState,
@@ -65,12 +112,18 @@ export function useGroupDrag({
         window.cancelAnimationFrame(dragFrameRef.current);
         dragFrameRef.current = null;
       }
+      clearDragNodeCache();
     },
     [],
   );
 
   const startGroupDrag = (index: number) => {
     cancelPendingGroupDrag();
+    scheduleDragNodeCache(
+      selectedIndexes.includes(index) && selectedIndexes.length > 0
+        ? selectedIndexes
+        : [index],
+    );
     if (!selectedIndexes.includes(index) || selectedIndexes.length <= 1) {
       groupDragRef.current = null;
       return;
@@ -115,14 +168,21 @@ export function useGroupDrag({
     event: Konva.KonvaEventObject<DragEvent>,
   ) => {
     const groupDrag = groupDragRef.current;
-    if (!groupDrag || groupDrag.index !== index) return false;
+    if (!groupDrag || groupDrag.index !== index) {
+      clearDragNodeCache();
+      return false;
+    }
     if (dragFrameRef.current !== null && typeof window !== "undefined") {
       window.cancelAnimationFrame(dragFrameRef.current);
       dragFrameRef.current = null;
     }
     flushPendingGroupDrag();
     const origin = groupDrag.nodePositions.find((item) => item.index === index);
-    if (!origin) return true;
+    if (!origin) {
+      groupDragRef.current = null;
+      clearDragNodeCache();
+      return true;
+    }
     const dx = (event.target.x() - origin.x) / scale;
     const dy = (event.target.y() - origin.y) / scale;
     onChangeMany?.(
@@ -138,10 +198,12 @@ export function useGroupDrag({
       })),
     );
     groupDragRef.current = null;
+    clearDragNodeCache();
     return true;
   };
 
   return {
+    clearDragNodeCache,
     endGroupDrag,
     moveGroupDrag,
     startGroupDrag,

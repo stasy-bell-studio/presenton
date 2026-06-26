@@ -68,12 +68,12 @@ export function ShapeToolbar({
           min={0}
           max={0.5}
           step={0.02}
-          value={averageBorderRadius(element.borderRadius)}
+          value={averageBorderRadius(element.border_radius)}
           onChange={(event) =>
-            onChange(index, {
-              ...element,
-              borderRadius: uniformBorderRadius(Number(event.target.value) || 0),
-            })
+	            onChange(index, {
+	              ...element,
+	              border_radius: uniformBorderRadius(Number(event.target.value) || 0),
+	            })
           }
           style={inlineStyles.numberInput}
         />

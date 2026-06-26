@@ -20,7 +20,7 @@ export function ContainerElement({
 }: ElementCommonProps & { element: ContainerEl }) {
   const { x, y, width, height, stroke, strokeWidth: selectedStrokeWidth } =
     geometry(element, scale, selected);
-  const radius = averageBorderRadius(element.borderRadius) * scale;
+  const radius = averageBorderRadius(element.border_radius) * scale;
 
   return (
     <Rect

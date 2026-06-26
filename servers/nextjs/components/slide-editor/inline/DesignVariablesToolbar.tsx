@@ -19,7 +19,7 @@ export function DesignVariablesToolbar({
   scale: number;
   onChange: (index: number, element: SlideElement) => void;
 }) {
-  const variables = element.designVariables ?? [];
+  const variables = element.design_variables ?? [];
   if (variables.length === 0) return null;
 
   return (

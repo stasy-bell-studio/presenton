@@ -15,35 +15,6 @@ function isRecord(value: unknown): value is UnknownRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function normalizeAliases(
-  value: unknown,
-  aliases: Record<string, string>,
-): unknown {
-  if (!isRecord(value)) return value;
-  const next: UnknownRecord = { ...value };
-  Object.entries(aliases).forEach(([snakeKey, camelKey]) => {
-    if (next[camelKey] === undefined && next[snakeKey] !== undefined) {
-      next[camelKey] = next[snakeKey];
-    }
-    if (snakeKey !== camelKey) delete next[snakeKey];
-  });
-  return next;
-}
-
-function normalizeElementAliases(
-  value: unknown,
-  aliases: Record<string, string> = {},
-) {
-  return normalizeAliases(value, {
-    component_id: "componentId",
-    component_instance_id: "componentInstanceId",
-    component_description: "componentDescription",
-    component_slot: "componentSlot",
-    design_variables: "designVariables",
-    ...aliases,
-  });
-}
-
 function readString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -172,31 +143,20 @@ export const PaddingSchema = z
   })
   .strict();
 
-export const LayoutItemSchema = z.preprocess(
-  (value) =>
-    normalizeAliases(value, {
-      min_width: "minWidth",
-      max_width: "maxWidth",
-      min_height: "minHeight",
-      max_height: "maxHeight",
-      column_span: "columnSpan",
-      row_span: "rowSpan",
-      align_self: "alignSelf",
-    }),
-  z.object({
+export const LayoutItemSchema = z
+  .object({
     grow: z.number().min(0).max(12).nullish(),
     shrink: z.number().min(0).max(12).nullish(),
     basis: z.number().positive().max(SLIDE_W).nullish(),
-    minWidth: z.number().min(0).max(SLIDE_W).nullish(),
-    maxWidth: z.number().positive().max(SLIDE_W).nullish(),
-    minHeight: z.number().min(0).max(SLIDE_H).nullish(),
-    maxHeight: z.number().positive().max(SLIDE_H).nullish(),
-    columnSpan: z.number().int().min(1).max(12).nullish(),
-    rowSpan: z.number().int().min(1).max(12).nullish(),
-    alignSelf: LayoutAlignmentSchema.nullish(),
+    min_width: z.number().min(0).max(SLIDE_W).nullish(),
+    max_width: z.number().positive().max(SLIDE_W).nullish(),
+    min_height: z.number().min(0).max(SLIDE_H).nullish(),
+    max_height: z.number().positive().max(SLIDE_H).nullish(),
+    column_span: z.number().int().min(1).max(12).nullish(),
+    row_span: z.number().int().min(1).max(12).nullish(),
+    align_self: LayoutAlignmentSchema.nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 export const AlignmentSchema = z
   .object({
@@ -205,36 +165,20 @@ export const AlignmentSchema = z
   })
   .strict();
 
-export const FontSchema = z.preprocess(
-  (value) => {
-    const next = normalizeAliases(value, {
-      line_height: "lineHeight",
-      letter_spacing: "letterSpacing",
-      font_weight: "fontWeight",
-    });
-    if (!isRecord(next)) return next;
-    const fontWeight = readNumber(next.fontWeight);
-    const normalized: UnknownRecord = { ...next };
-    delete normalized.fontWeight;
-    if (normalized.bold === undefined && fontWeight != null) {
-      normalized.bold = fontWeight >= 600;
-    }
-    return normalized;
-  },
-  z.object({
+export const FontSchema = z
+  .object({
     family: z.string().min(1).max(80).nullish(),
     size: z.number().min(6).max(360).nullish(),
     color: HexColorSchema.nullish(),
     bold: z.boolean().nullish(),
     italic: z.boolean().nullish(),
-    lineHeight: z.number().min(0.8).max(2.2).nullish(),
+    line_height: z.number().min(0.8).max(2.2).nullish(),
     // Hundredths of a point, matching OOXML character spacing.
-    letterSpacing: z.number().min(-200).max(600).nullish(),
+    letter_spacing: z.number().min(-200).max(600).nullish(),
     wrap: TextWrapSchema.nullish(),
     ellipsis: z.boolean().nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 export const FillSchema = z
   .object({
@@ -261,21 +205,15 @@ export const BorderRadiusSchema = z
   })
   .strict();
 
-export const ShadowSchema = z.preprocess(
-  (value) =>
-    normalizeAliases(value, {
-      offset_x: "offsetX",
-      offset_y: "offsetY",
-    }),
-  z.object({
+export const ShadowSchema = z
+  .object({
     color: HexColorSchema.nullish(),
     blur: z.number().min(0).max(100).nullish(),
     opacity: z.number().min(0).max(1).nullish(),
-    offsetX: z.number().min(-2).max(2).nullish(),
-    offsetY: z.number().min(-2).max(2).nullish(),
+    offset_x: z.number().min(-2).max(2).nullish(),
+    offset_y: z.number().min(-2).max(2).nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 export const ChartDatumSchema = z
   .object({
@@ -299,28 +237,7 @@ export const TextRunSchema = z
   })
   .strict();
 
-export const TextListItemSchema = z.preprocess(
-  (value) => {
-    if (typeof value === "string") {
-      return { type: "text", text: value };
-    }
-    if (Array.isArray(value)) {
-      const text = value
-        .map((run) => readString(isRecord(run) ? run.text : null) ?? "")
-        .join("");
-      return { type: "text", text: text || "List item" };
-    }
-    if (isRecord(value) && value.type === undefined && value.text !== undefined) {
-      return { ...value, type: "text" };
-    }
-    return value;
-  },
-  z.object({
-    type: z.literal("text"),
-    text: z.string().min(1).max(180),
-  })
-    .strict(),
-);
+export const TextListItemSchema = z.array(TextRunSchema).min(1).max(12);
 
 const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
   z.union([
@@ -357,11 +274,11 @@ const elementBaseShape = {
   rotation: z.number().min(-360).max(360).nullish(),
   opacity: z.number().min(0).max(1).nullish(),
   shadow: ShadowSchema.nullish(),
-  componentId: z.string().min(1).max(120).nullish(),
-  componentInstanceId: z.string().min(1).max(160).nullish(),
-  componentDescription: z.string().max(600).nullish(),
-  componentSlot: z.string().min(1).max(120).nullish(),
-  designVariables: z.array(DesignVariableSchema).max(24).nullish(),
+  component_id: z.string().min(1).max(120).nullish(),
+  component_instance_id: z.string().min(1).max(160).nullish(),
+  component_description: z.string().max(600).nullish(),
+  component_slot: z.string().min(1).max(120).nullish(),
+  design_variables: z.array(DesignVariableSchema).max(24).nullish(),
   layout: LayoutItemSchema.nullish(),
 };
 
@@ -371,13 +288,8 @@ const requiredElementBaseShape = {
   size: SizeSchema,
 };
 
-export const TextElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      max_length: "maxLength",
-      min_length: "minLength",
-    }),
-  z.object({
+export const TextElementSchema = z
+  .object({
     type: z.literal("text"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
@@ -385,11 +297,10 @@ export const TextElementSchema = z.preprocess(
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
     runs: z.array(TextRunSchema).min(1).max(24),
-    maxLength: z.number().nullish(),
-    minLength: z.number().nullish(),
+    max_length: z.number().nullish(),
+    min_length: z.number().nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 type ElementBaseOutput = {
   decorative?: boolean | null | undefined;
@@ -399,11 +310,11 @@ type ElementBaseOutput = {
   rotation?: number | null | undefined;
   opacity?: number | null | undefined;
   shadow?: z.infer<typeof ShadowSchema> | null | undefined;
-  componentId?: string | null | undefined;
-  componentInstanceId?: string | null | undefined;
-  componentDescription?: string | null | undefined;
-  componentSlot?: string | null | undefined;
-  designVariables?: z.infer<typeof DesignVariableSchema>[] | null | undefined;
+  component_id?: string | null | undefined;
+  component_instance_id?: string | null | undefined;
+  component_description?: string | null | undefined;
+  component_slot?: string | null | undefined;
+  design_variables?: z.infer<typeof DesignVariableSchema>[] | null | undefined;
   layout?: z.infer<typeof LayoutItemSchema> | null | undefined;
 };
 
@@ -417,7 +328,7 @@ type ContainerElementOutput = ElementBaseOutput & {
   alignment?: z.infer<typeof AlignmentSchema> | null | undefined;
   fill?: z.infer<typeof FillSchema> | null | undefined;
   stroke?: z.infer<typeof StrokeSchema> | null | undefined;
-  borderRadius?: z.infer<typeof BorderRadiusSchema> | null | undefined;
+  border_radius?: z.infer<typeof BorderRadiusSchema> | null | undefined;
   padding?: z.infer<typeof PaddingSchema> | null | undefined;
   child?: SlideElementOutput | null | undefined;
 };
@@ -426,15 +337,15 @@ type FlexElementOutput = RequiredElementBaseOutput & {
   type: "flex";
   direction: z.infer<typeof FlexDirectionSchema>;
   wrap?: boolean | null | undefined;
-  alignItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justifyContent?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  justify_content?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
   padding?: z.infer<typeof PaddingSchema> | null | undefined;
   gap?: number | null | undefined;
-  columnGap?: number | null | undefined;
-  rowGap?: number | null | undefined;
+  column_gap?: number | null | undefined;
+  row_gap?: number | null | undefined;
   children: SlideElementOutput[];
-  maxChildren?: number | null | undefined;
-  minChildren?: number | null | undefined;
+  max_children?: number | null | undefined;
+  min_children?: number | null | undefined;
 };
 
 type GridElementOutput = RequiredElementBaseOutput & {
@@ -442,29 +353,29 @@ type GridElementOutput = RequiredElementBaseOutput & {
   columns: number;
   rows?: number | null | undefined;
   gap?: number | null | undefined;
-  columnGap?: number | null | undefined;
-  rowGap?: number | null | undefined;
-  alignItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justifyItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  column_gap?: number | null | undefined;
+  row_gap?: number | null | undefined;
+  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  justify_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
   padding?: z.infer<typeof PaddingSchema> | null | undefined;
   children: SlideElementOutput[];
-  maxChildren?: number | null | undefined;
-  minChildren?: number | null | undefined;
+  max_children?: number | null | undefined;
+  min_children?: number | null | undefined;
 };
 
 type ListViewElementOutput = ElementBaseOutput & {
   type: "list-view";
   direction?: z.infer<typeof FlexDirectionSchema> | null | undefined;
   gap?: number | null | undefined;
-  columnGap?: number | null | undefined;
-  rowGap?: number | null | undefined;
-  alignItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justifyContent?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  column_gap?: number | null | undefined;
+  row_gap?: number | null | undefined;
+  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  justify_content?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
   padding?: z.infer<typeof PaddingSchema> | null | undefined;
   count: number;
   item: SlideElementOutput;
-  maxCount?: number | null | undefined;
-  minCount?: number | null | undefined;
+  max_count?: number | null | undefined;
+  min_count?: number | null | undefined;
 };
 
 type GridViewElementOutput = ElementBaseOutput & {
@@ -472,223 +383,142 @@ type GridViewElementOutput = ElementBaseOutput & {
   columns: number;
   rows?: number | null | undefined;
   gap?: number | null | undefined;
-  columnGap?: number | null | undefined;
-  rowGap?: number | null | undefined;
-  alignItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justifyItems?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  column_gap?: number | null | undefined;
+  row_gap?: number | null | undefined;
+  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
+  justify_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
   padding?: z.infer<typeof PaddingSchema> | null | undefined;
   count: number;
   item: SlideElementOutput;
-  maxCount?: number | null | undefined;
-  minCount?: number | null | undefined;
+  max_count?: number | null | undefined;
+  min_count?: number | null | undefined;
 };
 
 type GroupElementOutput = RequiredElementBaseOutput & {
   type: "group";
   children: SlideElementOutput[];
-  maxChildren?: number | null | undefined;
-  minChildren?: number | null | undefined;
+  max_children?: number | null | undefined;
+  min_children?: number | null | undefined;
 };
 
 export const ContainerElementSchema: z.ZodType<ContainerElementOutput> =
-  z.preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        border_radius: "borderRadius",
-      }),
-    z.object({
+  z.object({
     type: z.literal("container"),
     ...elementBaseShape,
     alignment: AlignmentSchema.nullish(),
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
-    borderRadius: BorderRadiusSchema.nullish(),
+    border_radius: BorderRadiusSchema.nullish(),
     padding: PaddingSchema.nullish(),
     child: z
       .lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema)
       .nullish(),
   })
-      .strict(),
-  );
+    .strict();
 
-export const ImageElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      border_radius: "borderRadius",
-      flip_h: "flipH",
-      flip_v: "flipV",
-      focus_x: "focusX",
-      focus_y: "focusY",
-      isIcon: "is_icon",
-    }),
-  z.object({
+export const ImageElementSchema = z
+  .object({
     type: z.literal("image"),
     ...elementBaseShape,
-    flipH: z.boolean().nullish(),
-    flipV: z.boolean().nullish(),
+    flip_h: z.boolean().nullish(),
+    flip_v: z.boolean().nullish(),
     data: z.string().nullish(),
     name: z.string().max(120).nullish(),
     fit: ImageFitSchema.nullish(),
-    focusX: z.number().nullish(),
-    focusY: z.number().nullish(),
-    borderRadius: BorderRadiusSchema.nullish(),
+    focus_x: z.number().nullish(),
+    focus_y: z.number().nullish(),
+    border_radius: BorderRadiusSchema.nullish(),
     color: z.string().nullish(),
     is_icon: z.boolean().nullish(),
   })
-    .strict(),
-);
+  .strict();
 
-export const TextListElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      max_items: "maxItems",
-      min_items: "minItems",
-      max_item_length: "maxItemLength",
-      min_item_length: "minItemLength",
-    }),
-  z.object({
+export const TextListElementSchema = z
+  .object({
     type: z.literal("text-list"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
     marker: MarkerSchema.nullish(),
     items: z.array(TextListItemSchema).min(1).max(8),
-    maxItems: z.number().nullish(),
-    minItems: z.number().nullish(),
-    maxItemLength: z.number().nullish(),
-    minItemLength: z.number().nullish(),
+    max_items: z.number().nullish(),
+    min_items: z.number().nullish(),
+    max_item_length: z.number().nullish(),
+    min_item_length: z.number().nullish(),
   })
-    .strict(),
-);
+  .strict();
 
-export const TableCellSchema = z.preprocess(
-  (value) => {
-    if (typeof value === "string" || typeof value === "number") {
-      return { text: String(value) };
-    }
-    if (!isRecord(value)) return value;
-
-    const normalized = normalizeAliases(value, {
-      max_length: "maxLength",
-      min_length: "minLength",
-    });
-    if (!isRecord(normalized)) return normalized;
-
-    const textRecord = isRecord(normalized.text) ? normalized.text : null;
-    return {
-      ...normalized,
-      text: textRecord
-        ? readString(textRecord.text) ?? ""
-        : readString(normalized.text) ?? null,
-      font:
-        normalized.font ??
-        (textRecord && isRecord(textRecord.font) ? textRecord.font : undefined),
-    };
-  },
-  z.object({
-    fill: FillSchema.nullish(),
-    stroke: StrokeSchema.nullish(),
+export const TableCellSchema = z
+  .object({
+    color: FillSchema.nullish(),
     font: FontSchema.nullish(),
-    text: z.string().max(80).nullish(),
-    maxLength: z.number().nullish(),
-    minLength: z.number().nullish(),
+    alignment: HorizontalAlignmentSchema.nullish(),
+    runs: z.array(TextRunSchema).max(12),
   })
-    .strict(),
-);
+  .strict();
 
-export const TableElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      max_columns: "maxColumns",
-      min_columns: "minColumns",
-      max_rows: "maxRows",
-      min_rows: "minRows",
-    }),
-  z.object({
+export const TableElementSchema = z
+  .object({
     type: z.literal("table"),
     ...elementBaseShape,
     font: FontSchema.nullish(),
     columns: z.array(TableCellSchema).min(1).max(6),
     rows: z.array(z.array(TableCellSchema).min(1).max(6)).min(1).max(7),
-    maxColumns: z.number().nullish(),
-    minColumns: z.number().nullish(),
-    maxRows: z.number().nullish(),
-    minRows: z.number().nullish(),
+    max_columns: z.number().nullish(),
+    min_columns: z.number().nullish(),
+    max_rows: z.number().nullish(),
+    min_rows: z.number().nullish(),
   })
-    .strict(),
-);
+  .strict();
 
-export const RectangleElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      border_radius: "borderRadius",
-    }),
-  z.object({
+export const RectangleElementSchema = z
+  .object({
     type: z.literal("rectangle"),
     ...elementBaseShape,
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
-    borderRadius: BorderRadiusSchema.nullish(),
+    border_radius: BorderRadiusSchema.nullish(),
   })
-    .strict(),
-);
+  .strict();
 
-export const EllipseElementSchema = z.preprocess(
-  (value) => normalizeElementAliases(value),
-  z.object({
+export const EllipseElementSchema = z
+  .object({
     type: z.literal("ellipse"),
     ...elementBaseShape,
     fill: FillSchema.nullish(),
     stroke: StrokeSchema.nullish(),
   })
-    .strict(),
-);
+  .strict();
 
-export const LineElementSchema = z.preprocess(
-  (value) => normalizeElementAliases(value),
-  z.object({
+export const LineElementSchema = z
+  .object({
     type: z.literal("line"),
     ...elementBaseShape,
     stroke: StrokeSchema,
   })
-    .strict(),
-);
+  .strict();
 
-export const SvgElementSchema = z.preprocess(
-  (value) => normalizeElementAliases(value),
-  z.object({
+export const SvgElementSchema = z
+  .object({
     type: z.literal("svg"),
     ...elementBaseShape,
     svg: z.string().min(1).max(20_000),
     name: z.string().max(120).nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 export const ChartElementSchema = z.preprocess(
   (value) => {
-    const normalized = normalizeElementAliases(value, {
-      chart_type: "chartType",
-      axis_color: "axisColor",
-      label_color: "labelColor",
-      show_values: "showValues",
-      series_colors: "seriesColors",
-      x_axis: "xAxis",
-      y_axis: "yAxis",
-      x_axis_title: "xAxisTitle",
-      y_axis_title: "yAxisTitle",
-      data_labels: "dataLabels",
-    });
-    if (!isRecord(normalized)) return normalized;
+    if (!isRecord(value)) return value;
 
-    const categories = normalizeStringArray(normalized.categories);
-    const series = normalizeChartSeriesArray(normalized.series);
-    const data = normalizeChartDatumArray(normalized.data);
+    const categories = normalizeStringArray(value.categories);
+    const series = normalizeChartSeriesArray(value.series);
+    const data = normalizeChartDatumArray(value.data);
     const dataCategories = data.map((datum) => datum.label).filter(Boolean);
     const dataSeries =
       data.length > 0
         ? [
             {
-              name: readString(normalized.title) ?? "Series 1",
+              name: readString(value.title) ?? "Series 1",
               values: data.map((datum) => datum.value),
             },
           ]
@@ -696,8 +526,8 @@ export const ChartElementSchema = z.preprocess(
     const dataColors = data
       .map((datum) => datum.color)
       .filter((color): color is string => Boolean(color));
-    const existingSeriesColors = Array.isArray(normalized.seriesColors)
-      ? normalized.seriesColors
+    const existingSeriesColors = Array.isArray(value.series_colors)
+      ? value.series_colors
       : [];
     const nextCategories =
       categories.length > 0
@@ -712,13 +542,13 @@ export const ChartElementSchema = z.preprocess(
           ? dataSeries
           : [];
     const next: UnknownRecord = {
-      ...normalized,
+      ...value,
       ...(nextCategories.length > 0 ? { categories: nextCategories } : {}),
       ...(nextSeries.length > 0 ? { series: nextSeries } : {}),
       ...(existingSeriesColors.length > 0
         ? {}
         : dataColors.length > 0
-          ? { seriesColors: dataColors }
+          ? { series_colors: dataColors }
           : {}),
     };
     if (!Array.isArray(next.data) || next.data.length === 0) {
@@ -729,188 +559,127 @@ export const ChartElementSchema = z.preprocess(
   z.object({
     type: z.literal("chart"),
     ...elementBaseShape,
-    chartType: ChartTypeSchema,
+    chart_type: ChartTypeSchema,
     data: z.array(ChartDatumSchema).min(1).max(8),
     title: z.string().min(1).max(80).nullish(),
     color: HexColorSchema.nullish(),
-    axisColor: HexColorSchema.nullish(),
-    labelColor: HexColorSchema.nullish(),
-    showValues: z.boolean().nullish(),
-    seriesColors: z.array(HexColorSchema).max(12).nullish(),
-    xAxis: z.boolean().nullish(),
-    yAxis: z.boolean().nullish(),
-    xAxisTitle: z.string().max(80).nullish(),
-    yAxisTitle: z.string().max(80).nullish(),
+    axis_color: HexColorSchema.nullish(),
+    data_labels_color: HexColorSchema.nullish(),
+    series_colors: z.array(HexColorSchema).max(12).nullish(),
+    x_axis: z.boolean().nullish(),
+    y_axis: z.boolean().nullish(),
+    x_axis_title: z.string().max(80).nullish(),
+    y_axis_title: z.string().max(80).nullish(),
     categories: z.array(z.string().min(1).max(40)).max(24).nullish(),
     series: z.array(ChartSeriesSchema).max(12).nullish(),
-    dataLabels: z.boolean().nullish(),
+    data_labels: z.boolean().nullish(),
     grid: z.boolean().nullish(),
     source: z.string().max(120).nullish(),
   })
     .strict(),
 );
 
-export const InfographicElementSchema = z.preprocess(
-  (value) =>
-    normalizeElementAliases(value, {
-      infographic_type: "infographicType",
-      max_value: "maxValue",
-      min_value: "minValue",
-      base_color: "baseColor",
-      highlight_color: "highlightColor",
-    }),
-  z.object({
+export const InfographicElementSchema = z
+  .object({
     type: z.literal("infographic"),
     ...elementBaseShape,
-    infographicType: InfographicTypeSchema,
-    maxValue: z.number(),
-    minValue: z.number(),
+    infographic_type: InfographicTypeSchema,
+    max_value: z.number(),
+    min_value: z.number(),
     value: z.number(),
-    baseColor: HexColorSchema.nullish(),
-    highlightColor: HexColorSchema.nullish(),
+    base_color: HexColorSchema.nullish(),
+    highlight_color: HexColorSchema.nullish(),
   })
-    .strict(),
-);
+  .strict();
 
 export const FlexElementSchema: z.ZodType<FlexElementOutput> = z
-  .preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        align_items: "alignItems",
-        justify_content: "justifyContent",
-        column_gap: "columnGap",
-        row_gap: "rowGap",
-        max_children: "maxChildren",
-        min_children: "minChildren",
-      }),
-    z.object({
+  .object({
     type: z.literal("flex"),
     ...requiredElementBaseShape,
     direction: FlexDirectionSchema,
     wrap: z.boolean().nullish(),
-    alignItems: LayoutAlignmentSchema.nullish(),
-    justifyContent: LayoutAlignmentSchema.nullish(),
+    align_items: LayoutAlignmentSchema.nullish(),
+    justify_content: LayoutAlignmentSchema.nullish(),
     padding: PaddingSchema.nullish(),
     gap: z.number().nullish(),
-    columnGap: z.number().nullish(),
-    rowGap: z.number().nullish(),
+    column_gap: z.number().nullish(),
+    row_gap: z.number().nullish(),
     children: z.array(
       z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
     ),
-    maxChildren: z.number().nullish(),
-    minChildren: z.number().nullish(),
+    max_children: z.number().nullish(),
+    min_children: z.number().nullish(),
   })
-      .strict(),
-  );
+  .strict();
 
 export const GridElementSchema: z.ZodType<GridElementOutput> = z
-  .preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        align_items: "alignItems",
-        justify_items: "justifyItems",
-        column_gap: "columnGap",
-        row_gap: "rowGap",
-        max_children: "maxChildren",
-        min_children: "minChildren",
-      }),
-    z.object({
+  .object({
     type: z.literal("grid"),
     ...requiredElementBaseShape,
     columns: z.number().min(1),
     rows: z.number().min(1).nullish(),
     gap: z.number().nullish(),
-    columnGap: z.number().nullish(),
-    rowGap: z.number().nullish(),
-    alignItems: LayoutAlignmentSchema.nullish(),
-    justifyItems: LayoutAlignmentSchema.nullish(),
+    column_gap: z.number().nullish(),
+    row_gap: z.number().nullish(),
+    align_items: LayoutAlignmentSchema.nullish(),
+    justify_items: LayoutAlignmentSchema.nullish(),
     padding: PaddingSchema.nullish(),
     children: z.array(
       z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
     ),
-    maxChildren: z.number().nullish(),
-    minChildren: z.number().nullish(),
+    max_children: z.number().nullish(),
+    min_children: z.number().nullish(),
   })
-      .strict(),
-  );
+  .strict();
 
 export const ListViewElementSchema: z.ZodType<ListViewElementOutput> = z
-  .preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        align_items: "alignItems",
-        justify_content: "justifyContent",
-        column_gap: "columnGap",
-        row_gap: "rowGap",
-        max_count: "maxCount",
-        min_count: "minCount",
-      }),
-    z.object({
+  .object({
     type: z.literal("list-view"),
     ...elementBaseShape,
     direction: FlexDirectionSchema.nullish(),
     gap: z.number().nullish(),
-    columnGap: z.number().nullish(),
-    rowGap: z.number().nullish(),
-    alignItems: LayoutAlignmentSchema.nullish(),
-    justifyContent: LayoutAlignmentSchema.nullish(),
+    column_gap: z.number().nullish(),
+    row_gap: z.number().nullish(),
+    align_items: LayoutAlignmentSchema.nullish(),
+    justify_content: LayoutAlignmentSchema.nullish(),
     padding: PaddingSchema.nullish(),
     count: z.number().min(0),
     item: z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
-    maxCount: z.number().nullish(),
-    minCount: z.number().nullish(),
+    max_count: z.number().nullish(),
+    min_count: z.number().nullish(),
   })
-      .strict(),
-  );
+  .strict();
 
 export const GridViewElementSchema: z.ZodType<GridViewElementOutput> = z
-  .preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        align_items: "alignItems",
-        justify_items: "justifyItems",
-        column_gap: "columnGap",
-        row_gap: "rowGap",
-        max_count: "maxCount",
-        min_count: "minCount",
-      }),
-    z.object({
+  .object({
     type: z.literal("grid-view"),
     ...elementBaseShape,
     columns: z.number().min(1),
     rows: z.number().min(1).nullish(),
     gap: z.number().nullish(),
-    columnGap: z.number().nullish(),
-    rowGap: z.number().nullish(),
-    alignItems: LayoutAlignmentSchema.nullish(),
-    justifyItems: LayoutAlignmentSchema.nullish(),
+    column_gap: z.number().nullish(),
+    row_gap: z.number().nullish(),
+    align_items: LayoutAlignmentSchema.nullish(),
+    justify_items: LayoutAlignmentSchema.nullish(),
     padding: PaddingSchema.nullish(),
     count: z.number().min(0),
     item: z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
-    maxCount: z.number().nullish(),
-    minCount: z.number().nullish(),
+    max_count: z.number().nullish(),
+    min_count: z.number().nullish(),
   })
-      .strict(),
-  );
+  .strict();
 
 export const GroupElementSchema: z.ZodType<GroupElementOutput> = z
-  .preprocess(
-    (value) =>
-      normalizeElementAliases(value, {
-        max_children: "maxChildren",
-        min_children: "minChildren",
-      }),
-    z.object({
+  .object({
     type: z.literal("group"),
     ...requiredElementBaseShape,
     children: z.array(
       z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
     ),
-    maxChildren: z.number().nullish(),
-    minChildren: z.number().nullish(),
+    max_children: z.number().nullish(),
+    min_children: z.number().nullish(),
   })
-      .strict(),
-  );
+  .strict();
 
 type SlideElementOutput =
   | z.infer<typeof TextElementSchema>
@@ -960,8 +729,8 @@ export const SlideBackgroundImageSchema = z
 export const SlideSchema = z
   .object({
     background: HexColorSchema,
-    backgroundRole: ThemeRoleSchema.nullish(),
-    backgroundImage: SlideBackgroundImageSchema.nullish(),
+    background_role: ThemeRoleSchema.nullish(),
+    background_image: SlideBackgroundImageSchema.nullish(),
     elements: z.array(SlideElementSchema).min(1).max(80),
     title: z.string().min(1).max(60).nullish(),
   })

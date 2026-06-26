@@ -41,8 +41,8 @@ export function ChartElement({
   const titleH = title ? 24 * (scale / PX_PER_IN) : 8;
   const pad = 12 * (scale / PX_PER_IN);
   const chartColor = withHash(getChartColor(element));
-  const axisColor = withHash(element.axisColor ?? "9AA7BD");
-  const labelColor = withHash(element.labelColor ?? "6A7894");
+  const axisColor = withHash(element.axis_color ?? "9AA7BD");
+  const labelColor = withHash(element.data_labels_color ?? "6A7894");
   const plot = {
     x: pad,
     y: titleH,
@@ -88,7 +88,7 @@ export function ChartElement({
               fill={labelColor}
             />
           ) : null}
-          {element.chartType === "bar" ? (
+          {element.chart_type === "bar" ? (
             <BarChartParts
               data={data}
               max={max}
@@ -97,9 +97,9 @@ export function ChartElement({
               axisColor={axisColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? element.dataLabels ?? false}
+              showValues={element.data_labels ?? element.data_labels ?? false}
             />
-          ) : element.chartType === "line" || element.chartType === "area" ? (
+          ) : element.chart_type === "line" || element.chart_type === "area" ? (
             <LineChartParts
               data={data}
               max={max}
@@ -108,8 +108,8 @@ export function ChartElement({
               axisColor={axisColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? element.dataLabels ?? false}
-              fillArea={element.chartType === "area"}
+              showValues={element.data_labels ?? element.data_labels ?? false}
+              fillArea={element.chart_type === "area"}
             />
           ) : (
             <DonutChartParts
@@ -118,8 +118,8 @@ export function ChartElement({
               color={chartColor}
               labelColor={labelColor}
               scale={scale}
-              showValues={element.showValues ?? element.dataLabels ?? false}
-              donut={element.chartType === "donut"}
+              showValues={element.data_labels ?? element.data_labels ?? false}
+              donut={element.chart_type === "donut"}
             />
           )}
         </>
