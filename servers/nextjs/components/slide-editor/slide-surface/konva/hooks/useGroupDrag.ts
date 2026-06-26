@@ -1,5 +1,5 @@
 import Konva from "konva";
-import { useRef, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import type { Slide, SlideElement } from "../../../lib/slide-schema";
 import { elementBox, resizeElement } from "../../../lib/element-model";
 
@@ -27,8 +27,50 @@ export function useGroupDrag({
   transformerRef: RefObject<Konva.Transformer | null>;
 }) {
   const groupDragRef = useRef<GroupDragState | null>(null);
+  const pendingDragDeltaRef = useRef<{ dx: number; dy: number } | null>(null);
+  const dragFrameRef = useRef<number | null>(null);
+
+  const applyGroupDragDelta = (
+    groupDrag: GroupDragState,
+    dx: number,
+    dy: number,
+  ) => {
+    groupDrag.nodePositions.forEach((item) => {
+      if (item.index === groupDrag.index) return;
+      const node = nodeRefs.current[item.index];
+      node?.position({ x: item.x + dx, y: item.y + dy });
+    });
+    transformerRef.current?.getLayer()?.batchDraw();
+  };
+
+  const flushPendingGroupDrag = () => {
+    const pending = pendingDragDeltaRef.current;
+    const groupDrag = groupDragRef.current;
+    pendingDragDeltaRef.current = null;
+    if (!pending || !groupDrag) return;
+    applyGroupDragDelta(groupDrag, pending.dx, pending.dy);
+  };
+
+  const cancelPendingGroupDrag = () => {
+    pendingDragDeltaRef.current = null;
+    if (dragFrameRef.current === null || typeof window === "undefined") return;
+    window.cancelAnimationFrame(dragFrameRef.current);
+    dragFrameRef.current = null;
+  };
+
+  useEffect(
+    () => () => {
+      pendingDragDeltaRef.current = null;
+      if (dragFrameRef.current !== null && typeof window !== "undefined") {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+    },
+    [],
+  );
 
   const startGroupDrag = (index: number) => {
+    cancelPendingGroupDrag();
     if (!selectedIndexes.includes(index) || selectedIndexes.length <= 1) {
       groupDragRef.current = null;
       return;
@@ -56,12 +98,16 @@ export function useGroupDrag({
     if (!origin) return;
     const dx = event.target.x() - origin.x;
     const dy = event.target.y() - origin.y;
-    groupDrag.nodePositions.forEach((item) => {
-      if (item.index === index) return;
-      const node = nodeRefs.current[item.index];
-      node?.position({ x: item.x + dx, y: item.y + dy });
+    pendingDragDeltaRef.current = { dx, dy };
+    if (dragFrameRef.current !== null) return;
+    if (typeof window === "undefined") {
+      flushPendingGroupDrag();
+      return;
+    }
+    dragFrameRef.current = window.requestAnimationFrame(() => {
+      dragFrameRef.current = null;
+      flushPendingGroupDrag();
     });
-    transformerRef.current?.getLayer()?.batchDraw();
   };
 
   const endGroupDrag = (
@@ -70,6 +116,11 @@ export function useGroupDrag({
   ) => {
     const groupDrag = groupDragRef.current;
     if (!groupDrag || groupDrag.index !== index) return false;
+    if (dragFrameRef.current !== null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(dragFrameRef.current);
+      dragFrameRef.current = null;
+    }
+    flushPendingGroupDrag();
     const origin = groupDrag.nodePositions.find((item) => item.index === index);
     if (!origin) return true;
     const dx = (event.target.x() - origin.x) / scale;

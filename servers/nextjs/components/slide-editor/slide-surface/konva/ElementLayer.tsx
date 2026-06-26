@@ -337,6 +337,7 @@ function useElementLayerContent({
       node.style.transform = current.preview.rotation
         ? `rotate(${current.preview.rotation}deg)`
         : "";
+      node.style.transformOrigin = "top left";
     });
   };
 
@@ -352,16 +353,7 @@ function useElementLayerContent({
     const current = surfaceInteractionTargetRef.current;
     const keyForTarget = (item: SurfaceInteractionTarget) => {
       if (!item) return "";
-      const preview = item.preview
-        ? [
-            item.preview.x,
-            item.preview.y,
-            item.preview.width,
-            item.preview.height,
-            item.preview.rotation ?? 0,
-          ].join(",")
-        : "";
-      return `${item.path}:${item.rootIndexes.join(",")}:${preview}`;
+      return `${item.path}:${item.rootIndexes.join(",")}`;
     };
     const currentKey = current
       ? keyForTarget(current)
@@ -408,8 +400,11 @@ function useElementLayerContent({
     el: SlideElement,
     node: Konva.Node,
   ) => {
+    if (el.type !== "chart") {
+      return interactionTargetFor(index, path);
+    }
     const preview = previewFromNode(el, node);
-    if (el.type === "chart") applyChartOverlayPreview(path, preview);
+    applyChartOverlayPreview(path, preview);
     return {
       ...interactionTargetFor(index, path),
       preview,
