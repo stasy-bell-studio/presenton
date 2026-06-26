@@ -14,13 +14,13 @@ import {
   editingSvgElementAtom,
   editingSvgIndexAtom,
   editingSvgPathAtom,
-  editingTableDraftAtom,
   editingTableElementAtom,
   editingTableIndexAtom,
   editingTablePathAtom,
   editingTextElementAtom,
   editingTextIndexAtom,
   editingTextPathAtom,
+  selectedTableCellAtom,
   updateElementAtPathAtom,
 } from "../state";
 import { rootPath } from "../lib/element-path";
@@ -34,6 +34,7 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
   const editingBulletsElement = useAtomValue(editingBulletsElementAtom);
   const editingTableElement = useAtomValue(editingTableElementAtom);
   const editingSvgElement = useAtomValue(editingSvgElementAtom);
+  const selectedTableCell = useAtomValue(selectedTableCellAtom);
   const [editingTextIndex, setEditingTextIndex] = useAtom(editingTextIndexAtom);
   const [editingTextPath, setEditingTextPath] = useAtom(editingTextPathAtom);
   const [editingBulletsIndex, setEditingBulletsIndex] = useAtom(
@@ -49,9 +50,6 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
     editingTableIndexAtom,
   );
   const [editingTablePath, setEditingTablePath] = useAtom(editingTablePathAtom);
-  const [editingTableDraft, setEditingTableDraft] = useAtom(
-    editingTableDraftAtom,
-  );
   const [editingSvgIndex, setEditingSvgIndex] = useAtom(editingSvgIndexAtom);
   const [editingSvgPath, setEditingSvgPath] = useAtom(editingSvgPathAtom);
   const [editingSvgDraft, setEditingSvgDraft] = useAtom(editingSvgDraftAtom);
@@ -101,8 +99,7 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
           element={editingTableElement}
           index={editingTableIndex}
           scale={scale}
-          draft={editingTableDraft}
-          onDraftChange={setEditingTableDraft}
+          selectedCell={selectedTableCell}
           onChange={(index, element) =>
             updateElementAtPath({
               path: editingTablePath ?? rootPath(index),
@@ -112,7 +109,6 @@ export function WorkspaceInlineEditors({ scale }: WorkspaceInlineEditorsProps) {
           onClose={() => {
             setEditingTableIndex(null);
             setEditingTablePath(null);
-            setEditingTableDraft("");
           }}
         />
       ) : null}

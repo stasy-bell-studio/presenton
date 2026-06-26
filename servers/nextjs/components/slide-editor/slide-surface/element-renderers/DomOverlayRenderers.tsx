@@ -60,15 +60,11 @@ const DOM_OVERLAY_RENDERERS = {
     />
   ),
   table: ({
-    editingTableIndex,
-    editingTablePath,
     items = [],
     scale,
     selectedTableCell,
   }) => (
     <TableDomElement
-      editingTableIndex={editingTableIndex}
-      editingTablePath={editingTablePath}
       items={items}
       scale={scale}
       selectedCell={selectedTableCell}

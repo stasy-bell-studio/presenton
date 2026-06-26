@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../../../editorUtils";
 import { elementFont } from "../../../lib/element-model";
-import { rootPath, type ElementPath } from "../../../lib/element-path";
+import { rootPath } from "../../../lib/element-path";
 import type { ResolvedLayoutItem } from "../../../lib/layout-resolver";
 import { renderMarkdownTextRuns } from "../../../lib/markdown-text";
 import type { Font, TableCell, TextRun } from "../../../lib/slide-schema";
@@ -12,27 +12,19 @@ const TABLE_CELL_PADDING_X_IN = 0.08;
 const TABLE_CELL_PADDING_Y_IN = 0.04;
 
 export function TableDomElement({
-  editingTableIndex,
-  editingTablePath,
   items,
   scale,
   selectedCell,
 }: {
-  editingTableIndex?: number | null;
-  editingTablePath?: ElementPath | null;
   items: ResolvedLayoutItem[];
   scale: number;
   selectedCell?: TableCellSelection | null;
 }) {
-  const editingPath =
-    editingTablePath ??
-    (editingTableIndex != null ? rootPath(editingTableIndex) : null);
-
   return (
     <DomElementLayer>
       {items.map((item) => {
         const element = item.element;
-        if (element.type !== "table" || item.sourcePath === editingPath) {
+        if (element.type !== "table") {
           return null;
         }
 
@@ -114,11 +106,11 @@ export function TableDomElement({
                           fontStyle: baseFont.italic ? "italic" : "normal",
                           fontWeight: baseFont.bold ? 700 : 400,
                           lineHeight: baseFont.lineHeight ?? 1.12,
+                          overflow: isSelected ? "visible" : "hidden",
                           padding: 0,
+                          position: "relative",
                           textAlign,
-                          boxShadow: isSelected
-                            ? "inset 0 0 0 2px #6f93ff"
-                            : undefined,
+                          zIndex: isSelected ? 2 : undefined,
                         }}
                       >
                         <div
@@ -142,6 +134,14 @@ export function TableDomElement({
                             />
                           </span>
                         </div>
+                        {isSelected ? (
+                          <span
+                            aria-hidden="true"
+                            style={selectedCellFrameStyle}
+                          >
+                            <span style={selectedCellGripStyle} />
+                          </span>
+                        ) : null}
                       </td>
                     );
                   })}
@@ -160,7 +160,7 @@ const tableStyle: CSSProperties = {
   borderCollapse: "collapse",
   borderWidth: 1,
   borderStyle: "solid",
-  overflow: "hidden",
+  overflow: "visible",
 };
 
 const tableBodyStyle: CSSProperties = {
@@ -181,6 +181,28 @@ const cellStyle: CSSProperties = {
   textOverflow: "ellipsis",
   whiteSpace: "normal",
   wordBreak: "break-word",
+};
+
+const selectedCellFrameStyle: CSSProperties = {
+  position: "absolute",
+  inset: -1,
+  zIndex: 3,
+  border: "3px solid #7C51F8",
+  boxSizing: "border-box",
+  pointerEvents: "none",
+};
+
+const selectedCellGripStyle: CSSProperties = {
+  position: "absolute",
+  top: -7,
+  left: "50%",
+  width: 48,
+  height: 10,
+  transform: "translateX(-50%)",
+  borderRadius: 999,
+  border: "1px solid rgba(15, 23, 42, 0.12)",
+  background: "#FFFFFF",
+  boxShadow: "0 1px 4px rgba(15, 23, 42, 0.18)",
 };
 
 const cellContentStyle: CSSProperties = {
