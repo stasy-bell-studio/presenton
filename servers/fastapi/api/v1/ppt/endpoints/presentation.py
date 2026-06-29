@@ -137,11 +137,93 @@ def _canonical_template_v2_layout_payload(layout_payload: Any) -> Optional[str]:
         return None
 
 
+def _coerce_presentation_font_map(value: Any) -> Optional[dict[str, str]]:
+    if not isinstance(value, dict):
+        return None
+
+    fonts = {
+        name.strip(): url.strip()
+        for name, url in value.items()
+        if isinstance(name, str)
+        and isinstance(url, str)
+        and name.strip()
+        and url.strip()
+    }
+    return fonts or None
+
+
+def _extract_template_v2_fonts_from_assets(assets: Any) -> Optional[dict[str, str]]:
+    if not isinstance(assets, dict):
+        return None
+    return _coerce_presentation_font_map(assets.get("fonts"))
+
+
+async def _resolve_presentation_template_v2_fonts(
+    presentation: PresentationModel,
+    slides: List[SlideModel],
+    sql_session: AsyncSession,
+):
+    candidate_template_ids: List[uuid.UUID] = []
+    seen = set()
+
+    if isinstance(presentation.layout, dict):
+        for key in ("name", "template_id", "template_v2_id"):
+            value = presentation.layout.get(key)
+            template_id = None
+            if isinstance(value, str):
+                template_id = _extract_template_v2_id(value)
+                if template_id is None:
+                    try:
+                        template_id = uuid.UUID(value)
+                    except Exception:
+                        template_id = None
+            if template_id and template_id not in seen:
+                candidate_template_ids.append(template_id)
+                seen.add(template_id)
+
+    for slide in slides:
+        for value in (slide.layout_group, slide.layout):
+            template_id = _extract_template_v2_id(value)
+            if template_id and template_id not in seen:
+                candidate_template_ids.append(template_id)
+                seen.add(template_id)
+
+    for template_id in candidate_template_ids:
+        template = await sql_session.get(TemplateV2, template_id)
+        if template:
+            fonts = _extract_template_v2_fonts_from_assets(template.assets)
+            if fonts is not None:
+                return fonts
+
+    target_layout_payload = _canonical_template_v2_layout_payload(presentation.layout)
+    if not target_layout_payload:
+        return None
+
+    try:
+        result = await sql_session.execute(
+            select(TemplateV2.id, TemplateV2.layouts, TemplateV2.assets)
+        )
+        for _template_id, layouts, assets in result.all():
+            if _canonical_template_v2_layout_payload(layouts) != target_layout_payload:
+                continue
+            fonts = _extract_template_v2_fonts_from_assets(assets)
+            if fonts is not None:
+                return fonts
+    except Exception:
+        logger.exception("[presentation.detail] failed to resolve template v2 fonts")
+
+    return None
+
+
 async def _resolve_presentation_fonts(
     presentation: PresentationModel,
     slides: List[SlideModel],
     sql_session: AsyncSession,
 ):
+    stored_fonts = _coerce_presentation_font_map(getattr(presentation, "fonts", None))
+    if stored_fonts is not None:
+        return stored_fonts
+
     candidate_template_ids: List[uuid.UUID] = []
     seen = set()
 
@@ -170,7 +252,15 @@ async def _resolve_presentation_fonts(
             if fonts is not None:
                 return fonts
 
-    return None
+    return await _resolve_presentation_template_v2_fonts(
+        presentation,
+        slides,
+        sql_session,
+    )
+
+
+def _presentation_response_data(presentation: PresentationModel) -> dict:
+    return presentation.model_dump(exclude={"fonts"})
 
 
 async def _resolve_presentation_template_v2_payload(
@@ -831,9 +921,9 @@ def _get_presentation_stream_layout(
 async def _resolve_prepare_layout(
     layout: PresentationLayoutModel | str,
     sql_session: AsyncSession,
-) -> tuple[dict[str, Any], PresentationLayoutModel]:
+) -> tuple[dict[str, Any], PresentationLayoutModel, Optional[dict[str, str]]]:
     if isinstance(layout, PresentationLayoutModel):
-        return layout.model_dump(mode="json"), layout
+        return layout.model_dump(mode="json"), layout, None
 
     try:
         template_id = uuid.UUID(layout)
@@ -855,7 +945,11 @@ async def _resolve_prepare_layout(
         )
 
     structure_layout = _build_template_v2_structure_layout(template, layout_payload)
-    return layout_payload, structure_layout
+    return (
+        layout_payload,
+        structure_layout,
+        _extract_template_v2_fonts_from_assets(template.assets),
+    )
 
 
 def _build_export_cookie_header(request: Request) -> Optional[str]:
@@ -899,7 +993,7 @@ async def get_all_presentations(sql_session: AsyncSession = Depends(get_async_se
         fonts = await _resolve_presentation_fonts(presentation, slides, sql_session)
         presentations_with_slides.append(
             PresentationWithSlides(
-                **presentation.model_dump(),
+                **_presentation_response_data(presentation),
                 slides=slides,
                 fonts=fonts,
             )
@@ -927,7 +1021,7 @@ async def get_presentation(
         sql_session,
     )
     return PresentationDetailWithSlides(
-        **presentation.model_dump(),
+        **_presentation_response_data(presentation),
         slides=slides,
         fonts=fonts,
         merged_components=merged_components,
@@ -1043,7 +1137,7 @@ async def prepare_presentation(
 
     presentation_outline_model = PresentationOutlineModel(slides=outlines)
 
-    layout_payload, structure_layout = await _resolve_prepare_layout(
+    layout_payload, structure_layout, template_fonts = await _resolve_prepare_layout(
         layout, sql_session
     )
     total_slide_layouts = _layout_count(layout_payload)
@@ -1102,6 +1196,7 @@ async def prepare_presentation(
     # as "convert these to Chinese".
     presentation.language = ""
     presentation.layout = layout_payload
+    presentation.fonts = template_fonts
     presentation.set_structure(presentation_structure)
     await sql_session.commit()
 
@@ -1327,7 +1422,7 @@ async def stream_presentation(
         await sql_session.commit()
 
         response = PresentationDetailWithSlides(
-            **presentation.model_dump(),
+            **_presentation_response_data(presentation),
             slides=slides,
             fonts=await _resolve_presentation_fonts(presentation, slides, sql_session),
             merged_components=await _resolve_presentation_merged_components(
@@ -1405,7 +1500,7 @@ async def update_presentation(
     )
 
     return PresentationDetailWithSlides(
-        **presentation.model_dump(),
+        **_presentation_response_data(presentation),
         slides=response_slides,
         fonts=fonts,
         merged_components=merged_components,

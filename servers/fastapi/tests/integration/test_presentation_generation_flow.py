@@ -279,6 +279,7 @@ def test_prepare_presentation_accepts_template_v2_layout_id():
         id=template_id,
         name="Custom V2",
         layouts=template_layouts,
+        assets={"fonts": {"Inter": "https://example.com/inter.css"}},
     )
     session = FakeAsyncSession(
         get_results={presentation_id: presentation, template_id: template}
@@ -307,6 +308,7 @@ def test_prepare_presentation_accepts_template_v2_layout_id():
 
     assert response.layout == template_layouts
     assert response.structure == {"slides": [0]}
+    assert response.fonts == {"Inter": "https://example.com/inter.css"}
     structure_layout = generate_structure.await_args.kwargs["presentation_layout"]
     assert structure_layout.name == f"template-v2-{template_id}"
     assert structure_layout.slides[0].id == "template-layout-1"
@@ -364,11 +366,29 @@ def test_get_presentation_preserves_template_v2_detail_payload():
         id=uuid.uuid4(),
         name="presentation",
         layouts=template_layouts,
+        assets={
+            "fonts": {
+                "Inter": "https://example.com/inter.css",
+                "Brand Sans": "/app_data/fonts/brand-sans.ttf",
+            }
+        },
         components=template_components,
         merged_components=template_components,
     )
+    slides = [
+        SlideModel(
+            presentation=presentation_id,
+            layout_group=f"template-v2-{template.id}",
+            layout="slide_1",
+            index=0,
+            content={},
+        )
+    ]
 
     class _TemplateV2ComponentSession(FakeAsyncSession):
+        async def scalars(self, *_args, **_kwargs):
+            return slides
+
         async def execute(self, *_args, **_kwargs):
             class _RowsResult:
                 def all(self):
@@ -376,7 +396,9 @@ def test_get_presentation_preserves_template_v2_detail_payload():
 
             return _RowsResult()
 
-    session = _TemplateV2ComponentSession(get_results={presentation_id: presentation})
+    session = _TemplateV2ComponentSession(
+        get_results={presentation_id: presentation, template.id: template}
+    )
 
     response = _run(
         presentation_endpoint.get_presentation(
@@ -389,6 +411,10 @@ def test_get_presentation_preserves_template_v2_detail_payload():
     assert response.layout == template_layouts
     assert response.structure == structure
     assert not hasattr(response, "components")
+    assert response.fonts == {
+        "Inter": "https://example.com/inter.css",
+        "Brand Sans": "/app_data/fonts/brand-sans.ttf",
+    }
     assert response.merged_components == template_components
 
 

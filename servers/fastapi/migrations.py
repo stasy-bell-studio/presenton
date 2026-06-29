@@ -17,6 +17,8 @@ REVISION_TEMPLATE_CREATE_INFO = "95b5127e93cd"
 REVISION_CHAT_HISTORY = "c7b70d0f31b1"
 REVISION_TEMPLATE_V2 = "6e4a1b2c3d5f"
 REVISION_SLIDE_UI = "7f5b2c3d4e6a"
+REVISION_MERGED_TEMPLATE_V2 = "8a6c4d2e1f30"
+REVISION_PRESENTATION_FONTS = "9b2d1c4e5f6a"
 
 
 async def migrate_database_on_startup() -> None:
@@ -114,12 +116,17 @@ def _infer_revision_from_schema(inspector, tables: set[str], head_revision: str)
         slide_ui_ready = "slides" not in tables or _has_column(
             inspector, "slides", "ui"
         )
+        presentation_fonts_ready = "presentations" not in tables or _has_column(
+            inspector, "presentations", "fonts"
+        )
         if (
             final_template_columns.issubset(cols)
             and not {"cluster_candidates", "clusters"}.intersection(cols)
             and presentation_version_ready
         ):
-            return head_revision if slide_ui_ready else REVISION_TEMPLATE_V2
+            if slide_ui_ready and presentation_fonts_ready:
+                return head_revision
+            return REVISION_MERGED_TEMPLATE_V2 if slide_ui_ready else REVISION_TEMPLATE_V2
         return REVISION_CHAT_HISTORY
     if "chat_history_messages" in tables:
         return REVISION_CHAT_HISTORY
