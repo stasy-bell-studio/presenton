@@ -130,6 +130,7 @@ def _count_layouts(layouts_json: Any) -> int:
 async def _generate_slide_layouts(
     raw_layouts: RawSlideLayouts,
     slide_image_urls: list[str],
+    fonts: dict[str, str] | None = None,
 ) -> SlideLayouts:
     LOGGER.info(
         "[templates.v2.create] slide layout generation start slides=%d",
@@ -140,6 +141,7 @@ async def _generate_slide_layouts(
             generate_template,
             raw_layouts,
             slide_image_urls,
+            fonts,
         )
         layouts = _coerce_generated_slide_layouts(generated_layouts)
     except (ValidationError, ValueError) as exc:
@@ -239,6 +241,25 @@ def _get_template_slide_image_urls(template: TemplateV2) -> list[str | None]:
         else None
         for slide_image_url in slide_image_urls
     ]
+
+
+def _coerce_font_map(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        name.strip(): url.strip()
+        for name, url in value.items()
+        if isinstance(name, str)
+        and isinstance(url, str)
+        and name.strip()
+        and url.strip()
+    }
+
+
+def _get_template_fonts(template: TemplateV2) -> dict[str, str]:
+    if not isinstance(template.assets, dict):
+        return {}
+    return _coerce_font_map(template.assets.get("fonts"))
 
 
 @TEMPLATES_V2_ROUTER.get("", response_model=TemplateV2ListResponse)
@@ -351,9 +372,11 @@ async def create_template_v2(
             detail="Exactly one slide image is required for each slide layout",
         )
 
+    available_fonts = _coerce_font_map(request.fonts)
     generated_layouts = await _generate_slide_layouts(
         raw_layouts,
         request.slide_image_urls,
+        available_fonts,
     )
     generated_layouts = _with_randomized_layout_ids(generated_layouts)
     merged_components = await _merge_generated_components(generated_layouts)
@@ -369,7 +392,7 @@ async def create_template_v2(
         ),
         layouts=generated_layouts.model_dump(mode="json", exclude_none=True),
         assets={
-            "fonts": request.fonts or {},
+            "fonts": available_fonts,
             "slide_image_urls": request.slide_image_urls,
             "images": _collect_image_urls_from_layouts(raw_layouts_json),
         },
@@ -450,6 +473,7 @@ async def reconstruct_template_v2_slide_layout(
             raw_layouts.layouts[request.index],
             request.index,
             slide_image_url,
+            _get_template_fonts(template),
         )
         layout = (
             generated_layout

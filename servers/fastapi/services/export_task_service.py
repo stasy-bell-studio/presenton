@@ -536,6 +536,7 @@ class ExportTaskService:
         data: list[dict[str, Any]],
         width: int,
         height: int,
+        fonts: Mapping[str, str] | None = None,
     ) -> JsonToImageTaskResult:
         if width <= 0 or height <= 0:
             raise HTTPException(
@@ -543,13 +544,17 @@ class ExportTaskService:
                 detail="JSON-to-image dimensions must be positive",
             )
 
+        task_payload: dict[str, Any] = {
+            "type": "json-to-image",
+            "data": _localize_json_image_assets(data),
+            "width": width,
+            "height": height,
+        }
+        if fonts:
+            task_payload["fonts"] = dict(fonts)
+
         response_data = await self._run_task(
-            {
-                "type": "json-to-image",
-                "data": _localize_json_image_assets(data),
-                "width": width,
-                "height": height,
-            },
+            task_payload,
             "JSON-to-image export task did not produce a response file",
         )
 

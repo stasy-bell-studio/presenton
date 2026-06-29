@@ -163,6 +163,10 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
 
     convert_mock.assert_awaited_once_with(str(pptx_path))
     generate_mock.assert_called_once()
+    raw_layouts_arg, slide_images_arg, fonts_arg = generate_mock.call_args.args
+    assert len(raw_layouts_arg.layouts) == 1
+    assert slide_images_arg == ["/app_data/images/slide-1.png"]
+    assert fonts_arg == {"Inter": "Inter"}
     randint_mock.assert_called_once_with(1000, 9999)
     merge_mock.assert_called_once()
     merged_layouts_arg = merge_mock.call_args.args[0]
@@ -230,7 +234,10 @@ def test_reconstruct_template_v2_slide_layout_returns_generated_layout(
         name="Custom",
         raw_layouts=RAW_LAYOUTS,
         layouts=TEMPLATE_LAYOUTS,
-        assets={"slide_image_urls": ["/app_data/images/slide-1.png"]},
+        assets={
+            "fonts": {"Inter": "https://example.com/inter.css"},
+            "slide_image_urls": ["/app_data/images/slide-1.png"],
+        },
     )
     fake_async_session._get_results[template_id] = template
     request = ReconstructTemplateV2LayoutRequest.model_validate(
@@ -249,10 +256,11 @@ def test_reconstruct_template_v2_slide_layout_returns_generated_layout(
         )
 
     generate_mock.assert_called_once()
-    source_layout, slide_index, slide_image_url = generate_mock.call_args.args
+    source_layout, slide_index, slide_image_url, fonts = generate_mock.call_args.args
     assert source_layout.id == "slide_1"
     assert slide_index == 0
     assert slide_image_url == "/app_data/images/slide-1.png"
+    assert fonts == {"Inter": "https://example.com/inter.css"}
     assert response.model_dump(mode="json", exclude_none=True) == TEMPLATE_LAYOUTS[
         "layouts"
     ][0]
@@ -347,7 +355,7 @@ def test_reconstruct_template_v2_slide_layout_preserves_image_url_indexes(
             )
         )
 
-    source_layout, slide_index, slide_image_url = generate_mock.call_args.args
+    source_layout, slide_index, slide_image_url, _fonts = generate_mock.call_args.args
     assert source_layout.id == "slide_2"
     assert slide_index == 1
     assert slide_image_url == "/app_data/images/slide-2.png"

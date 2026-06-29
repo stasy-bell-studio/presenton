@@ -455,8 +455,8 @@ def test_generate_template_generates_each_slide_and_preserves_order(monkeypatch)
     )
     calls = []
 
-    def fake_generate(source_layout, slide_index, slide_image_url):
-        calls.append((source_layout.id, slide_index, slide_image_url))
+    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None):
+        calls.append((source_layout.id, slide_index, slide_image_url, fonts))
         return SlideLayout.model_validate(
             _generated_layout(f"generated_{source_layout.id}")
         )
@@ -468,11 +468,22 @@ def test_generate_template_generates_each_slide_and_preserves_order(monkeypatch)
     generated = generate_template(
         raw_layouts,
         ["https://example.com/first.png", "https://example.com/second.png"],
+        {"Inter": "https://example.com/inter.css"},
     )
 
     assert sorted(calls) == [
-        ("first", 0, "https://example.com/first.png"),
-        ("second", 1, "https://example.com/second.png"),
+        (
+            "first",
+            0,
+            "https://example.com/first.png",
+            {"Inter": "https://example.com/inter.css"},
+        ),
+        (
+            "second",
+            1,
+            "https://example.com/second.png",
+            {"Inter": "https://example.com/inter.css"},
+        ),
     ]
     assert [layout.id for layout in generated.layouts] == [
         "generated_first",
@@ -632,10 +643,11 @@ def test_preview_slide_tool_renders_layout_components(tmp_path, monkeypatch):
     preview_path.write_bytes(b"rendered-slide")
     captured = {}
 
-    async def fake_render_json_to_image(data, width, height):
+    async def fake_render_json_to_image(data, width, height, fonts=None):
         captured["data"] = data
         captured["width"] = width
         captured["height"] = height
+        captured["fonts"] = fonts
         return SimpleNamespace(path=str(preview_path))
 
     monkeypatch.setattr(
@@ -644,7 +656,10 @@ def test_preview_slide_tool_renders_layout_components(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("APP_DATA_DIRECTORY", str(app_data_dir))
 
-    image = PreviewSlideTool(slide_index=2).render(
+    image = PreviewSlideTool(
+        slide_index=2,
+        fonts={"Inter": "https://example.com/inter.css"},
+    ).render(
         SlideLayout.model_validate(_generated_layout())
     )
 
@@ -655,6 +670,7 @@ def test_preview_slide_tool_renders_layout_components(tmp_path, monkeypatch):
     assert captured["data"][0]["elements"][0]["type"] == "text"
     assert captured["width"] == 1280
     assert captured["height"] == 720
+    assert captured["fonts"] == {"Inter": "https://example.com/inter.css"}
     assert image.data == b"rendered-slide"
     assert image.mime_type == "image/png"
     assert json.loads(saved_json_path.read_text()) == _generated_layout()

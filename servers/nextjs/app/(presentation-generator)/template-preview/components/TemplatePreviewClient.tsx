@@ -13,7 +13,9 @@ import { notify } from "@/components/ui/sonner";
 import { CustomTemplateLayout, useCustomTemplateDetails, useTemplateV2Details } from "@/app/hooks/useCustomTemplates";
 import { templates as templateGroups, getTemplatesByTemplateName } from "@/app/presentation-templates";
 import { setupImageUrlConverter } from "@/utils/image-url-converter";
+import { normalizeTemplateV2Fonts } from "@/components/slide-editor/lib/template-v2-import";
 import { TemplateV2LayoutPreview } from "../../custom-template/components/EachSlide/TemplateV2LayoutPreview";
+import { useFontLoader as loadFontAssets } from "../../hooks/useFontLoad";
 
 type GroupLayoutPreviewProps = {
   useKonvaTemplateV2Preview?: boolean;
@@ -337,6 +339,15 @@ const GroupLayoutPreview = ({
       document.head.appendChild(script);
     }
   }, [templateParams]);
+
+  useEffect(() => {
+    if (!isTemplateV2 || !templateV2) return;
+
+    const fonts = normalizeTemplateV2Fonts(
+      templateV2 as Parameters<typeof normalizeTemplateV2Fonts>[0],
+    );
+    loadFontAssets(fonts);
+  }, [isTemplateV2, templateV2]);
 
   // Keep backend-served assets on the active origin in Docker/nginx preview mode.
   useEffect(() => {

@@ -24,8 +24,14 @@ class PreviewSlideTool(Tool):
 
     _slide_index: int | None = PrivateAttr(default=None)
     _preview_count: int = PrivateAttr(default=0)
+    _fonts: dict[str, str] = PrivateAttr(default_factory=dict)
 
-    def __init__(self, *, slide_index: int | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        slide_index: int | None = None,
+        fonts: dict[str, str] | None = None,
+    ) -> None:
         super().__init__(
             name=PREVIEW_SLIDE_TOOL_NAME,
             description=(
@@ -38,6 +44,7 @@ class PreviewSlideTool(Tool):
         )
         self._slide_index = slide_index
         self._preview_count = 0
+        self._fonts = dict(fonts or {})
 
     def render(self, layout: SlideLayout) -> ImageContentPart:
         self._preview_count += 1
@@ -52,6 +59,7 @@ class PreviewSlideTool(Tool):
                 components,
                 SLIDE_PREVIEW_WIDTH,
                 SLIDE_PREVIEW_HEIGHT,
+                fonts=self._fonts,
             )
         )
         with open(result.path, "rb") as image_file:
