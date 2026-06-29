@@ -490,22 +490,6 @@ function TemplateV2KonvaSlideComponent({
     [activateSurface],
   );
 
-  const openImageElementEditor = useCallback(
-    (elementSelection: ElementSelection) => {
-      const element = getElementAtSelection(
-        currentUiRef.current,
-        elementSelection,
-      );
-      if (!element || readString(element.type) !== "image") return;
-      if (isRawIconElement(element)) {
-        openIconEditor(elementSelection);
-        return;
-      }
-      openImageUpload(elementSelection);
-    },
-    [openIconEditor, openImageUpload],
-  );
-
   const handleIconChange = useCallback(
     (newIconUrl: string, query?: string) => {
       if (!iconEditorSelection || !newIconUrl) return;
@@ -591,7 +575,9 @@ function TemplateV2KonvaSlideComponent({
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       const type = readString(element?.type);
       if (type === "image") {
-        openImageElementEditor(elementSelection);
+        if (element && isRawIconElement(element)) {
+          openIconEditor(elementSelection);
+        }
         return;
       }
       if (type === "chart") {
@@ -600,7 +586,7 @@ function TemplateV2KonvaSlideComponent({
       }
       openInlineEditor(elementSelection);
     },
-    [openChartEditor, openImageElementEditor, openInlineEditor],
+    [openChartEditor, openIconEditor, openInlineEditor],
   );
 
   useEffect(() => {
@@ -754,7 +740,7 @@ function TemplateV2KonvaSlideComponent({
       style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
       onPointerDown={activateSurface}
     >
-      {/* {isEditMode ? (
+      {isEditMode ? (
         <input
           ref={imageUploadInputRef}
           accept="image/*"
@@ -762,7 +748,7 @@ function TemplateV2KonvaSlideComponent({
           type="file"
           onChange={handleImageUploadChange}
         />
-      ) : null} */}
+      ) : null}
       <Stage
         width={STAGE_WIDTH}
         height={STAGE_HEIGHT}
@@ -830,7 +816,7 @@ function TemplateV2KonvaSlideComponent({
           selectedTableCell={null}
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onEditChart={() => openChartEditor(selection)}
-          onEditImage={() => openImageElementEditor(selection)}
+          onEditImage={() => openImageUpload(selection)}
           onEditText={() => openInlineEditor(selection)}
         />
       ) : null}
@@ -983,11 +969,9 @@ function RawComponentNode({
         );
       }}
     >
-      <Rect
-        width={box.width}
-        height={box.height}
-        fill="rgba(255,255,255,0.01)"
-      />
+      {isEditMode ? (
+        <RawInteractionTarget width={box.width} height={box.height} />
+      ) : null}
       {elements.map((element, elementIndex) => (
         <MemoizedRawElementNode
           key={rawElementKey(element, elementIndex)}
@@ -1176,7 +1160,9 @@ function RawElementNode({
         }));
       }}
     >
-      <Rect width={box.width} height={box.height} fill="rgba(255,255,255,0.01)" />
+      {isEditMode ? (
+        <RawInteractionTarget width={box.width} height={box.height} />
+      ) : null}
       {editing ? null : (
         <MemoizedRawElementVisual
           element={element}
@@ -1266,6 +1252,30 @@ const MemoizedRawElementNode = memo(RawElementNode, (previous, next) => {
   );
 });
 
+function RawInteractionTarget({
+  width,
+  height,
+}: {
+  width: number;
+  height: number;
+}) {
+  return (
+    <Rect
+      width={width}
+      height={height}
+      fill="#000000"
+      perfectDrawEnabled={false}
+      sceneFunc={() => undefined}
+      hitFunc={(context, shape) => {
+        context.beginPath();
+        context.rect(0, 0, width, height);
+        context.closePath();
+        context.fillShape(shape);
+      }}
+    />
+  );
+}
+
 function RawElementVisual({
   element,
   width,
@@ -1277,18 +1287,21 @@ function RawElementVisual({
 }) {
   const type = readString(element.type);
   if (isBoxVisualType(type)) {
+    const fill = colorWithOpacity(
+      fillColor(element.fill),
+      fillOpacity(element.fill),
+    );
+    const stroke = colorWithOpacity(
+      strokeColor(element.stroke),
+      strokeOpacity(element.stroke),
+    );
+    if (!fill && !(stroke && strokeWidth(element.stroke) > 0)) return null;
     return (
       <Rect
         width={width}
         height={height}
-        fill={
-          colorWithOpacity(fillColor(element.fill), fillOpacity(element.fill)) ??
-          "transparent"
-        }
-        stroke={colorWithOpacity(
-          strokeColor(element.stroke),
-          strokeOpacity(element.stroke),
-        )}
+        fill={fill}
+        stroke={stroke}
         strokeWidth={strokeWidth(element.stroke)}
         cornerRadius={borderRadius(element)}
         {...shadowProps(element)}
@@ -1367,17 +1380,7 @@ function RawElementVisual({
   if (type === "infographic") {
     return <RawInfographicElement element={element} width={width} height={height} />;
   }
-  return (
-    <Rect
-      width={width}
-      height={height}
-      fill="rgba(124,81,248,0.08)"
-      stroke="#7C51F8"
-      strokeWidth={1}
-      dash={[6, 4]}
-      listening={false}
-    />
-  );
+  return null;
 }
 
 const MemoizedRawElementVisual = memo(
@@ -1473,6 +1476,11 @@ function RawImageElement({
   }
 
   const fit = readString(element.fit) ?? "contain";
+  const focusX = clamp(readNumber(element.focus_x) ?? 50, 0, 100) / 100;
+  const focusY = clamp(readNumber(element.focus_y) ?? 50, 0, 100) / 100;
+  const flipH = readBoolean(element.flip_h) === true;
+  const flipV = readBoolean(element.flip_v) === true;
+  const cornerRadii = imageCornerRadii(element, width, height);
   const naturalRatio = loaded.width / loaded.height || 1;
   const boxRatio = width / height || 1;
   let drawW = width;
@@ -1483,33 +1491,82 @@ function RawImageElement({
   if (fit === "cover") {
     if (naturalRatio > boxRatio) {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) / 2;
+      offsetX = -(drawW - width) * focusX;
     } else {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) / 2;
+      offsetY = -(drawH - height) * focusY;
     }
   } else if (fit === "contain") {
     if (naturalRatio > boxRatio) {
       drawH = width / naturalRatio;
-      offsetY = (height - drawH) / 2;
+      offsetY = (height - drawH) * focusY;
     } else {
       drawW = height * naturalRatio;
-      offsetX = (width - drawW) / 2;
+      offsetX = (width - drawW) * focusX;
     }
   }
 
   return (
-    <Group clipX={0} clipY={0} clipWidth={width} clipHeight={height} listening={false}>
+    <Group
+      clipFunc={(context) =>
+        drawRoundedImageClip(context, width, height, cornerRadii)
+      }
+      listening={false}
+    >
       <KonvaImage
         image={loaded}
-        x={offsetX}
-        y={offsetY}
+        x={offsetX + (flipH ? drawW : 0)}
+        y={offsetY + (flipV ? drawH : 0)}
         width={drawW}
         height={drawH}
+        scaleX={flipH ? -1 : 1}
+        scaleY={flipV ? -1 : 1}
         listening={false}
       />
     </Group>
   );
+}
+
+function imageCornerRadii(
+  element: RawElement,
+  width: number,
+  height: number,
+): [number, number, number, number] {
+  const rawRadius = borderRadius(element);
+  const values = Array.isArray(rawRadius)
+    ? rawRadius
+    : [rawRadius, rawRadius, rawRadius, rawRadius];
+  const maxRadius = Math.max(0, Math.min(width, height) / 2);
+  return [
+    clamp(values[0] ?? 0, 0, maxRadius),
+    clamp(values[1] ?? 0, 0, maxRadius),
+    clamp(values[2] ?? 0, 0, maxRadius),
+    clamp(values[3] ?? 0, 0, maxRadius),
+  ];
+}
+
+function drawRoundedImageClip(
+  context: Konva.Context,
+  width: number,
+  height: number,
+  [topLeft, topRight, bottomRight, bottomLeft]: [
+    number,
+    number,
+    number,
+    number,
+  ],
+) {
+  context.beginPath();
+  context.moveTo(topLeft, 0);
+  context.lineTo(width - topRight, 0);
+  context.quadraticCurveTo(width, 0, width, topRight);
+  context.lineTo(width, height - bottomRight);
+  context.quadraticCurveTo(width, height, width - bottomRight, height);
+  context.lineTo(bottomLeft, height);
+  context.quadraticCurveTo(0, height, 0, height - bottomLeft);
+  context.lineTo(0, topLeft);
+  context.quadraticCurveTo(0, 0, topLeft, 0);
+  context.closePath();
 }
 
 function RawSvgElement({
@@ -1622,7 +1679,6 @@ function RawChartElement({
     });
     return (
       <Group listening={false}>
-        <Rect width={width} height={height} fill="rgba(255,255,255,0.01)" />
         <Line points={[pad, pad, pad, pad + plotH, pad + plotW, pad + plotH]} stroke="#98A2B3" strokeWidth={1} />
         <Line points={points} stroke={color} strokeWidth={3} tension={0.25} />
         <Text x={pad} y={4} width={plotW} text={readString(element.title) ?? ""} fill="#344054" fontSize={14} />
@@ -1637,7 +1693,6 @@ function RawChartElement({
     let rotation = -90;
     return (
       <Group listening={false}>
-        <Rect width={width} height={height} fill="rgba(255,255,255,0.01)" />
         {values.map((value, index) => {
           const angle = (Math.abs(value) / total) * 360;
           const segmentRotation = rotation;
@@ -1672,7 +1727,6 @@ function RawChartElement({
   const barW = values.length > 0 ? Math.max(4, (plotW - barGap * (values.length - 1)) / values.length) : 0;
   return (
     <Group listening={false}>
-      <Rect width={width} height={height} fill="rgba(255,255,255,0.01)" />
       <Line points={[pad, pad, pad, pad + plotH, pad + plotW, pad + plotH]} stroke="#98A2B3" strokeWidth={1} />
       {values.map((value, index) => {
         const barH = (value / max) * plotH;
