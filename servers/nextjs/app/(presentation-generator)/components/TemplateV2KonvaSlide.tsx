@@ -637,8 +637,14 @@ function TemplateV2KonvaSlideComponent({
     if (!isEditMode || typeof document === "undefined") return;
     const handlePointerDown = (event: PointerEvent) => {
       const root = rootRef.current;
-      if (root?.contains(event.target as Node)) activateSurface();
-      else clearSurface();
+      if (root?.contains(event.target as Node)) {
+        activateSurface();
+        return;
+      }
+
+      setSelection(null);
+      setInlineEdit(null);
+      clearSurface();
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
@@ -1045,15 +1051,13 @@ function RawElementNode({
       clipHeight={clipChildren ? box.height : undefined}
       rotation={readNumber(element.rotation) ?? 0}
       opacity={readNumber(element.opacity) ?? 1}
-      draggable={isEditMode && selected}
-      dragBoundFunc={(pos) => clampAbsoluteBox(pos, box, parentBox)}
       onMouseDown={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = selected;
+        event.cancelBubble = false;
       }}
       onTouchStart={(event) => {
         if (!isEditMode) return;
-        event.cancelBubble = selected;
+        event.cancelBubble = false;
       }}
       onClick={(event) => {
         if (!isEditMode) return;
@@ -1076,27 +1080,6 @@ function RawElementNode({
         event.cancelBubble = true;
         onSelect(selection);
         onOpenEditor(selection);
-      }}
-      onDragStart={(event) => {
-        if (!isEditMode) return;
-        event.cancelBubble = true;
-        onSelect(selection);
-      }}
-      onDragMove={(event) => {
-        event.cancelBubble = true;
-      }}
-      onDragEnd={(event) => {
-        if (!isEditMode) return;
-        event.cancelBubble = true;
-        const node = groupRef.current;
-        if (!node) return;
-        onElementChange(selection, (current) => ({
-          ...current,
-          position: positionFromNodeInParent(node, parentBox, box),
-          ...(layoutManaged || isManualPositioned(current)
-            ? { __presenton_manual_position: true }
-            : {}),
-        }));
       }}
       onTransformEnd={(event) => {
         if (!isEditMode) return;
