@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from "react";
+import { Layer, Stage } from "react-konva";
 import {
   BarChart3,
   ChevronDown,
@@ -24,9 +25,9 @@ import {
   type ChartElement,
   type ChartSeries,
   type ChartType,
-  type Slide,
 } from "../lib/slide-schema";
-import { SlideSurface } from "../slide-surface";
+import { ChartElement as KonvaChartElement } from "../slide-surface/konva/ChartElement";
+import type { ElementEvents } from "../slide-surface/konva/types";
 
 const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
   { label: "Bar Chart", value: "bar" },
@@ -38,6 +39,17 @@ const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
 const DATA_MODAL_CHART_PREVIEW_WIDTH = 274;
 const DATA_MODAL_CHART_PREVIEW_HEIGHT =
   (DATA_MODAL_CHART_PREVIEW_WIDTH / SLIDE_W) * SLIDE_H;
+const DATA_MODAL_CHART_PREVIEW_SCALE = DATA_MODAL_CHART_PREVIEW_WIDTH / SLIDE_W;
+const NOOP_CHART_PREVIEW_EVENTS = {
+  draggable: false,
+  onClick: () => false,
+  onTap: () => false,
+  onDragStart: () => undefined,
+  onDragMove: () => undefined,
+  onDragEnd: () => undefined,
+  onTransformStart: () => undefined,
+  onTransformEnd: () => undefined,
+} satisfies ElementEvents;
 
 export function ChartEditorContent({
   chart,
@@ -79,31 +91,29 @@ export function ChartEditorContent({
         <label className="mb-3 block text-[13px] font-medium text-[#191919]">
           Charts
         </label>
-	<ChartTypeSelect
-	  value={chart.chart_type}
-	  onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
-	/>
+        <ChartTypeSelect
+          value={chart.chart_type}
+          onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+        />
 
         <div className="mt-8 border-t border-[#ECECF1]">
           <div className="grid grid-cols-2">
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${
-                tab === "data"
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "data"
                   ? "border-[#7C51F8] text-[#191919]"
                   : "border-transparent text-[#191919]"
-              }`}
+                }`}
               onClick={() => setTab("data")}
             >
               Data
             </button>
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${
-                tab === "customize"
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "customize"
                   ? "border-[#7C51F8] text-[#191919]"
                   : "border-transparent text-[#191919]"
-              }`}
+                }`}
               onClick={() => setTab("customize")}
             >
               Customize
@@ -275,53 +285,53 @@ function ChartCustomizePanel({
           }
         />
         <ToggleRow
-	  checked={chart.data_labels ?? chart.data_labels ?? false}
-	  label="Show values"
-	  onChange={(checked) =>
-	    onChange({ ...chart, data_labels: checked })
-	  }
-	/>
-	<ColorRow
-	  label="Label color"
-	  value={chart.data_labels_color ?? "6A7894"}
-	  onChange={(labelColor) => onChange({ ...chart, data_labels_color: labelColor })}
-	/>
+          checked={chart.data_labels ?? chart.data_labels ?? false}
+          label="Show values"
+          onChange={(checked) =>
+            onChange({ ...chart, data_labels: checked })
+          }
+        />
+        <ColorRow
+          label="Label color"
+          value={chart.data_labels_color ?? "6A7894"}
+          onChange={(labelColor) => onChange({ ...chart, data_labels_color: labelColor })}
+        />
       </PanelSection>
 
       <PanelSection icon={<BarChart3 size={18} />} label="X Axis">
         <ToggleRow
-	  checked={chart.x_axis ?? true}
-	  label="Show X axis"
-	  onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
+          checked={chart.x_axis ?? true}
+          label="Show X axis"
+          onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
         />
         <label className="block text-[12px] font-medium text-[#686873]">
           Axis title
         </label>
         <input
           className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-	  value={chart.x_axis_title ?? ""}
-	  onChange={(event) =>
-	    onChange({ ...chart, x_axis_title: event.target.value || null })
-	  }
-	/>
+          value={chart.x_axis_title ?? ""}
+          onChange={(event) =>
+            onChange({ ...chart, x_axis_title: event.target.value || null })
+          }
+        />
       </PanelSection>
 
       <PanelSection icon={<BarChart3 size={18} />} label="Y Axis">
         <ToggleRow
-	  checked={chart.y_axis ?? true}
-	  label="Show Y axis"
-	  onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
+          checked={chart.y_axis ?? true}
+          label="Show Y axis"
+          onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
         />
         <label className="block text-[12px] font-medium text-[#686873]">
           Axis title
         </label>
         <input
           className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-	  value={chart.y_axis_title ?? ""}
-	  onChange={(event) =>
-	    onChange({ ...chart, y_axis_title: event.target.value || null })
-	  }
-	/>
+          value={chart.y_axis_title ?? ""}
+          onChange={(event) =>
+            onChange({ ...chart, y_axis_title: event.target.value || null })
+          }
+        />
       </PanelSection>
 
       <PanelSection icon={<Settings size={18} />} label="Settings">
@@ -335,9 +345,9 @@ function ChartCustomizePanel({
           value={chart.color ?? "D4A24C"}
           onChange={(color) =>
             onChange({
-	      ...chart,
-	      color,
-	      series_colors: [color, ...(chart.series_colors ?? []).slice(1)],
+              ...chart,
+              color,
+              series_colors: [color, ...(chart.series_colors ?? []).slice(1)],
               data: chartDataFromSeries(
                 safeCategoriesForChart(chart),
                 chart.series ?? [],
@@ -347,10 +357,10 @@ function ChartCustomizePanel({
           }
         />
         <ColorRow
-	  label="Axis color"
-	  value={chart.axis_color ?? "9AA7BD"}
-	  onChange={(axisColor) => onChange({ ...chart, axis_color: axisColor })}
-	/>
+          label="Axis color"
+          value={chart.axis_color ?? "9AA7BD"}
+          onChange={(axisColor) => onChange({ ...chart, axis_color: axisColor })}
+        />
         <label className="block text-[12px] font-medium text-[#686873]">
           Opacity
         </label>
@@ -452,7 +462,7 @@ function ChartDataModal({
   const categories = safeCategoriesForChart(chart);
   const series = normalizedSeries(chart, categories.length);
   const [expanded, setExpanded] = useState(false);
-  const previewSlide = useMemo(() => chartPreviewSlide(chart), [chart]);
+  const previewChart = useMemo(() => chartPreviewElement(chart), [chart]);
 
   const updateData = (
     nextCategories: string[],
@@ -476,10 +486,10 @@ function ChartDataModal({
     );
 
     onChange({
-	    ...chart,
-	    categories: normalizedCategories,
-	    series: normalized,
-	    series_colors: seriesColors,
+      ...chart,
+      categories: normalizedCategories,
+      series: normalized,
+      series_colors: seriesColors,
       data: chartDataFromSeries(
         normalizedCategories,
         normalized,
@@ -549,10 +559,10 @@ function ChartDataModal({
             <label className="mb-3 block text-base font-medium text-[#191919]">
               Charts
             </label>
-	<ChartTypeSelect
-	  value={chart.chart_type}
-	  onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
-	/>
+            <ChartTypeSelect
+              value={chart.chart_type}
+              onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+            />
             <div className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]">
               <div
                 className="pointer-events-none relative overflow-hidden"
@@ -561,12 +571,21 @@ function ChartDataModal({
                   width: DATA_MODAL_CHART_PREVIEW_WIDTH,
                 }}
               >
-                <SlideSurface
+                <Stage
                   height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
-                  interactive={false}
-                  slide={previewSlide}
                   width={DATA_MODAL_CHART_PREVIEW_WIDTH}
-                />
+                >
+                  <Layer listening={false}>
+                    <KonvaChartElement
+                      element={previewChart}
+                      events={NOOP_CHART_PREVIEW_EVENTS}
+                      index={0}
+                      scale={DATA_MODAL_CHART_PREVIEW_SCALE}
+                      selected={false}
+                      setRef={() => undefined}
+                    />
+                  </Layer>
+                </Stage>
               </div>
             </div>
             <div className="mt-7 space-y-3">
@@ -639,11 +658,11 @@ function EditableDataTable({
     series.length > 0
       ? series
       : [
-          {
-            name: "Series 1",
-            values: normalizeValues([], safeCategories.length),
-          },
-        ];
+        {
+          name: "Series 1",
+          values: normalizeValues([], safeCategories.length),
+        },
+      ];
 
   const updateCategory = (rowIndex: number, value: string) => {
     onUpdate(
@@ -670,13 +689,13 @@ function EditableDataTable({
       safeSeries.map((item, index) =>
         index === seriesIndex
           ? {
-              ...item,
-              values: item.values.map((current, valueIndex) =>
-                valueIndex === rowIndex && Number.isFinite(numeric)
-                  ? numeric
-                  : current,
-              ),
-            }
+            ...item,
+            values: item.values.map((current, valueIndex) =>
+              valueIndex === rowIndex && Number.isFinite(numeric)
+                ? numeric
+                : current,
+            ),
+          }
           : item,
       ),
       seriesColors,
@@ -861,27 +880,21 @@ function clearChartData(chart: ChartElement): ChartElement {
   const series = [{ name: "Series 1", values: [0] }];
   const color = chart.color ?? DEFAULT_CHART_COLORS[0];
   return {
-	    ...chart,
-	    categories,
-	    series,
-	    series_colors: [color],
+    ...chart,
+    categories,
+    series,
+    series_colors: [color],
     data: chartDataFromSeries(categories, series, color),
   };
 }
 
-function chartPreviewSlide(chart: ChartElement): Slide {
+function chartPreviewElement(chart: ChartElement): ChartElement {
   return {
-    background: "FFFFFF",
-    title: "Chart preview",
-    elements: [
-      {
-        ...chart,
-        opacity: 1,
-        position: { x: 0.35, y: 0.35 },
-        rotation: 0,
-        size: { width: SLIDE_W - 0.7, height: SLIDE_H - 0.7 },
-      },
-    ],
+    ...chart,
+    opacity: 1,
+    position: { x: 0.35, y: 0.35 },
+    rotation: 0,
+    size: { width: SLIDE_W - 0.7, height: SLIDE_H - 0.7 },
   };
 }
 
@@ -893,9 +906,8 @@ function downloadChartData(element: ChartElement) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${
-    (element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
-  }.csv`;
+  anchor.download = `${(element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
+    }.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

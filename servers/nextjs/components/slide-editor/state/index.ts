@@ -1,76 +1,23 @@
-export {
-  deckAtom,
-  activeSlideIndexAtom,
-  selectedAtom,
-  selectedPathAtom,
-  selectedItemsAtom,
-  editorOpenAtom,
-  presentingAtom,
-  exportModeAtom,
-  isExportingAtom,
-  editingTextIndexAtom,
-  editingTextPathAtom,
-  editingBulletsIndexAtom,
-  editingBulletsPathAtom,
-  editingBulletsDraftAtom,
-  editingTableIndexAtom,
-  editingTablePathAtom,
-  editingTableDraftAtom,
-  editingChartIndexAtom,
-  editingChartPathAtom,
-  editingSvgIndexAtom,
-  editingSvgPathAtom,
-  editingSvgDraftAtom,
-  selectedTableCellAtom,
-  activeSlideAtom,
-  selectedIndexAtom,
-  selectedElementAtom,
-  selectedResolvedElementAtom,
-  selectedTextElementAtom,
-  selectedBulletsElementAtom,
-  selectedImageElementAtom,
-  selectedShapeElementAtom,
-  selectedTableElementAtom,
-  selectedChartElementAtom,
-  editingTextElementAtom,
-  editingBulletsElementAtom,
-  editingTableElementAtom,
-  editingChartElementAtom,
-  editingSvgElementAtom,
-  activeSlideOverflowIndicesAtom,
-  selectedElementOverflowsAtom,
-  type ExportMode,
-  type TextSlideElement,
-  type BulletsSlideElement,
-  type ImageSlideElement,
-  type ShapeSlideElement,
-  type TableSlideElement,
-  type ChartSlideElement,
-  type SvgSlideElement,
-  type TableCellSelection,
-} from "./atoms";
-export {
-  selectElementAtom,
-  selectElementsAtom,
-  setSelectionAtom,
-  updateDeckTitleAtom,
-  updateDeckThemeColorAtom,
-  applyDeckThemePresetAtom,
-  updateActiveSlideAtom,
-  updateElementAtom,
-  updateElementAtPathAtom,
-  updateElementsAtom,
-  patchSelectedAtom,
-  addElementAtom,
-  insertEmptySlideAtom,
-  insertSlideAtom,
-  moveSlideAtom,
-  insertElementAtom,
-  insertElementsAtom,
-  duplicateSelectedAtom,
-  deleteSelectedComponentRunAtom,
-  deleteSelectedAtom,
-} from "./actions";
+import type { ElementPath } from "../lib/element-path";
+import type { SlideElement } from "../lib/slide-schema";
+
+export type ExportMode = "native" | "keynote" | "raster";
+export type TextSlideElement = Extract<SlideElement, { type: "text" }>;
+export type BulletsSlideElement = Extract<SlideElement, { type: "text-list" }>;
+export type ImageSlideElement = Extract<SlideElement, { type: "image" }>;
+export type ShapeSlideElement = Extract<
+  SlideElement,
+  { type: "rectangle" | "ellipse" }
+>;
+export type TableSlideElement = Extract<SlideElement, { type: "table" }>;
+export type ChartSlideElement = Extract<SlideElement, { type: "chart" }>;
+export type SvgSlideElement = Extract<SlideElement, { type: "svg" }>;
+export type TableCellSelection = {
+  elementIndex: number;
+  elementPath?: ElementPath | null;
+  rowIndex: number;
+  colIndex: number;
+};
+
 export { getComponentRun, type ComponentRun } from "./componentGroups";
 export { createDefaultElement } from "./createDefaultElement";
-export { undoAtom, redoAtom, canUndoAtom, canRedoAtom } from "./history";

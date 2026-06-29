@@ -1,12 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
-import React, { useMemo } from "react";
+import React from "react";
 import {
-  adaptTemplateV2LayoutToSlide,
   type TemplateV2Layout as EditorTemplateV2Layout,
   withEqualTemplateV2FlowChildSizes,
 } from "@/components/slide-editor/lib/template-v2-import";
-import { SlideSurface } from "@/components/slide-editor/slide-surface";
 import { resolveBackendAssetUrl } from "@/utils/api";
+import { TemplateV2KonvaSlide } from "../../../components/TemplateV2KonvaSlide";
 import {
   TemplateV2Component,
   TemplateV2Element,
@@ -60,27 +59,19 @@ interface TemplateV2LayoutPreviewProps {
 export const TemplateV2LayoutPreview: React.FC<TemplateV2LayoutPreviewProps> = ({
   layout,
   slideDisplayRef,
-  useKonvaRenderer = false,
+  useKonvaRenderer = true,
 }) => {
-  const konvaSlide = useMemo(
-    () =>
-      useKonvaRenderer
-        ? adaptTemplateV2LayoutToSlide(layout as EditorTemplateV2Layout)
-        : null,
-    [layout, useKonvaRenderer],
-  );
-
-  if (konvaSlide) {
+  if (useKonvaRenderer) {
     return (
       <div
         ref={slideDisplayRef}
         className="relative mx-auto h-[720px] w-[1280px] select-none overflow-hidden bg-white"
       >
-        <SlideSurface
-          height={720}
-          interactive={false}
-          slide={konvaSlide}
-          width={1280}
+        <TemplateV2KonvaSlide
+          layout={layout as EditorTemplateV2Layout}
+          isEditMode={false}
+          slideId={null}
+          slideIndex={0}
         />
       </div>
     );
