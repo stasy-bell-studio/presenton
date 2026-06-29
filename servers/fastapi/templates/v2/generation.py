@@ -124,6 +124,7 @@ Analyze components `id` and `description` and create clusters of similar compone
 def generate_template(
     layouts: RawSlideLayouts,
     slide_image_urls: list[str],
+    fonts: dict[str, str] | None = None,
 ) -> SlideLayouts:
     """Generate each template slide directly as a complete SlideLayout."""
     if not layouts.layouts:
@@ -150,6 +151,7 @@ def generate_template(
                 layout,
                 index,
                 slide_image_urls[index],
+                fonts,
             ): index
             for index, layout in enumerate(layouts.layouts)
         }
@@ -298,6 +300,7 @@ def generate_slide_layout(
     source_layout: RawSlideLayout,
     slide_index: int,
     slide_image_url: str,
+    fonts: dict[str, str] | None = None,
 ) -> SlideLayout:
     payload = (
         _strip_decorative_fields(
@@ -316,7 +319,7 @@ def generate_slide_layout(
             ]
         ),
     ]
-    preview_tool = PreviewSlideTool(slide_index=slide_index)
+    preview_tool = PreviewSlideTool(slide_index=slide_index, fonts=fonts)
     return _generate_preview_candidate(
         client=client,
         model=model,

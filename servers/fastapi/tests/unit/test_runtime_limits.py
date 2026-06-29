@@ -134,7 +134,14 @@ def test_render_json_to_image_sends_json_task_payload(tmp_path):
     service._run_task = fake_run_task
     data = [{"type": "text", "runs": [{"text": "Preview"}]}]
 
-    result = asyncio.run(service.render_json_to_image(data, 1280, 720))
+    result = asyncio.run(
+        service.render_json_to_image(
+            data,
+            1280,
+            720,
+            fonts={"Inter": "https://example.com/inter.css"},
+        )
+    )
 
     assert result.path == str(output_path)
     assert captured["task_payload"] == {
@@ -142,6 +149,7 @@ def test_render_json_to_image_sends_json_task_payload(tmp_path):
         "data": data,
         "width": 1280,
         "height": 720,
+        "fonts": {"Inter": "https://example.com/inter.css"},
     }
     assert "JSON-to-image" in captured["response_error_detail"]
 
