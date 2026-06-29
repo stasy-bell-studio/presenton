@@ -19,8 +19,9 @@ import {
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { LLMConfig } from "@/types/llm_config";
-import { getApiUrl } from "@/utils/api";
+import { getApiErrorMessage, getApiUrl } from "@/utils/api";
 import { LLM_PROVIDERS } from "@/utils/providerConstants";
+import { getDefaultOllamaUrl } from "@/utils/providerUtils";
 import {
   Check,
   Loader2,
@@ -35,7 +36,6 @@ import CodexConfig from "./SettingCodex";
 import VertexAzureManualFields from "@/components/VertexAzureManualFields";
 import BedrockManualFields from "@/components/BedrockManualFields";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
-import { getDefaultOllamaUrl } from "@/utils/providerUtils";
 import OllamaConfig from "@/components/OllamaConfig";
 
 interface OpenAIConfigProps {
@@ -373,13 +373,14 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
           onInputChange(nextModel, currentModelField);
         }
       } else {
+        const message = await getApiErrorMessage(
+          response,
+          `The server could not list ${modelLabel} models. Check your API key or endpoint and try again.`
+        );
         console.error("Failed to fetch models");
         setAvailableModels([]);
         setModelsChecked(true);
-        notify.error(
-          "Could not load models",
-          `The server could not list ${modelLabel} models. Check your API key or endpoint and try again.`
-        );
+        notify.error("Could not load models", message);
       }
     } catch (error) {
       console.error("Error fetching models:", error);
@@ -502,13 +503,10 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                                     section: "text_provider",
                                     provider: value,
                                   });
-                                  if (
-                                    value === "ollama" &&
-                                    !(currentOllamaUrl || "").trim()
-                                  ) {
+                                  onInputChange(value, "LLM");
+                                  if (value === "ollama" && !llmConfig.OLLAMA_URL?.trim()) {
                                     onInputChange(getDefaultOllamaUrl(), "OLLAMA_URL");
                                   }
-                                  onInputChange(value, "LLM");
                                   setOpenProviderSelect(false);
                                 }}
                               >

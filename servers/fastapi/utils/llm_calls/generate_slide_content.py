@@ -66,16 +66,19 @@ English
 """
 
 ASSET_ONLY_FIELDS = ["__image_url__", "__icon_url__"]
+AUTO_DETECT_LANGUAGE_INSTRUCTION = (
+    "auto-detect from the slide content and use the same language as the slide content"
+)
 
 
 def _resolve_prompt_language(language: Optional[str]) -> str:
     if language is None:
-        return "auto-detect"
+        return AUTO_DETECT_LANGUAGE_INSTRUCTION
     s = str(language).strip()
     if not s:
-        return "auto-detect"
+        return AUTO_DETECT_LANGUAGE_INSTRUCTION
     if s.lower() in {"auto", "auto-detect"}:
-        return "auto-detect"
+        return AUTO_DETECT_LANGUAGE_INSTRUCTION
     return s
 
 

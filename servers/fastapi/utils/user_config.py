@@ -176,9 +176,11 @@ def get_user_config():
     user_config_path = get_user_config_path_env()
 
     existing_config = UserConfig()
+    existing_config_data = {}
     try:
         if user_config_path:
-            existing_config = UserConfig(**read_user_config_file(user_config_path))
+            existing_config_data = read_user_config_file(user_config_path)
+            existing_config = UserConfig(**existing_config_data)
     except Exception:
         print("Error while loading user config")
         pass
@@ -239,7 +241,11 @@ def get_user_config():
         ANTHROPIC_API_KEY=existing_config.ANTHROPIC_API_KEY
         or get_anthropic_api_key_env(),
         ANTHROPIC_MODEL=existing_config.ANTHROPIC_MODEL or get_anthropic_model_env(),
-        OLLAMA_URL=existing_config.OLLAMA_URL or get_ollama_url_env(),
+        OLLAMA_URL=(
+            existing_config.OLLAMA_URL
+            if "OLLAMA_URL" in existing_config_data
+            else get_ollama_url_env()
+        ),
         OLLAMA_MODEL=existing_config.OLLAMA_MODEL or get_ollama_model_env(),
         CUSTOM_LLM_URL=existing_config.CUSTOM_LLM_URL or get_custom_llm_url_env(),
         CUSTOM_LLM_API_KEY=existing_config.CUSTOM_LLM_API_KEY
@@ -397,7 +403,7 @@ def update_env_with_user_config():
         set_anthropic_api_key_env(user_config.ANTHROPIC_API_KEY)
     if user_config.ANTHROPIC_MODEL:
         set_anthropic_model_env(user_config.ANTHROPIC_MODEL)
-    if user_config.OLLAMA_URL:
+    if user_config.OLLAMA_URL is not None:
         set_ollama_url_env(user_config.OLLAMA_URL)
     if user_config.OLLAMA_MODEL:
         set_ollama_model_env(user_config.OLLAMA_MODEL)

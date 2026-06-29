@@ -17,7 +17,7 @@ import { MixpanelEvent, trackEvent } from '@/utils/mixpanel';
 import { usePathname } from 'next/navigation';
 import { getLLMConfigValidationError, handleSaveLLMConfig } from '@/utils/storeHelpers';
 import { getDefaultOllamaUrl, isOllamaModelAvailable } from '@/utils/providerUtils';
-import { getApiUrl } from '@/utils/api';
+import { getApiErrorMessage, getApiUrl } from '@/utils/api';
 import CodexConfig from '../CodexConfig';
 import { CODEX_MODELS } from '@/utils/codexModels';
 import VertexAzureManualFields from '@/components/VertexAzureManualFields';
@@ -93,9 +93,9 @@ const PresentonMode = ({
         setLlmConfig(prev => ({
             ...prev,
             LLM: provider,
-            ...(provider === "ollama" && !(prev.OLLAMA_URL || "").trim()
+            ...(provider === "ollama" && !prev.OLLAMA_URL?.trim()
                 ? { OLLAMA_URL: getDefaultOllamaUrl() }
-                : {})
+                : {}),
         }));
         setOpenProviderSelect(false);
         setAvailableModels([]);
@@ -406,10 +406,14 @@ const PresentonMode = ({
                     }));
                 }
             } else {
+                const message = await getApiErrorMessage(
+                    response,
+                    `The server could not list ${LLM_PROVIDERS[llmConfig.LLM!]?.label} models. Check your API key or endpoint and try again.`
+                );
                 console.error('Failed to fetch models');
                 setAvailableModels([]);
                 setModelsChecked(true);
-                notify.error("Could not load models", `The server could not list ${LLM_PROVIDERS[llmConfig.LLM!]?.label} models. Check your API key or endpoint and try again.`);
+                notify.error("Could not load models", message);
             }
         } catch (error) {
             console.error('Error fetching models:', error);
@@ -720,7 +724,7 @@ const PresentonMode = ({
                 !(await isOllamaModelAvailable(llmConfig.OLLAMA_MODEL, currentOllamaUrl))
             ) {
                 throw new Error(
-                    `The selected model "${llmConfig.OLLAMA_MODEL}" is not available at ${currentOllamaUrl}. Check models and select an available model.`
+                    `The selected model "${llmConfig.OLLAMA_MODEL}" is not available at ${currentOllamaUrl || "the default Ollama URL"}. Check models and select an available model.`
                 );
             }
             await handleSaveLLMConfig(llmConfig);
@@ -989,9 +993,6 @@ const PresentonMode = ({
             setLlmConfig(prev => ({
                 ...prev,
                 LLM: nextProvider,
-                ...(nextProvider === "ollama" && !(prev.OLLAMA_URL || "").trim()
-                    ? { OLLAMA_URL: getDefaultOllamaUrl() }
-                    : {})
             }));
             setAvailableModels([]);
             setModelsChecked(false);

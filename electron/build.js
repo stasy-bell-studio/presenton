@@ -39,6 +39,9 @@ const appStoreBundleVersion =
   macTarget === "mas"
     ? getAppStoreBundleVersion(appStoreBundleShortVersion)
     : undefined
+const macDistributionIdentity =
+  process.env.PRESENTON_MAC_SIGN_IDENTITY ||
+  (process.env.PRESENTON_MAC_AUTO_SIGN === "1" ? undefined : null)
 const masSigningExtraArgs =
   process.env.PRESENTON_CODESIGN_TIMESTAMP === "1" ? [] : ["--timestamp=none"]
 
@@ -461,7 +464,7 @@ const config = {
     identity:
       macTarget === "mas" || macTarget === "mas-dev"
         ? null
-        : undefined,
+        : macDistributionIdentity,
     icon: "build/icon.icns",
     bundleShortVersion: appStoreBundleShortVersion,
     bundleVersion: appStoreBundleVersion,
@@ -524,7 +527,11 @@ const config = {
   },
 }
 
-const targets = macTarget ? builder.Platform.MAC.createTarget([macTarget]) : undefined
+const effectiveMacTarget = macTarget || "dmg"
+const targets =
+  process.platform === "darwin"
+    ? builder.Platform.MAC.createTarget([effectiveMacTarget])
+    : undefined
 
 if (macTarget === "mas" && process.env.PRESENTON_SKIP_CODESIGN_PREFLIGHT !== "1") {
   assertCodesignCanUseIdentity(masAppSigningIdentity)

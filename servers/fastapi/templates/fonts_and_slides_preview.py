@@ -9,6 +9,7 @@ import urllib.parse
 import tempfile
 import uuid
 import shutil
+import zipfile
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from fastapi import HTTPException, UploadFile
@@ -75,6 +76,11 @@ class _PreviewLogger:
 
 PREVIEW_WIDTH = 1280
 PREVIEW_HEIGHT = 720
+MAX_FONT_CHECK_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
+FONT_CHECK_UPLOAD_SIZE_ERROR = "File size must be less than 100MB."
+INVALID_PPTX_UPLOAD_ERROR = (
+    "The uploaded PowerPoint file is corrupted or unsupported."
+)
 
 
 def _preview_dimensions_from_document(width: float, height: float) -> Tuple[int, int]:
@@ -588,6 +594,35 @@ def _build_modified_pptx_filename(original_filename: str) -> str:
     return f"{base_stem}-modified{extension or '.pptx'}"
 
 
+def _raise_if_font_check_upload_too_large(size: int | None) -> None:
+    if size is not None and size >= MAX_FONT_CHECK_UPLOAD_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail=FONT_CHECK_UPLOAD_SIZE_ERROR)
+
+
+def _validate_pptx_package(pptx_path: str) -> None:
+    try:
+        with zipfile.ZipFile(pptx_path, "r") as archive:
+            bad_member = archive.testzip()
+            names = set(archive.namelist())
+    except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=INVALID_PPTX_UPLOAD_ERROR,
+        ) from exc
+
+    has_slide = any(
+        name.startswith("ppt/slides/slide") and name.endswith(".xml")
+        for name in names
+    )
+    if (
+        bad_member
+        or "[Content_Types].xml" not in names
+        or "ppt/presentation.xml" not in names
+        or not has_slide
+    ):
+        raise HTTPException(status_code=400, detail=INVALID_PPTX_UPLOAD_ERROR)
+
+
 async def check_fonts_in_pptx_handler(pptx_file: UploadFile) -> FontCheckResponse:
     """
     Extract fonts from a PPTX file and check their availability in Google Fonts.
@@ -601,12 +636,15 @@ async def check_fonts_in_pptx_handler(pptx_file: UploadFile) -> FontCheckRespons
         raise HTTPException(
             status_code=400, detail="Invalid file type. Expected PPTX file"
         )
+    _raise_if_font_check_upload_too_large(getattr(pptx_file, "size", None))
 
     with tempfile.TemporaryDirectory() as temp_dir:
         # Save uploaded PPTX file
         pptx_path = os.path.join(temp_dir, "presentation.pptx")
         pptx_content = await pptx_file.read()
+        _raise_if_font_check_upload_too_large(len(pptx_content))
         await asyncio.to_thread(_write_bytes_to_path, pptx_path, pptx_content)
+        await asyncio.to_thread(_validate_pptx_package, pptx_path)
         font_variants_by_name = await asyncio.to_thread(
             extract_used_font_variants_from_pptx, pptx_path
         )
@@ -692,6 +730,7 @@ async def upload_fonts_and_preview_handler(
         pptx_path = os.path.join(temp_dir, "presentation.pptx")
         pptx_content = await pptx_file.read()
         await asyncio.to_thread(_write_bytes_to_path, pptx_path, pptx_content)
+        await asyncio.to_thread(_validate_pptx_package, pptx_path)
         logger.info(f"Saved PPTX file to {pptx_path}")
         variants_by_normalized_name = await asyncio.to_thread(
             _font_variants_by_normalized_name, pptx_path

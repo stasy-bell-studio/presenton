@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   Check,
   ChevronsUpDown,
@@ -60,6 +60,8 @@ export default function OllamaConfig({
   const [combinedModels, setCombinedModels] = useState<CombinedModel[]>([]);
   const [ollamaModelsLoading, setOllamaModelsLoading] = useState(false);
   const [modelsChecked, setModelsChecked] = useState(false);
+  const [modelsCheckError, setModelsCheckError] = useState<string | null>(null);
+  const [resolvedOllamaUrl, setResolvedOllamaUrl] = useState<string | null>(null);
   const [openModelSelect, setOpenModelSelect] = useState(false);
 
   const [pullDialogOpen, setPullDialogOpen] = useState(false);
@@ -75,23 +77,23 @@ export default function OllamaConfig({
   const pullRequestIdRef = useRef(0);
   const isElectronRuntime =
     typeof window !== "undefined" && !!window.electron;
-
-  useEffect(() => {
-    if (!ollamaUrl.trim()) {
-      onInputChange(getDefaultOllamaUrl(), "ollama_url");
-    }
-  }, [ollamaUrl, onInputChange]);
+  const defaultOllamaUrl = getDefaultOllamaUrl();
+  const trimmedOllamaUrl = ollamaUrl.trim();
+  const activeOllamaUrl = trimmedOllamaUrl || resolvedOllamaUrl || "";
 
   const fetchOllamaModels = useCallback(async () => {
     setOllamaModelsLoading(true);
+    setModelsCheckError(null);
     try {
-      const reachable = await getReachableOllamaModels(ollamaUrl);
+      const requestedUrl = ollamaUrl.trim();
+      const reachable = await getReachableOllamaModels(requestedUrl);
       const [pulledModels, libraryModels] = await Promise.all([
         Promise.resolve(reachable.models),
         getOllamaLibraryModels(),
       ]);
+      setResolvedOllamaUrl(reachable.resolvedUrl);
 
-      if (reachable.resolvedUrl !== ollamaUrl.trim()) {
+      if (reachable.resolvedUrl !== requestedUrl) {
         onInputChange(reachable.resolvedUrl, "ollama_url");
       }
 
@@ -145,10 +147,12 @@ export default function OllamaConfig({
       if (reachable.usedFallback) {
         notify.success(
           "Using in-container Ollama",
-          "host.docker.internal did not respond, so Presenton switched Ollama URL to localhost."
+          requestedUrl
+            ? "host.docker.internal did not respond, so Presenton switched Ollama URL to localhost."
+            : "host.docker.internal did not respond, so this check used localhost."
         );
       }
-      if (!reachable.usedFallback && reachable.resolvedUrl !== ollamaUrl.trim()) {
+      if (!reachable.usedFallback && requestedUrl && reachable.resolvedUrl !== requestedUrl) {
         notify.success(
           "Updated Ollama URL",
           `Using ${reachable.resolvedUrl} for Ollama checks.`
@@ -157,7 +161,11 @@ export default function OllamaConfig({
     } catch (error) {
       setCombinedModels([]);
       setModelsChecked(true);
+      setResolvedOllamaUrl(null);
       onInputChange("", "ollama_model");
+      setModelsCheckError(
+        error instanceof Error ? error.message : "Check the Ollama URL and try again."
+      );
       notify.error(
         "Could not connect to Ollama",
         error instanceof Error ? error.message : "Check the Ollama URL and try again."
@@ -186,7 +194,7 @@ export default function OllamaConfig({
 
       pullOllamaModel(
         modelName,
-        ollamaUrl,
+        activeOllamaUrl,
         (event: OllamaPullProgressEvent) => {
           if (
             pullRequestIdRef.current !== requestId ||
@@ -242,7 +250,7 @@ export default function OllamaConfig({
         }
       });
     },
-    [ollamaUrl, onInputChange]
+    [activeOllamaUrl, onInputChange]
   );
 
   const handleCancelPull = useCallback(() => {
@@ -359,7 +367,6 @@ export default function OllamaConfig({
         </label>
         <input
           type="text"
-          required
           placeholder={
             isElectronRuntime
               ? "http://localhost:11434"
@@ -372,18 +379,21 @@ export default function OllamaConfig({
             onInputChange("", "ollama_model");
             setCombinedModels([]);
             setModelsChecked(false);
+            setModelsCheckError(null);
+            setResolvedOllamaUrl(null);
           }}
         />
         <p className="mt-2 text-sm text-gray-500">
-          {isElectronRuntime
-            ? "Default: http://localhost:11434"
-            : "Default: http://host.docker.internal:11434. If Ollama runs in the same container, Presenton will switch to localhost automatically."}
+          Required for generation. Use {defaultOllamaUrl}
+          {!isElectronRuntime
+            ? ", or click Check models to detect localhost when Ollama runs in the same container."
+            : "."}
         </p>
         <Button
           type="button"
           variant="outline"
           className="mt-4"
-          disabled={ollamaModelsLoading || !ollamaUrl.trim()}
+          disabled={ollamaModelsLoading}
           onClick={fetchOllamaModels}
         >
           {ollamaModelsLoading ? (
@@ -506,8 +516,9 @@ export default function OllamaConfig({
 
       {modelsChecked && combinedModels.length === 0 && (
         <p className="text-sm text-gray-500">
-          Ollama is reachable, but no models are installed. Pull a model in
-          Ollama, then check again.
+          {modelsCheckError
+            ? modelsCheckError
+            : "Ollama is reachable, but no models are installed. Pull a model in Ollama, then check again."}
         </p>
       )}
 

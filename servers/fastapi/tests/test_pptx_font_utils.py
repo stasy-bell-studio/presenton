@@ -17,10 +17,19 @@ class DummyLogger:
         return None
 
 
+_SIZE_UNSET = object()
+
+
 class DummyUploadFile:
-    def __init__(self, filename: str, content: bytes = b"font") -> None:
+    def __init__(
+        self,
+        filename: str,
+        content: bytes = b"font",
+        size: int | None | object = _SIZE_UNSET,
+    ) -> None:
         self.filename = filename
         self._content = content
+        self.size = len(content) if size is _SIZE_UNSET else size
 
     async def read(self) -> bytes:
         return self._content
@@ -28,6 +37,10 @@ class DummyUploadFile:
 
 async def _run_sync_in_test(func, *args, **kwargs):
     return func(*args, **kwargs)
+
+
+def _fake_corrupted_pptx_bytes() -> bytes:
+    return b"this is not a valid powerpoint zip package"
 
 
 def test_build_google_fonts_stylesheet_url_includes_regular_and_bold_weights():
@@ -39,6 +52,62 @@ def test_build_google_fonts_stylesheet_url_includes_regular_and_bold_weights():
 
 def test_normalize_font_family_name_strips_localized_bold_token():
     assert pptx_font_utils.normalize_font_family_name("Arial Gras") == "Arial"
+
+
+def test_check_fonts_in_pptx_rejects_100mb_file_from_upload_size():
+    upload = DummyUploadFile(
+        "deck.pptx",
+        content=b"",
+        size=fonts_and_slides_preview.MAX_FONT_CHECK_UPLOAD_SIZE_BYTES,
+    )
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(fonts_and_slides_preview.check_fonts_in_pptx_handler(upload))
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == "File size must be less than 100MB."
+
+
+def test_check_fonts_in_pptx_rejects_oversize_after_read_when_size_missing(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        fonts_and_slides_preview, "MAX_FONT_CHECK_UPLOAD_SIZE_BYTES", 4
+    )
+    upload = DummyUploadFile("deck.pptx", content=b"abcd", size=None)
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(fonts_and_slides_preview.check_fonts_in_pptx_handler(upload))
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == "File size must be less than 100MB."
+
+
+def test_check_fonts_in_pptx_rejects_corrupted_pptx():
+    upload = DummyUploadFile("corrupted.pptx", content=_fake_corrupted_pptx_bytes())
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(fonts_and_slides_preview.check_fonts_in_pptx_handler(upload))
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == fonts_and_slides_preview.INVALID_PPTX_UPLOAD_ERROR
+
+
+def test_upload_fonts_and_preview_rejects_corrupted_pptx():
+    upload = DummyUploadFile("corrupted.pptx", content=_fake_corrupted_pptx_bytes())
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        asyncio.run(
+            fonts_and_slides_preview.upload_fonts_and_preview_handler(
+                pptx_file=upload,
+                font_files=[],
+                original_font_names=[],
+                get_slide_images=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == fonts_and_slides_preview.INVALID_PPTX_UPLOAD_ERROR
 
 
 def test_build_google_fonts_stylesheet_url_sorts_and_deduplicates_weights():
@@ -302,14 +371,14 @@ def test_localize_preview_asset_urls_rewrites_app_data_http_urls(monkeypatch, tm
     )
 
     html = (
-        '<img src="http://127.0.0.1:5000/app_data/pptx-to-html/session/images/asset.png">'
+        '<img src="http://127.0.0.1:5001/app_data/pptx-to-html/session/images/asset.png">'
         "<div style=\"background-image: url('/app_data/pptx-to-html/session/images/asset.png')\"></div>"
     )
 
     localized = fonts_and_slides_preview._localize_preview_asset_urls(html)
 
     assert localized.count("data:image/png;base64,cG5n") == 2
-    assert "http://127.0.0.1:5000/app_data" not in localized
+    assert "http://127.0.0.1:5001/app_data" not in localized
     assert "url('data:image/png;base64,cG5n')" in localized
 
 

@@ -32,10 +32,51 @@ from utils.llm_calls.generate_presentation_outlines import (
     generate_ppt_outline,
     get_messages as get_outline_messages,
 )
+from utils.sse import safe_sse_stream
 from utils.web_search import get_selected_web_search_provider, get_web_search_route
 
 OUTLINES_ROUTER = APIRouter(prefix="/outlines", tags=["Outlines"])
 LOGGER = logging.getLogger(__name__)
+
+
+@OUTLINES_ROUTER.get("/{id}", response_model=PresentationOutlineModel)
+async def get_outline(
+    id: uuid.UUID,
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    presentation = await sql_session.get(PresentationModel, id)
+    if not presentation:
+        raise HTTPException(status_code=404, detail="Presentation not found")
+
+    if not presentation.outlines:
+        return PresentationOutlineModel(slides=[])
+
+    return PresentationOutlineModel(**presentation.outlines)
+
+
+@OUTLINES_ROUTER.put("/{id}", response_model=PresentationOutlineModel)
+async def update_outline(
+    id: uuid.UUID,
+    outline: PresentationOutlineModel,
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    presentation = await sql_session.get(PresentationModel, id)
+    if not presentation:
+        raise HTTPException(status_code=404, detail="Presentation not found")
+
+    presentation.outlines = outline.model_dump(mode="json")
+    presentation.n_slides = len(outline.slides)
+    presentation.title = get_presentation_title_from_presentation_outline(outline)
+
+    sql_session.add(presentation)
+    await sql_session.commit()
+
+    await MEM0_PRESENTATION_MEMORY_SERVICE.store_generated_outlines(
+        presentation.id,
+        presentation.outlines,
+    )
+
+    return outline
 
 
 @OUTLINES_ROUTER.get("/stream/{id}")
@@ -205,4 +246,15 @@ async def stream_outlines(
             key="presentation", value=presentation.model_dump(mode="json")
         ).to_string()
 
-    return StreamingResponse(inner(), media_type="text/event-stream")
+    async def rollback_stream_session():
+        await sql_session.rollback()
+
+    return StreamingResponse(
+        safe_sse_stream(
+            inner(),
+            logger=LOGGER,
+            error_detail="Failed to generate presentation outlines. Please try again.",
+            on_error=rollback_stream_session,
+        ),
+        media_type="text/event-stream",
+    )

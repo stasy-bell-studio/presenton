@@ -3,16 +3,6 @@ import { store } from "@/store/store";
 import { LLMConfig } from "@/types/llm_config";
 import { isSupportedCodexModel } from "@/utils/codexModels";
 
-const DEFAULT_OLLAMA_URL_ELECTRON = "http://localhost:11434";
-const DEFAULT_OLLAMA_URL_DOCKER = "http://host.docker.internal:11434";
-
-function getDefaultOllamaUrl(): string {
-  if (typeof window !== "undefined" && window.electron) {
-    return DEFAULT_OLLAMA_URL_ELECTRON;
-  }
-  return DEFAULT_OLLAMA_URL_DOCKER;
-}
-
 function isProvided(value: unknown): boolean {
   return value !== "" && value !== null && value !== undefined;
 }
@@ -40,13 +30,6 @@ export const normalizeLLMConfig = (llmConfig: LLMConfig): LLMConfig => {
 
   if (!normalizedConfig.LLM) {
     normalizedConfig.LLM = "openai";
-  }
-
-  if (
-    normalizedConfig.LLM === "ollama" &&
-    !isProvided(normalizedConfig.OLLAMA_URL)
-  ) {
-    normalizedConfig.OLLAMA_URL = getDefaultOllamaUrl();
   }
 
   const parsedDisableImageGeneration = parseOptionalBool(
@@ -179,8 +162,8 @@ export const getLLMConfigValidationError = (
       return 'No Anthropic model selected. Use "Check models" after entering your API key, then choose a model.';
     }
   } else if (llm === "ollama") {
-    if (!isProvided(llmConfig.OLLAMA_URL)) {
-      return "Ollama server URL is required.";
+    if (!isProvided(llmConfig.OLLAMA_URL?.trim())) {
+      return 'Ollama URL is required. Enter your Ollama server URL, or click "Check models" to fill the reachable default.';
     }
     if (!isProvided(llmConfig.OLLAMA_MODEL)) {
       return "Select an Ollama model. If none appear, confirm Ollama is running and reachable.";

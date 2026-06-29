@@ -43,6 +43,7 @@ const SlideContent = ({
   isChatEditing = false,
 }: SlideContentProps) => {
   const dispatch = useDispatch();
+  const slideLayout = typeof slide?.layout === "string" ? slide.layout : "";
   const [isUpdating, setIsUpdating] = useState(false);
   const [showNewSlideSelection, setShowNewSlideSelection] = useState(false);
   const [isEditPopoverOpen, setIsEditPopoverOpen] = useState(false);
@@ -88,7 +89,7 @@ const SlideContent = ({
           presentation_id: presentationId,
           slide_id: slide.id,
           slide_index: slide.index,
-          layout: slide.layout,
+          layout: slideLayout,
           prompt_char_count: editPrompt.trim().length,
           prompt_word_count: editPrompt.trim().split(/\s+/).filter(Boolean)
             .length,
@@ -130,7 +131,7 @@ const SlideContent = ({
         presentation_id: presentationId,
         slide_id: slide.id,
         slide_index: slide.index,
-        layout: slide.layout,
+        layout: slideLayout,
       });
       // Add current state to past
       dispatch(
@@ -149,7 +150,7 @@ const SlideContent = ({
     }
   };
   useEffect(() => {
-    if (slide.layout.includes("custom")) {
+    if (slideLayout.includes("custom")) {
       const existingScript = document.querySelector(
         'script[src*="tailwindcss.com"]'
       );
@@ -160,7 +161,7 @@ const SlideContent = ({
         document.head.appendChild(script);
       }
     }
-  }, [slide, isStreaming]);
+  }, [slideLayout, isStreaming]);
 
   return (
     <>

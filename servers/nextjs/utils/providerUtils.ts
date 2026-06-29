@@ -3,6 +3,15 @@ import { LLMConfig } from "@/types/llm_config";
 
 const LOCALHOST_OLLAMA_URL = "http://localhost:11434";
 const DOCKER_HOST_OLLAMA_URL = "http://host.docker.internal:11434";
+const OLLAMA_MODELS_CACHE_TTL_MS = 30_000;
+
+type OllamaModelsCacheEntry = {
+  expiresAt: number;
+  promise: Promise<AvailableOllamaModel[]>;
+};
+
+let ollamaLibraryModelsPromise: Promise<OllamaLibraryModel[]> | null = null;
+const ollamaModelsCache = new Map<string, OllamaModelsCacheEntry>();
 
 export interface OllamaModel {
   label: string;
@@ -50,6 +59,18 @@ function isElectronRuntime(): boolean {
 
 function normalizeOllamaUrl(url?: string): string {
   return (url || "").trim().replace(/\/+$/, "");
+}
+
+function getOllamaModelsCacheKey(ollamaUrl?: string): string {
+  return normalizeOllamaUrl(ollamaUrl) || "__default__";
+}
+
+export function clearOllamaModelsCache(ollamaUrl?: string) {
+  if (ollamaUrl === undefined) {
+    ollamaModelsCache.clear();
+    return;
+  }
+  ollamaModelsCache.delete(getOllamaModelsCacheKey(ollamaUrl));
 }
 
 export function getDefaultOllamaUrl(): string {
@@ -158,6 +179,10 @@ export const changeProvider = (
 ): LLMConfig => {
   const newConfig = { ...currentConfig, LLM: provider };
 
+  if (provider === "ollama" && !newConfig.OLLAMA_URL?.trim()) {
+    newConfig.OLLAMA_URL = getDefaultOllamaUrl();
+  }
+
   // Auto Select appropriate image provider based on the text models
   if (provider === "openai") {
     newConfig.IMAGE_PROVIDER = "gpt-image-1.5";
@@ -187,11 +212,11 @@ export const isOllamaModelAvailable = async (
   ollamaModel: string,
   ollamaUrl?: string
 ): Promise<boolean> => {
-  const models = await getAvailableOllamaModels(ollamaUrl);
+  const { models } = await getReachableOllamaModels(ollamaUrl);
   return models.some((model) => model.name === ollamaModel);
 };
 
-export const getAvailableOllamaModels = async (
+const fetchAvailableOllamaModels = async (
   ollamaUrl?: string
 ): Promise<AvailableOllamaModel[]> => {
   const normalizedUrl = normalizeOllamaUrl(ollamaUrl);
@@ -226,6 +251,31 @@ export const getAvailableOllamaModels = async (
       },
     ];
   });
+};
+
+export const getAvailableOllamaModels = async (
+  ollamaUrl?: string
+): Promise<AvailableOllamaModel[]> => {
+  const cacheKey = getOllamaModelsCacheKey(ollamaUrl);
+  const now = Date.now();
+  const cached = ollamaModelsCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    return cached.promise;
+  }
+
+  const promise = fetchAvailableOllamaModels(ollamaUrl);
+  ollamaModelsCache.set(cacheKey, {
+    expiresAt: now + OLLAMA_MODELS_CACHE_TTL_MS,
+    promise,
+  });
+
+  try {
+    return await promise;
+  } catch (error) {
+    ollamaModelsCache.delete(cacheKey);
+    throw error;
+  }
 };
 
 export const getReachableOllamaModels = async (
@@ -269,6 +319,20 @@ async function getApiErrorMessage(
 }
 
 export const getOllamaLibraryModels = async (): Promise<OllamaLibraryModel[]> => {
+  if (ollamaLibraryModelsPromise) {
+    return ollamaLibraryModelsPromise;
+  }
+
+  ollamaLibraryModelsPromise = fetchOllamaLibraryModels();
+  try {
+    return await ollamaLibraryModelsPromise;
+  } catch (error) {
+    ollamaLibraryModelsPromise = null;
+    throw error;
+  }
+};
+
+const fetchOllamaLibraryModels = async (): Promise<OllamaLibraryModel[]> => {
   const response = await fetch(
     getApiUrl("/api/v1/ppt/ollama/models/library")
   );
@@ -351,7 +415,10 @@ export const pullOllamaModel = async (
               return;
             }
             onEvent(data);
-            if (data.type === "complete") return;
+            if (data.type === "complete") {
+              clearOllamaModelsCache(ollamaUrl);
+              return;
+            }
           } catch {
           }
         }

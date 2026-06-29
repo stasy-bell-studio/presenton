@@ -79,6 +79,7 @@ from utils.process_slides import (
 )
 from utils.get_layout_by_name import get_layout_by_name
 from utils.llm_utils import message_content_to_text
+from utils.sse import safe_sse_stream
 from utils.simple_auth import (
     SESSION_COOKIE_NAME,
     create_session_token,
@@ -1096,6 +1097,10 @@ async def prepare_presentation(
     sql_session.add(presentation)
     presentation.outlines = presentation_outline_model.model_dump(mode="json")
     presentation.title = title or presentation.title
+    # Final slide generation should follow the reviewed outline text. The
+    # original upload language can be stale after outline-page chat edits such
+    # as "convert these to Chinese".
+    presentation.language = ""
     presentation.layout = layout_payload
     presentation.set_structure(presentation_structure)
     await sql_session.commit()
@@ -1126,13 +1131,41 @@ async def stream_presentation(
             detail="Outlines can not be empty",
         )
 
+    try:
+        structure = presentation.get_structure()
+        layout = _get_presentation_stream_layout(presentation)
+        outline = presentation.get_presentation_outline()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Presentation has invalid generated data",
+        ) from exc
+
+    if not layout.slides:
+        raise HTTPException(status_code=400, detail="Presentation layout has no slides")
+    if len(structure.slides) > len(outline.slides):
+        raise HTTPException(
+            status_code=400,
+            detail="Presentation structure has more slides than outlines",
+        )
+    invalid_layout_index = next(
+        (
+            slide_layout_index
+            for slide_layout_index in structure.slides
+            if slide_layout_index < 0 or slide_layout_index >= len(layout.slides)
+        ),
+        None,
+    )
+    if invalid_layout_index is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Presentation structure contains an invalid slide layout",
+        )
+
     image_generation_service = ImageGenerationService(get_images_directory())
 
     async def inner():
-        structure = presentation.get_structure()
-        layout = _get_presentation_stream_layout(presentation)
         icon_weight = layout.icon_weight
-        outline = presentation.get_presentation_outline()
         image_urls_for_slides = get_images_for_slides_from_outline(outline.slides)
 
         async_assets_generation_tasks: List[asyncio.Task] = []
@@ -1142,6 +1175,18 @@ async def stream_presentation(
         async def notify_slide_assets_ready(slide_index: int, asset_task: asyncio.Task):
             try:
                 await asset_task
+            except Exception:
+                logger.exception(
+                    "Slide asset generation failed: presentation_id=%s slide_index=%s",
+                    id,
+                    slide_index,
+                )
+                asset_warnings_by_slide.setdefault(slide_index, []).append(
+                    {
+                        "type": "asset_generation_failed",
+                        "message": "Some slide assets could not be generated.",
+                    }
+                )
             finally:
                 await asset_events.put(slide_index)
 
@@ -1253,9 +1298,18 @@ async def stream_presentation(
                 ),
             ).to_string()
 
-        generated_assets_lists = await asyncio.gather(*async_assets_generation_tasks)
+        generated_assets_lists = await asyncio.gather(
+            *async_assets_generation_tasks,
+            return_exceptions=True,
+        )
         generated_assets = []
         for assets_list in generated_assets_lists:
+            if isinstance(assets_list, Exception):
+                logger.error(
+                    "Slide asset generation failed during final collection: %s",
+                    assets_list,
+                )
+                continue
             generated_assets.extend(assets_list)
 
         for slide in slides:
@@ -1288,7 +1342,18 @@ async def stream_presentation(
             value=response.model_dump(mode="json"),
         ).to_string()
 
-    return StreamingResponse(inner(), media_type="text/event-stream")
+    async def rollback_stream_session():
+        await sql_session.rollback()
+
+    return StreamingResponse(
+        safe_sse_stream(
+            inner(),
+            logger=logger,
+            error_detail="Failed to generate presentation slides. Please try again.",
+            on_error=rollback_stream_session,
+        ),
+        media_type="text/event-stream",
+    )
 
 
 @PRESENTATION_ROUTER.patch("/update", response_model=PresentationDetailWithSlides)

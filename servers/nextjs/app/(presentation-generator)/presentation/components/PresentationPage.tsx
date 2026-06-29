@@ -11,6 +11,7 @@ import { useSelector } from "react-redux";
 import { RootState } from "@/store/store";
 import "../../utils/prism-languages";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OverlayLoader } from "@/components/ui/overlay-loader";
 import PresentationMode from "./PresentationMode";
 import SidePanel from "./SidePanel";
 import SlideContent from "./SlideContent";
@@ -25,7 +26,6 @@ import {
   useAutoSave,
 } from "../hooks";
 import { PresentationPageProps } from "../types";
-import LoadingState from "./LoadingState";
 import { applyPresentationThemeToElement } from "../utils/applyPresentationThemeDom";
 
 import PresentationHeader from "./PresentationHeader";
@@ -59,6 +59,38 @@ function hasTemplateV2Slides(slides: unknown): boolean {
   );
 }
 
+interface LoadingState {
+  isLoading: boolean;
+  message: string;
+  showProgress: boolean;
+  duration: number;
+  extra_info?: string;
+}
+
+const DEFAULT_LOADING_STATE: LoadingState = {
+  isLoading: true,
+  message: "Loading presentation",
+  showProgress: false,
+  duration: 0,
+  extra_info: "",
+};
+
+const STREAM_LOADING_STATE: LoadingState = {
+  isLoading: true,
+  message: "Creating your presentation",
+  showProgress: true,
+  duration: 90,
+  extra_info: "This can take a few minutes depending on slide count.",
+};
+
+const IDLE_LOADING_STATE: LoadingState = {
+  isLoading: false,
+  message: "",
+  showProgress: false,
+  duration: 0,
+  extra_info: "",
+};
+
 const PresentationPage: React.FC<PresentationPageProps> = ({
   presentation_id,
 }) => {
@@ -66,6 +98,8 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const searchParams = useSearchParams();
   // State management
   const [loading, setLoading] = useState(true);
+  const [loadingState, setLoadingState] =
+    useState<LoadingState>(DEFAULT_LOADING_STATE);
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isChatSending, setIsChatSending] = useState(false);
@@ -165,6 +199,15 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     slidesLength,
     stream,
   ]);
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingState(IDLE_LOADING_STATE);
+      return;
+    }
+
+    setLoadingState(stream ? STREAM_LOADING_STATE : DEFAULT_LOADING_STATE);
+  }, [loading, stream]);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -407,6 +450,13 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
   return (
     <div className="h-screen overflow-hidden font-syne">
+      <OverlayLoader
+        show={loadingState.isLoading}
+        text={loadingState.message}
+        showProgress={loadingState.showProgress}
+        duration={loadingState.duration}
+        extra_info={loadingState.extra_info}
+      />
       <div
         style={{
           background: "#EDEEEF",
@@ -447,7 +497,6 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                         />
                       ))}
                     </div>
-                    {stream && <LoadingState />}
                   </div>
                 ) : (
                   <>

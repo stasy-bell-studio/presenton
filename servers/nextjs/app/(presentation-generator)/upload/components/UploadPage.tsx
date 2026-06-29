@@ -331,14 +331,14 @@ const UploadPage = () => {
   const handleDirectPresentationGeneration = async () => {
     setLoadingState({
       isLoading: true,
-      message: "Generating outlines...",
+      message: "Preparing outline generation...",
       showProgress: true,
       duration: 30,
     });
 
     const selectedLanguage = config?.language ?? "";
 
-    // Use the first available layout group for direct generation
+    // Start the outline job; template selection happens on the outline page.
     const createResponse = await PresentationGenerationApi.createPresentation({
       content: config?.prompt ?? "",
       version: "v1-standard",
@@ -353,9 +353,12 @@ const UploadPage = () => {
       web_search: !!config?.webSearch,
     });
 
-
+    dispatch(setPptGenUploadState({
+      config,
+      files: [],
+    }));
+    dispatch(clearOutlines());
     dispatch(setPresentationId(createResponse.id));
-    dispatch(clearOutlines())
     trackEvent(MixpanelEvent.Upload_Outline_Generation_Requested, {
       ...getUploadSnapshotProps(),
       presentation_id: createResponse.id,

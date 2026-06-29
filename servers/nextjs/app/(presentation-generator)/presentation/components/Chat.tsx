@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Send,
   Square,
+  UserRound,
 } from "lucide-react";
 import React, {
   FormEvent,
@@ -24,6 +25,7 @@ import MarkdownRenderer from "@/components/MarkDownRender";
 import { PresentationChatApi } from "../../services/api/chat";
 import type { ChatStreamTrace } from "../../services/api/chat";
 import ToolTip from "@/components/ToolTip";
+import { cn } from "@/lib/utils";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   {
@@ -216,7 +218,17 @@ const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   },
 ];
 
-const quickPrompts = [
+const outlineQuickPrompts = [
+  "Expand outline",
+  "Shorten outline",
+  "Reorder sections",
+  "Merge similar slides",
+  "Split large sections",
+  "Improve conclusion",
+  "Improve introduction",
+];
+
+const presentationQuickPrompts = [
   "Expand each section",
   "Reorder for storytelling",
   "Add missing sections",
@@ -233,7 +245,9 @@ type ChatMessage = {
 
 type ChatProps = {
   presentationId: string;
+  variant?: "presentation" | "outline";
   currentSlide?: number;
+  onBeforeSend?: () => Promise<void> | void;
   onPresentationChanged?: () => Promise<void> | void;
   onChatMutationStateChange?: (isMutating: boolean) => void;
   onAgentSlideFocus?: (focus: {
@@ -276,6 +290,11 @@ const AssistantMarker = () => (
 
 const TOOL_LABELS: Record<string, string> = {
   getPresentationOutline: "Outline reader",
+  getOutlineDraft: "Outline draft reader",
+  addOutline: "Outline adder",
+  updateOutline: "Outline editor",
+  deleteOutline: "Outline remover",
+  moveOutline: "Outline reorderer",
   searchSlides: "Slide search",
   getSlideAtIndex: "Slide reader",
   getPresentationThemeCatalog: "Theme catalog",
@@ -288,6 +307,10 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const MUTATING_TOOLS = new Set([
+  "addOutline",
+  "updateOutline",
+  "deleteOutline",
+  "moveOutline",
   "saveSlide",
   "deleteSlide",
   "setPresentationTheme",
@@ -317,6 +340,21 @@ const humanizeTraceMessage = (message: string, tool?: string) => {
   }
   if (lower === "reading the presentation outline") {
     return "Reading the presentation outline.";
+  }
+  if (lower === "reading the outline draft") {
+    return "Reading the outline draft.";
+  }
+  if (lower === "adding an outline slide") {
+    return "Adding an outline slide.";
+  }
+  if (lower === "updating the outline slide") {
+    return "Updating the outline slide.";
+  }
+  if (lower === "deleting the outline slide") {
+    return "Deleting the outline slide.";
+  }
+  if (lower === "reordering outline slides") {
+    return "Reordering outline slides.";
   }
   if (lower === "searching relevant slides") {
     return "Searching slides for relevant content.";
@@ -495,7 +533,9 @@ const readTraceSlideIndex = (trace: ChatStreamTrace) => {
 
 const Chat = ({
   presentationId,
+  variant = "presentation",
   currentSlide,
+  onBeforeSend,
   onPresentationChanged,
   onChatMutationStateChange,
   onAgentSlideFocus,
@@ -748,16 +788,27 @@ const Chat = ({
   );
 
   const buildBackendMessage = (message: string) => {
-    if (typeof currentSlide !== "number") {
+    const contextLines: string[] = [];
+
+    if (variant === "outline") {
+      contextLines.push(
+        "UI context: the user is editing the outline draft before template/layout selection. Use outline draft tools for outline add/edit/delete/reorder requests; do not use layout or finished-slide tools for outline-only edits."
+      );
+    }
+
+    if (typeof currentSlide === "number") {
+      contextLines.push(
+        `UI context: the currently selected slide is slide ${
+          currentSlide + 1
+        } (zero-based index ${currentSlide}).`
+      );
+    }
+
+    if (contextLines.length === 0) {
       return message;
     }
 
-    return [
-      `UI context: the currently selected slide is slide ${
-        currentSlide + 1
-      } (zero-based index ${currentSlide}).`,
-      `User message: ${message}`,
-    ].join("\n");
+    return [...contextLines, `User message: ${message}`].join("\n");
   };
 
   const resetChat = () => {
@@ -792,7 +843,7 @@ const Chat = ({
         "Failed to refresh presentation after tool mutation:",
         error
       );
-      notify.error("Refresh failed", "Slides were saved, but refresh failed.");
+      notify.error("Refresh failed", "Changes were saved, but refresh failed.");
     } finally {
       refreshInFlightRef.current = false;
       if (refreshQueuedRef.current) {
@@ -803,12 +854,9 @@ const Chat = ({
   }, [onPresentationChanged]);
 
   const refreshPresentationIfNeeded = async (toolCalls: string[]) => {
-    const hasSlideMutation =
-      toolCalls.includes("saveSlide") ||
-      toolCalls.includes("deleteSlide") ||
-      toolCalls.includes("setPresentationTheme");
+    const hasMutation = toolCalls.some((tool) => MUTATING_TOOLS.has(tool));
     if (
-      !hasSlideMutation ||
+      !hasMutation ||
       !onPresentationChanged ||
       didIncrementalRefreshRef.current
     ) {
@@ -819,10 +867,7 @@ const Chat = ({
       await onPresentationChanged();
     } catch (error) {
       console.error("Failed to refresh presentation after chat update:", error);
-      notify.error(
-        "Refresh failed",
-        "Chat completed, but slide refresh failed."
-      );
+      notify.error("Refresh failed", "Chat completed, but refresh failed.");
     }
   };
 
@@ -960,6 +1005,7 @@ const Chat = ({
     abortControllerRef.current = streamAbortController;
 
     try {
+      await onBeforeSend?.();
       const response = await PresentationChatApi.streamMessage(
         {
           presentation_id: presentationId,
@@ -1120,8 +1166,10 @@ const Chat = ({
     inputRef.current?.focus();
   };
 
+  const isOutlineVariant = variant === "outline";
+
   return (
-    <div className="flex h-full w-full flex-col bg-white">
+    <div className={cn("flex h-full w-full flex-col bg-white", "")}>
       <div className="flex items-center justify-between px-4 pt-8">
         <div className="flex items-center gap-2">
           <h4 className="flex items-center gap-2 text-sm font-semibold text-[#101828]">
@@ -1151,7 +1199,7 @@ const Chat = ({
             </span>
           )}
         </div>
-        {messages.length > 0 && (
+        {!isOutlineVariant && messages.length > 0 && (
           <button
             type="button"
             onClick={resetChat}
@@ -1165,7 +1213,7 @@ const Chat = ({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-9 hide-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-9 [scrollbar-color:#C7CBD6_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C7CBD6] [&::-webkit-scrollbar-track]:bg-transparent">
         {isHistoryLoading && messages.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-sm text-[#99A1AF]">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1173,49 +1221,73 @@ const Chat = ({
           </div>
         ) : messages.length === 0 ? (
           <>
-            <div>
-              <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
-                SUGGESTIONS
-              </h4>
-              <div className="flex flex-col gap-1.5">
-                {suggestions.map((suggestion) => (
-                  <button
-                    key={suggestion.id}
-                    type="button"
-                    onClick={() => applyPrompt(suggestion.suggestion)}
-                    className="group flex min-h-[34px] cursor-pointer items-center justify-between gap-3 rounded-[10px] border border-[#F4F4F4] px-3 py-2 text-left transition-colors hover:bg-[#FAFAFA]"
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className="shrink-0">{suggestion.icon}</span>
-                      <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
-                        {suggestion.suggestion}
+            {isOutlineVariant ? (
+              <div>
+                <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
+                  QUICK PROMPTS
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {outlineQuickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => applyPrompt(prompt)}
+                      className="cursor-pointer rounded-[10px] border border-[#F4F4F4] px-2.5 py-1 text-left transition-colors hover:bg-[#FAFAFA]"
+                    >
+                      <span className="text-[11px] font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
+                        {prompt}
                       </span>
-                    </span>
-                    <ChevronRight className="h-3 w-3 shrink-0 text-[#D6D9E0] transition-colors group-hover:text-[#99A1AF]" />
-                  </button>
-                ))}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div>
+                  <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
+                    SUGGESTIONS
+                  </h4>
+                  <div className="flex flex-col gap-1.5">
+                    {suggestions.map((suggestion) => (
+                      <button
+                        key={suggestion.id}
+                        type="button"
+                        onClick={() => applyPrompt(suggestion.suggestion)}
+                        className="group flex min-h-[34px] cursor-pointer items-center justify-between gap-3 rounded-[10px] border border-[#F4F4F4] px-3 py-2 text-left transition-colors hover:bg-[#FAFAFA]"
+                      >
+                        <span className="flex min-w-0 items-center gap-3">
+                          <span className="shrink-0">{suggestion.icon}</span>
+                          <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
+                            {suggestion.suggestion}
+                          </span>
+                        </span>
+                        <ChevronRight className="h-3 w-3 shrink-0 text-[#D6D9E0] transition-colors group-hover:text-[#99A1AF]" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            <div className="mt-10">
-              <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
-                QUICK PROMPTS
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {quickPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => applyPrompt(prompt)}
-                    className="cursor-pointer rounded-[10px] border border-[#F4F4F4] px-2.5 py-1 transition-colors hover:bg-[#FAFAFA]"
-                  >
-                    <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
-                      {prompt}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
+                <div className="mt-10">
+                  <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
+                    QUICK PROMPTS
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {presentationQuickPrompts.map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() => applyPrompt(prompt)}
+                        className="cursor-pointer rounded-[10px] border border-[#F4F4F4] px-2.5 py-1 transition-colors hover:bg-[#FAFAFA]"
+                      >
+                        <span className="text-xs font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
+                          {prompt}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <div className="flex flex-col gap-9">
@@ -1230,8 +1302,8 @@ const Chat = ({
                       {stripBackendContextFromUserMessage(message.content)}
                     </p>
                   </div>
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FF8617] text-sm font-semibold text-white">
-                    U
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FF8617] text-white">
+                    <UserRound className="h-4 w-4" aria-hidden="true" />
                   </div>
                 </div>
               ) : (
@@ -1336,7 +1408,11 @@ const Chat = ({
           disabled={isSending || isHistoryLoading}
           onChange={(event) => setInput(event.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Improve slide design"
+          placeholder={
+            isOutlineVariant
+              ? "Regenerate this outline"
+              : "Improve slide design"
+          }
           aria-invalid={Boolean(errorMessage)}
         />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">

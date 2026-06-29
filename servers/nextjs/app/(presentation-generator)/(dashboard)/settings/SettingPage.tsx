@@ -283,7 +283,8 @@ const SettingsPage = () => {
       (llmConfig.LLM === "litellm" && !llmConfig.LITELLM_MODEL) ||
       (llmConfig.LLM === "lmstudio" && !llmConfig.LMSTUDIO_MODEL) ||
       (llmConfig.LLM === "anthropic" && !llmConfig.ANTHROPIC_MODEL) ||
-      (llmConfig.LLM === "ollama" && !llmConfig.OLLAMA_MODEL) ||
+      (llmConfig.LLM === "ollama" &&
+        (!llmConfig.OLLAMA_URL?.trim() || !llmConfig.OLLAMA_MODEL)) ||
       (llmConfig.LLM === "custom" && !llmConfig.CUSTOM_MODEL)
     ) {
       const currentUrl = window.location.href;

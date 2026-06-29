@@ -8,8 +8,8 @@ services:
       args:
         NEXT_PUBLIC_USE_SLIDE_EDITOR_IMPORT: ${NEXT_PUBLIC_USE_SLIDE_EDITOR_IMPORT:-${USE_SLIDE_EDITOR_IMPORT:-false}}
     ports:
-      # You can replace 5001 with any other port number of your choice to run Presenton on a different port number.
-      - "${PRESENTON_HOST_HTTP_PORT:-5001}:80"
+      # Set PRESENTON_HTTP_HOST_PORT to change the host port.
+      - "${PRESENTON_HTTP_HOST_PORT:-5001}:80"
       # Required for Codex OAuth callback (OpenAI redirects browser directly to localhost:1455)
       - "1455:1455"
     volumes:
@@ -26,6 +26,9 @@ services:
       - LLM=${LLM:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_MODEL=${GOOGLE_MODEL:-}
       - VERTEX_API_KEY=${VERTEX_API_KEY:-}
@@ -66,6 +69,9 @@ services:
       - CUSTOM_LLM_URL=${CUSTOM_LLM_URL:-}
       - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
       - CUSTOM_MODEL=${CUSTOM_MODEL:-}
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - LITELLM_MODEL=${LITELLM_MODEL:-}
       - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
       - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY:-}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL:-}
@@ -104,6 +110,9 @@ services:
       - LITEPARSE_NUM_WORKERS=${LITEPARSE_NUM_WORKERS:-1}
       - OPEN_WEBUI_IMAGE_URL=${OPEN_WEBUI_IMAGE_URL:-}
       - OPEN_WEBUI_IMAGE_API_KEY=${OPEN_WEBUI_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_BASE_URL=${OPENAI_COMPAT_IMAGE_BASE_URL:-}
+      - OPENAI_COMPAT_IMAGE_API_KEY=${OPENAI_COMPAT_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_MODEL=${OPENAI_COMPAT_IMAGE_MODEL:-}
       - AUTH_USERNAME=${AUTH_USERNAME:-}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-}
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}
@@ -125,8 +134,8 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      # You can replace 5000 with any other port number of your choice to run Presenton on a different port number.
-      - "${PRESENTON_HOST_HTTP_PORT:-5000}:80"
+      # Set PRESENTON_HTTP_HOST_PORT to change the host port.
+      - "${PRESENTON_HTTP_HOST_PORT:-5001}:80"
       # Required for Codex OAuth callback (OpenAI redirects browser directly to localhost:1455)
       - "1455:1455"
     volumes:
@@ -141,6 +150,9 @@ services:
       - LLM=${LLM:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_MODEL=${GOOGLE_MODEL:-}
       - VERTEX_API_KEY=${VERTEX_API_KEY:-}
@@ -181,6 +193,9 @@ services:
       - CUSTOM_LLM_URL=${CUSTOM_LLM_URL:-}
       - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
       - CUSTOM_MODEL=${CUSTOM_MODEL:-}
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - LITELLM_MODEL=${LITELLM_MODEL:-}
       - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
       - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY:-}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL:-}
@@ -219,6 +234,9 @@ services:
       - LITEPARSE_NUM_WORKERS=${LITEPARSE_NUM_WORKERS:-1}
       - OPEN_WEBUI_IMAGE_URL=${OPEN_WEBUI_IMAGE_URL:-}
       - OPEN_WEBUI_IMAGE_API_KEY=${OPEN_WEBUI_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_BASE_URL=${OPENAI_COMPAT_IMAGE_BASE_URL:-}
+      - OPENAI_COMPAT_IMAGE_API_KEY=${OPENAI_COMPAT_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_MODEL=${OPENAI_COMPAT_IMAGE_MODEL:-}
       - AUTH_USERNAME=${AUTH_USERNAME:-}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-}
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}
@@ -230,7 +248,7 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - "${PRESENTON_HOST_HTTP_PORT:-5001}:80"
+      - "${PRESENTON_HTTP_HOST_PORT:-5001}:80"
       # Required for Codex OAuth callback (OpenAI redirects browser directly to localhost:1455)
       - "1455:1455"
     volumes:
@@ -251,6 +269,9 @@ services:
       - LLM=${LLM:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_MODEL=${GOOGLE_MODEL:-}
       - VERTEX_API_KEY=${VERTEX_API_KEY:-}
@@ -290,6 +311,9 @@ services:
       - CUSTOM_LLM_URL=${CUSTOM_LLM_URL:-}
       - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
       - CUSTOM_MODEL=${CUSTOM_MODEL:-}
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - LITELLM_MODEL=${LITELLM_MODEL:-}
       - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
       - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY:-}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL:-}
@@ -328,6 +352,9 @@ services:
       - LITEPARSE_NUM_WORKERS=${LITEPARSE_NUM_WORKERS:-1}
       - OPEN_WEBUI_IMAGE_URL=${OPEN_WEBUI_IMAGE_URL:-}
       - OPEN_WEBUI_IMAGE_API_KEY=${OPEN_WEBUI_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_BASE_URL=${OPENAI_COMPAT_IMAGE_BASE_URL:-}
+      - OPENAI_COMPAT_IMAGE_API_KEY=${OPENAI_COMPAT_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_MODEL=${OPENAI_COMPAT_IMAGE_MODEL:-}
       - AUTH_USERNAME=${AUTH_USERNAME:-}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-}
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}
@@ -346,7 +373,7 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "${PRESENTON_HOST_HTTP_PORT:-5000}:80"
+      - "${PRESENTON_HTTP_HOST_PORT:-5001}:80"
       # Required for Codex OAuth callback (OpenAI redirects browser directly to localhost:1455)
       - "1455:1455"
     volumes:
@@ -365,6 +392,9 @@ services:
       - LLM=${LLM:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_MODEL=${OPENAI_MODEL:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_MODEL=${DEEPSEEK_MODEL:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-}
       - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
       - GOOGLE_MODEL=${GOOGLE_MODEL:-}
       - VERTEX_API_KEY=${VERTEX_API_KEY:-}
@@ -404,6 +434,9 @@ services:
       - CUSTOM_LLM_URL=${CUSTOM_LLM_URL:-}
       - CUSTOM_LLM_API_KEY=${CUSTOM_LLM_API_KEY:-}
       - CUSTOM_MODEL=${CUSTOM_MODEL:-}
+      - LITELLM_BASE_URL=${LITELLM_BASE_URL:-}
+      - LITELLM_API_KEY=${LITELLM_API_KEY:-}
+      - LITELLM_MODEL=${LITELLM_MODEL:-}
       - LMSTUDIO_BASE_URL=${LMSTUDIO_BASE_URL:-}
       - LMSTUDIO_API_KEY=${LMSTUDIO_API_KEY:-}
       - LMSTUDIO_MODEL=${LMSTUDIO_MODEL:-}
@@ -442,6 +475,9 @@ services:
       - LITEPARSE_NUM_WORKERS=${LITEPARSE_NUM_WORKERS:-1}
       - OPEN_WEBUI_IMAGE_URL=${OPEN_WEBUI_IMAGE_URL:-}
       - OPEN_WEBUI_IMAGE_API_KEY=${OPEN_WEBUI_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_BASE_URL=${OPENAI_COMPAT_IMAGE_BASE_URL:-}
+      - OPENAI_COMPAT_IMAGE_API_KEY=${OPENAI_COMPAT_IMAGE_API_KEY:-}
+      - OPENAI_COMPAT_IMAGE_MODEL=${OPENAI_COMPAT_IMAGE_MODEL:-}
       - AUTH_USERNAME=${AUTH_USERNAME:-}
       - AUTH_PASSWORD=${AUTH_PASSWORD:-}
       - AUTH_OVERRIDE_FROM_ENV=${AUTH_OVERRIDE_FROM_ENV:-}

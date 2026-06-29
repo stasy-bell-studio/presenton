@@ -9,7 +9,6 @@ import CodexConfig from "./CodexConfig";
 import {
   updateLLMConfig,
   changeProvider as changeProviderUtil,
-  getDefaultOllamaUrl,
 } from "@/utils/providerUtils";
 import { LLMConfig } from "@/types/llm_config";
 import ImageSelectionConfig from "./ImageSelectionConfig";
@@ -78,8 +77,6 @@ export default function LLMProviderSelection({
 
     const needsApiKey = needsProviderApiKey || needsImageProviderApiKey;
 
-    const needsOllamaUrl = llmConfig.LLM === "ollama" && !llmConfig.OLLAMA_URL;
-
     const needsComfyUIConfig =
       !llmConfig.DISABLE_IMAGE_GENERATION &&
       llmConfig.IMAGE_PROVIDER === "comfyui" &&
@@ -102,7 +99,6 @@ export default function LLMProviderSelection({
       isDisabled:
         needsModelSelection ||
         needsApiKey ||
-        needsOllamaUrl ||
         needsComfyUIConfig ||
         needsOpenWebUIImageUrl ||
         needsOpenAICompatImageConfig,
@@ -110,15 +106,13 @@ export default function LLMProviderSelection({
         ? "Please Select a Model"
         : needsApiKey
           ? "Please Enter API Key"
-          : needsOllamaUrl
-            ? "Please Enter Ollama URL"
-            : needsComfyUIConfig
-              ? "Please Configure ComfyUI"
-              : needsOpenWebUIImageUrl
-                ? "Please Enter Open WebUI URL"
-                : needsOpenAICompatImageConfig
-                  ? "Please Configure Custom Image API"
-                  : "Save Configuration",
+          : needsComfyUIConfig
+            ? "Please Configure ComfyUI"
+            : needsOpenWebUIImageUrl
+              ? "Please Enter Open WebUI URL"
+              : needsOpenAICompatImageConfig
+                ? "Please Configure Custom Image API"
+                : "Save Configuration",
       showProgress: false,
     });
   }, [llmConfig]);
@@ -184,10 +178,6 @@ export default function LLMProviderSelection({
         } else {
           updates.IMAGE_PROVIDER = "pexels";
         }
-      }
-
-      if (!prevConfig.OLLAMA_URL) {
-        updates.OLLAMA_URL = getDefaultOllamaUrl();
       }
 
       if (Object.keys(updates).length === 0) {
