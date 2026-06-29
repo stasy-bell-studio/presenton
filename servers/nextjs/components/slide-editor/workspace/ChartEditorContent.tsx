@@ -5,6 +5,8 @@ import {
   ChevronDown,
   Download,
   Expand,
+  GripVertical,
+  MoreVertical,
   Plus,
   Settings,
   Trash2,
@@ -14,9 +16,13 @@ import {
 import { DeferredColorInput } from "../inline/DeferredColorInput";
 import {
   DEFAULT_CHART_COLORS,
+  chartColorTargetMode,
   chartDataFromSeries,
+  chartDataFromSeriesWithColors,
   chartDataToCsv,
+  resolvedChartColorTargets,
   resolvedChartCategories,
+  updateChartColorTarget,
 } from "../lib/chart-data";
 import type { ElementPath } from "../lib/element-path";
 import {
@@ -28,6 +34,7 @@ import {
 } from "../lib/slide-schema";
 import { ChartElement as KonvaChartElement } from "../slide-surface/konva/ChartElement";
 import type { ElementEvents } from "../slide-surface/konva/types";
+import { ChartColorPaletteCard } from "../inline/ChartColorPalette";
 
 const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
   { label: "Bar Chart", value: "bar" },
@@ -93,27 +100,31 @@ export function ChartEditorContent({
         </label>
         <ChartTypeSelect
           value={chart.chart_type}
-          onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+          onChange={(chartType) =>
+            onChange({ ...chart, chart_type: chartType })
+          }
         />
 
         <div className="mt-8 border-t border-[#ECECF1]">
           <div className="grid grid-cols-2">
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "data"
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${
+                tab === "data"
                   ? "border-[#7C51F8] text-[#191919]"
                   : "border-transparent text-[#191919]"
-                }`}
+              }`}
               onClick={() => setTab("data")}
             >
               Data
             </button>
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "customize"
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${
+                tab === "customize"
                   ? "border-[#7C51F8] text-[#191919]"
                   : "border-transparent text-[#191919]"
-                }`}
+              }`}
               onClick={() => setTab("customize")}
             >
               Customize
@@ -187,14 +198,6 @@ function ChartDataPanel({
     <div className="space-y-5 pt-5">
       <MiniDataTable categories={categories} series={series} />
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-[#ECECF1] bg-white px-4 text-[12px] font-semibold text-[#191919] transition hover:bg-[#F7F7FA]"
-          onClick={onOpenDataModal}
-        >
-          <Download size={15} strokeWidth={2} />
-          Edit Data
-        </button>
         <button
           type="button"
           aria-label="Open data table"
@@ -271,6 +274,9 @@ function ChartCustomizePanel({
   chart: ChartElement;
   onChange: (chart: ChartElement) => void;
 }) {
+  const hasCartesianAxes =
+    chart.chart_type !== "pie" && chart.chart_type !== "donut";
+
   return (
     <div className="space-y-3 pt-5">
       <PanelSection icon={<Type size={18} />} label="Text">
@@ -287,52 +293,56 @@ function ChartCustomizePanel({
         <ToggleRow
           checked={chart.data_labels ?? chart.data_labels ?? false}
           label="Show values"
-          onChange={(checked) =>
-            onChange({ ...chart, data_labels: checked })
-          }
+          onChange={(checked) => onChange({ ...chart, data_labels: checked })}
         />
         <ColorRow
           label="Label color"
           value={chart.data_labels_color ?? "6A7894"}
-          onChange={(labelColor) => onChange({ ...chart, data_labels_color: labelColor })}
-        />
-      </PanelSection>
-
-      <PanelSection icon={<BarChart3 size={18} />} label="X Axis">
-        <ToggleRow
-          checked={chart.x_axis ?? true}
-          label="Show X axis"
-          onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
-        />
-        <label className="block text-[12px] font-medium text-[#686873]">
-          Axis title
-        </label>
-        <input
-          className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-          value={chart.x_axis_title ?? ""}
-          onChange={(event) =>
-            onChange({ ...chart, x_axis_title: event.target.value || null })
+          onChange={(labelColor) =>
+            onChange({ ...chart, data_labels_color: labelColor })
           }
         />
       </PanelSection>
 
-      <PanelSection icon={<BarChart3 size={18} />} label="Y Axis">
-        <ToggleRow
-          checked={chart.y_axis ?? true}
-          label="Show Y axis"
-          onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
-        />
-        <label className="block text-[12px] font-medium text-[#686873]">
-          Axis title
-        </label>
-        <input
-          className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-          value={chart.y_axis_title ?? ""}
-          onChange={(event) =>
-            onChange({ ...chart, y_axis_title: event.target.value || null })
-          }
-        />
-      </PanelSection>
+      {hasCartesianAxes ? (
+        <>
+          <PanelSection icon={<BarChart3 size={18} />} label="X Axis">
+            <ToggleRow
+              checked={chart.x_axis ?? true}
+              label="Show X axis"
+              onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
+            />
+            <label className="block text-[12px] font-medium text-[#686873]">
+              Axis title
+            </label>
+            <input
+              className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
+              value={chart.x_axis_title ?? ""}
+              onChange={(event) =>
+                onChange({ ...chart, x_axis_title: event.target.value || null })
+              }
+            />
+          </PanelSection>
+
+          <PanelSection icon={<BarChart3 size={18} />} label="Y Axis">
+            <ToggleRow
+              checked={chart.y_axis ?? true}
+              label="Show Y axis"
+              onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
+            />
+            <label className="block text-[12px] font-medium text-[#686873]">
+              Axis title
+            </label>
+            <input
+              className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
+              value={chart.y_axis_title ?? ""}
+              onChange={(event) =>
+                onChange({ ...chart, y_axis_title: event.target.value || null })
+              }
+            />
+          </PanelSection>
+        </>
+      ) : null}
 
       <PanelSection icon={<Settings size={18} />} label="Settings">
         <ToggleRow
@@ -340,26 +350,13 @@ function ChartCustomizePanel({
           label="Grid lines"
           onChange={(grid) => onChange({ ...chart, grid })}
         />
-        <ColorRow
-          label="Series color"
-          value={chart.color ?? "D4A24C"}
-          onChange={(color) =>
-            onChange({
-              ...chart,
-              color,
-              series_colors: [color, ...(chart.series_colors ?? []).slice(1)],
-              data: chartDataFromSeries(
-                safeCategoriesForChart(chart),
-                chart.series ?? [],
-                color,
-              ),
-            })
-          }
-        />
+        <ChartSeriesColorControls chart={chart} onChange={onChange} />
         <ColorRow
           label="Axis color"
           value={chart.axis_color ?? "9AA7BD"}
-          onChange={(axisColor) => onChange({ ...chart, axis_color: axisColor })}
+          onChange={(axisColor) =>
+            onChange({ ...chart, axis_color: axisColor })
+          }
         />
         <label className="block text-[12px] font-medium text-[#686873]">
           Opacity
@@ -376,6 +373,65 @@ function ChartCustomizePanel({
           }
         />
       </PanelSection>
+    </div>
+  );
+}
+
+function ChartSeriesColorControls({
+  chart,
+  onChange,
+}: {
+  chart: ChartElement;
+  onChange: (chart: ChartElement) => void;
+}) {
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const targets = resolvedChartColorTargets(chart);
+  const label =
+    targets.length > 1
+      ? chartColorTargetMode(chart) === "point"
+        ? "Slice colors"
+        : "Series colors"
+      : "Chart color";
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[12px] font-medium text-[#686873]">{label}</p>
+      <div className="space-y-2">
+        {targets.map((target) => (
+          <div
+            key={`${target.mode}-${target.index}`}
+            className="relative flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-[12px] font-medium text-[#191919]"
+          >
+            <span className="min-w-0 truncate">{target.label}</span>
+            <button
+              type="button"
+              aria-label={`Change ${target.label} color`}
+              className="h-8 w-8 shrink-0 rounded-full border border-[#E6E6EA] shadow-sm"
+              style={{ backgroundColor: `#${target.color}` }}
+              onClick={() =>
+                setOpenIndex((current) =>
+                  current === target.index ? null : target.index,
+                )
+              }
+            />
+            {openIndex === target.index ? (
+              <ChartColorPaletteCard
+                value={target.color}
+                onChange={(color) =>
+                  onChange(updateChartColorTarget(chart, target.index, color))
+                }
+                onClose={() => setOpenIndex(null)}
+                style={{
+                  position: "absolute",
+                  right: 0,
+                  top: 42,
+                  zIndex: 30,
+                }}
+              />
+            ) : null}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -478,22 +534,36 @@ function ChartDataModal({
         values: normalizeValues(item.values, normalizedCategories.length),
       }))
       .slice(0, 12);
-    const seriesColors = normalized.map(
-      (_, index) =>
+    const colorMode = chartColorTargetMode({
+      ...chart,
+      categories: normalizedCategories,
+      series: normalized,
+    });
+    const colorCount =
+      colorMode === "point"
+        ? Math.min(
+            12,
+            Math.max(1, normalizedCategories.length, normalized[0]?.values.length ?? 0),
+          )
+        : 1;
+    const seriesColors = Array.from({ length: colorCount }, (_, index) =>
         nextSeriesColors[index] ??
         chart.series_colors?.[index] ??
+        (index === 0 ? chart.color : null) ??
         DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
     );
 
     onChange({
       ...chart,
       categories: normalizedCategories,
+      color: seriesColors[0] ?? chart.color,
       series: normalized,
       series_colors: seriesColors,
-      data: chartDataFromSeries(
+      data: chartDataFromSeriesWithColors(
         normalizedCategories,
         normalized,
-        seriesColors[0] ?? chart.color,
+        seriesColors,
+        colorMode === "point",
       ),
     });
   };
@@ -507,7 +577,8 @@ function ChartDataModal({
       <div
         className="flex max-w-full flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_rgba(16,24,40,0.24)]"
         style={{
-          height: expanded ? "calc(100% - 48px)" : 650,
+          height: expanded ? "calc(100dvh - 48px)" : 650,
+          maxHeight: "calc(100dvh - 48px)",
           width: expanded ? "calc(100% - 48px)" : 1180,
         }}
       >
@@ -554,16 +625,25 @@ function ChartDataModal({
           </div>
         </header>
 
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-[330px] shrink-0 border-r border-[#ECECF1] px-7 py-7">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <aside className="min-h-0 w-[330px] shrink-0 overflow-y-auto overscroll-contain border-r border-[#ECECF1] px-7 py-7">
             <label className="mb-3 block text-base font-medium text-[#191919]">
               Charts
             </label>
             <ChartTypeSelect
               value={chart.chart_type}
-              onChange={(chartType) => onChange({ ...chart, chart_type: chartType })}
+              onChange={(chartType) =>
+                onChange({ ...chart, chart_type: chartType })
+              }
             />
-            <div className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]">
+            <div
+              className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]"
+              style={{
+                backgroundImage: "url('/card_bg.svg')",
+                backgroundPosition: "center",
+                backgroundSize: "100% 100%",
+              }}
+            >
               <div
                 className="pointer-events-none relative overflow-hidden"
                 style={{
@@ -583,52 +663,25 @@ function ChartDataModal({
                       scale={DATA_MODAL_CHART_PREVIEW_SCALE}
                       selected={false}
                       setRef={() => undefined}
+                      transparentBackground
                     />
                   </Layer>
                 </Stage>
               </div>
             </div>
-            <div className="mt-7 space-y-3">
-              <PanelSection icon={<Type size={19} />} label="Text">
-                <span className="text-sm text-[#777780]">
-                  {chart.title || "Untitled chart"}
-                </span>
-              </PanelSection>
-              <PanelSection icon={<BarChart3 size={19} />} label="X Axis">
-                <span className="text-sm text-[#777780]">
-                  {chart.x_axis ?? true ? "Visible" : "Hidden"}
-                </span>
-              </PanelSection>
-              <PanelSection icon={<BarChart3 size={19} />} label="Y Axis">
-                <span className="text-sm text-[#777780]">
-                  {chart.y_axis ?? true ? "Visible" : "Hidden"}
-                </span>
-              </PanelSection>
-              <PanelSection icon={<Settings size={19} />} label="Settings">
-                <span className="text-sm text-[#777780]">
-                  {chart.grid ?? true ? "Grid enabled" : "Grid hidden"}
-                </span>
-              </PanelSection>
-            </div>
+            <ChartCustomizePanel chart={chart} onChange={onChange} />
           </aside>
 
-          <main className="min-w-0 flex-1 px-10 py-12">
+          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-10 py-12">
             <EditableDataTable
               categories={categories}
               chartPath={chartPath}
+              colorMode={chartColorTargetMode(chart)}
               series={series}
               seriesColors={chart.series_colors ?? []}
+              onClear={() => onChange(clearChartData(chart))}
               onUpdate={updateData}
             />
-            <div className="mt-12 flex justify-center">
-              <button
-                type="button"
-                className="h-14 rounded-full bg-gradient-to-r from-[#F9D8AE] to-[#CDBBFF] px-10 text-lg font-semibold text-[#191919] shadow-sm"
-                onClick={onClose}
-              >
-                Add to Canvas
-              </button>
-            </div>
           </main>
         </div>
       </div>
@@ -639,12 +692,16 @@ function ChartDataModal({
 function EditableDataTable({
   categories,
   chartPath,
+  colorMode,
+  onClear,
   onUpdate,
   series,
   seriesColors,
 }: {
   categories: string[];
   chartPath: ElementPath;
+  colorMode: "point" | "series";
+  onClear: () => void;
   onUpdate: (
     categories: string[],
     series: ChartSeries[],
@@ -658,11 +715,15 @@ function EditableDataTable({
     series.length > 0
       ? series
       : [
-        {
-          name: "Series 1",
-          values: normalizeValues([], safeCategories.length),
-        },
-      ];
+          {
+            name: "Series 1",
+            values: normalizeValues([], safeCategories.length),
+          },
+        ];
+  const usesPointColors = colorMode === "point";
+  const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
+  const selectedSeriesIndex = Math.min(activeSeriesIndex, safeSeries.length - 1);
+  const selectedSeries = safeSeries[selectedSeriesIndex];
 
   const updateCategory = (rowIndex: number, value: string) => {
     onUpdate(
@@ -682,20 +743,24 @@ function EditableDataTable({
       seriesColors,
     );
   };
-  const updateValue = (seriesIndex: number, rowIndex: number, value: string) => {
+  const updateValue = (
+    seriesIndex: number,
+    rowIndex: number,
+    value: string,
+  ) => {
     const numeric = Number(value);
     onUpdate(
       safeCategories,
       safeSeries.map((item, index) =>
         index === seriesIndex
           ? {
-            ...item,
-            values: item.values.map((current, valueIndex) =>
-              valueIndex === rowIndex && Number.isFinite(numeric)
-                ? numeric
-                : current,
-            ),
-          }
+              ...item,
+              values: item.values.map((current, valueIndex) =>
+                valueIndex === rowIndex && Number.isFinite(numeric)
+                  ? numeric
+                  : current,
+              ),
+            }
           : item,
       ),
       seriesColors,
@@ -712,7 +777,12 @@ function EditableDataTable({
         ...item,
         values: [...item.values, 0],
       })),
-      seriesColors,
+      usesPointColors
+        ? [
+            ...seriesColors,
+            DEFAULT_CHART_COLORS[safeCategories.length % DEFAULT_CHART_COLORS.length],
+          ]
+        : seriesColors,
     );
   };
   const addSeries = () => {
@@ -725,21 +795,9 @@ function EditableDataTable({
           values: normalizeValues([], safeCategories.length),
         },
       ],
-      [
-        ...seriesColors,
-        DEFAULT_CHART_COLORS[safeSeries.length % DEFAULT_CHART_COLORS.length],
-      ],
-    );
-  };
-  const deleteRow = (rowIndex: number) => {
-    if (safeCategories.length <= 1) return;
-    onUpdate(
-      safeCategories.filter((_, index) => index !== rowIndex),
-      safeSeries.map((item) => ({
-        ...item,
-        values: item.values.filter((_, index) => index !== rowIndex),
-      })),
-      seriesColors,
+      usesPointColors
+        ? seriesColors
+        : seriesColors,
     );
   };
   const deleteSeries = (seriesIndex: number) => {
@@ -747,61 +805,87 @@ function EditableDataTable({
     onUpdate(
       safeCategories,
       safeSeries.filter((_, index) => index !== seriesIndex),
-      seriesColors.filter((_, index) => index !== seriesIndex),
+      usesPointColors
+        ? seriesColors
+        : seriesColors,
+    );
+    setActiveSeriesIndex((current) =>
+      Math.max(0, Math.min(current, safeSeries.length - 2)),
     );
   };
 
   return (
-    <div className="overflow-hidden rounded-2xl bg-[#F4F4F6]">
-      <div className="max-h-[360px] overflow-auto">
-        <table className="min-w-full border-collapse text-base text-[#191919]">
+    <div className="relative w-full pt-12 pr-7 pb-6 pl-7">
+      {selectedSeries ? (
+        <div className="absolute left-1/2 top-0 z-20 flex h-12 min-w-[290px] -translate-x-1/2 items-center overflow-hidden rounded-[20px] border border-[#ECECF1] bg-white px-4 text-[#191919] shadow-[0_4px_18px_rgba(16,24,40,0.10)]">
+          <input
+            className="h-full min-w-0 flex-1 bg-transparent text-center text-[17px] font-medium outline-none"
+            value={selectedSeries.name}
+            onChange={(event) =>
+              updateSeriesName(selectedSeriesIndex, event.target.value)
+            }
+          />
+          <button
+            type="button"
+            aria-label="Delete selected series"
+            className="ml-3 grid h-9 w-9 place-items-center rounded-lg bg-[#F7F7FA] text-[#191919]"
+            onClick={() => deleteSeries(selectedSeriesIndex)}
+          >
+            <Trash2 size={18} strokeWidth={2.3} />
+          </button>
+          <button
+            type="button"
+            aria-label="More series actions"
+            className="ml-2 grid h-9 w-7 place-items-center rounded-lg text-[#191919]"
+          >
+            <MoreVertical size={19} strokeWidth={2.6} />
+          </button>
+        </div>
+      ) : null}
+
+      <button
+        type="button"
+        className="absolute right-0 top-2 text-[17px] font-medium text-[#7C51F8]"
+        onClick={onClear}
+      >
+        Clear Data
+      </button>
+
+      <div className="relative rounded-b-[18px] bg-[#F3F4F6] pr-7 pb-6">
+        <div className="max-h-[390px] overflow-auto">
+          <table className="min-w-full border-collapse text-[16px] text-[#191919]">
           <thead>
             <tr>
-              <th className="sticky left-0 top-0 z-10 w-10 border-b border-r border-[#E3E3E8] bg-[#F4F4F6]" />
-              <th className="sticky left-10 top-0 z-10 min-w-[220px] border-b border-r border-[#E3E3E8] bg-[#F4F4F6]" />
+              <th className="sticky left-0 top-0 z-10 w-0 border-b border-[#E8E8EC] bg-[#F6F7F8]" />
+              <th className="sticky left-0 top-0 z-10 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8]" />
               {safeSeries.map((item, seriesIndex) => (
                 <th
                   key={`${chartPath}-series-${seriesIndex}`}
-                  className="min-w-[220px] border-b border-r border-[#E3E3E8] bg-[#F4F4F6] px-3 py-2"
+                  className="min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8] px-4 py-3 text-center text-[18px] font-medium"
                 >
-                  <div className="flex items-center gap-2">
-                    <input
-                      className="h-9 min-w-0 flex-1 rounded-lg border border-transparent bg-white px-3 text-center font-medium outline-none focus:border-[#7C51F8]"
-                      value={item.name}
-                      onChange={(event) =>
-                        updateSeriesName(seriesIndex, event.target.value)
-                      }
-                    />
-                    <button
-                      type="button"
-                      className="grid h-9 w-9 place-items-center rounded-lg bg-white text-[#191919] shadow-sm"
-                      onClick={() => deleteSeries(seriesIndex)}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="w-full truncate text-center outline-none"
+                    onClick={() => setActiveSeriesIndex(seriesIndex)}
+                  >
+                    {item.name}
+                  </button>
                 </th>
               ))}
-              <th className="sticky right-0 top-0 w-12 border-b border-[#E3E3E8] bg-[#F4F4F6]">
-                <button
-                  type="button"
-                  className="grid h-9 w-9 place-items-center rounded-full text-[#191919] hover:bg-white"
-                  onClick={addSeries}
-                >
-                  <Plus size={18} />
-                </button>
-              </th>
+              <th className="sticky right-0 top-0 w-16 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
             </tr>
           </thead>
           <tbody>
             {safeCategories.map((category, rowIndex) => (
               <tr key={`${chartPath}-row-${rowIndex}`}>
-                <td className="sticky left-0 border-b border-r border-[#E3E3E8] bg-[#F4F4F6] text-center text-[#A1A1AA]">
-                  ::
+                <td className="sticky left-0 relative w-0 border-b border-[#E8E8EC] bg-[#F6F7F8] text-center text-[#A9AAB4]">
+                  <span className="absolute -left-6 top-1/2 flex -translate-y-1/2 items-center justify-center">
+                    <GripVertical size={18} strokeWidth={2.3} />
+                  </span>
                 </td>
-                <td className="sticky left-10 min-w-[220px] border-b border-r border-[#E3E3E8] bg-[#F7F7FA] px-3 py-2">
+                <td className="sticky left-0 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F7F8FA] px-4 py-3">
                   <input
-                    className="h-9 w-full rounded-lg border border-transparent bg-transparent px-2 outline-none focus:border-[#7C51F8] focus:bg-white"
+                    className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-3"
                     value={category}
                     onChange={(event) =>
                       updateCategory(rowIndex, event.target.value)
@@ -811,10 +895,10 @@ function EditableDataTable({
                 {safeSeries.map((item, seriesIndex) => (
                   <td
                     key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
-                    className="border-b border-r border-[#E3E3E8] bg-white px-3 py-2"
+                    className="border-b border-r border-[#E8E8EC] bg-white px-4 py-3"
                   >
                     <input
-                      className="h-9 w-full rounded-lg border border-transparent bg-transparent px-2 outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF]"
+                      className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-3"
                       type="number"
                       value={item.values[rowIndex] ?? 0}
                       onChange={(event) =>
@@ -823,27 +907,29 @@ function EditableDataTable({
                     />
                   </td>
                 ))}
-                <td className="sticky right-0 border-b border-[#E3E3E8] bg-[#F4F4F6]">
-                  <button
-                    type="button"
-                    className="grid h-9 w-9 place-items-center rounded-full text-[#191919] hover:bg-white"
-                    onClick={() => deleteRow(rowIndex)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
+                <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
+        <div className="absolute bottom-0 right-0 top-0 w-7 rounded-r-[18px] bg-[#EDEEF0]" />
+        <div className="absolute bottom-0 left-0 right-7 h-6 rounded-b-[18px] bg-[#EDEEF0]" />
+        <button
+          type="button"
+          className="absolute right-0 top-1/2 z-10 grid h-10 w-7 -translate-y-1/2 place-items-center text-[#191919]"
+          onClick={addSeries}
+        >
+          <Plus size={18} strokeWidth={2.4} />
+        </button>
+        <button
+          type="button"
+          className="absolute bottom-0 left-1/2 z-10 grid h-6 w-10 -translate-x-1/2 place-items-center text-[#191919]"
+          onClick={addRow}
+        >
+          <Plus size={18} strokeWidth={2.4} />
+        </button>
       </div>
-      <button
-        type="button"
-        className="flex h-9 w-full items-center justify-center border-t border-[#E3E3E8] text-[#191919] hover:bg-white"
-        onClick={addRow}
-      >
-        <Plus size={17} />
-      </button>
     </div>
   );
 }
@@ -906,8 +992,9 @@ function downloadChartData(element: ChartElement) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${(element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
-    }.csv`;
+  anchor.download = `${
+    (element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
+  }.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }

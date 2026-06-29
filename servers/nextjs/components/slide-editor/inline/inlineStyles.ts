@@ -31,12 +31,17 @@ export const inlineStyles = {
   iconButton: {
     width: 28,
     height: 28,
+    display: "inline-grid",
+    placeItems: "center",
+    boxSizing: "border-box",
     borderRadius: 6,
     border: `1px solid ${editorTheme.border}`,
     background: editorTheme.surface,
     color: editorTheme.text,
     fontSize: 13,
     fontWeight: 800,
+    lineHeight: 0,
+    padding: 0,
     cursor: "pointer",
   },
   iconButtonActive: {

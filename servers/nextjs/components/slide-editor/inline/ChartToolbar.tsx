@@ -1,13 +1,16 @@
+import { useState, type CSSProperties } from "react";
 import { BarChart3, Download, Palette, Pencil } from "lucide-react";
 import type { ChartSlideElement } from "../state";
 import {
-  chartDataFromSeries,
   chartDataToCsv,
-  resolvedChartCategories,
+  resolvedChartColorTargets,
+  updateChartColorTarget,
 } from "../lib/chart-data";
-import { DeferredColorInput } from "./DeferredColorInput";
+import { ChartColorPaletteCard } from "./ChartColorPalette";
 import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
+
+const DEFAULT_CHART_TOOLBAR_SIZE = { width: 2.5, height: 2.5 };
 
 export function ChartToolbar({
   element,
@@ -22,7 +25,15 @@ export function ChartToolbar({
   onChange: (index: number, element: ChartSlideElement) => void;
   onEdit?: (index: number) => void;
 }) {
-  const categories = resolvedChartCategories(element);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [activeColorIndex, setActiveColorIndex] = useState(0);
+  const colorTargets = resolvedChartColorTargets(element);
+  const activeTarget =
+    colorTargets.find((target) => target.index === activeColorIndex) ??
+    colorTargets[0];
+  const isDefaultPresentonChart =
+    typeof element.source === "string" &&
+    element.source.startsWith("presenton-default-");
 
   return (
     <InlineToolbar element={element} scale={scale}>
@@ -41,10 +52,13 @@ export function ChartToolbar({
           title="Chart type"
           value={element.chart_type}
           onChange={(event) =>
-	            onChange(index, {
-	              ...element,
-	              chart_type: event.target.value as ChartSlideElement["chart_type"],
-	            })
+            onChange(index, {
+              ...element,
+              chart_type: event.target.value as ChartSlideElement["chart_type"],
+              size: isDefaultPresentonChart
+                ? { ...DEFAULT_CHART_TOOLBAR_SIZE }
+                : element.size,
+            })
           }
           style={{
             ...inlineStyles.select,
@@ -70,39 +84,59 @@ export function ChartToolbar({
         <Pencil size={16} strokeWidth={2} />
       </button>
 
-      <label
-        title="Series color"
-        style={{
-          ...inlineStyles.iconButton,
-          display: "grid",
-          placeItems: "center",
-          position: "relative",
-        }}
-      >
-        <Palette size={16} strokeWidth={2} />
-        <DeferredColorInput
-          aria-label="Chart color"
-          value={element.color ?? "D4A24C"}
-          onCommit={(color) => {
-            onChange(index, {
-	              ...element,
-	              color,
-	              series_colors: element.series?.length
-	                ? [color, ...(element.series_colors ?? []).slice(1)]
-	                : element.series_colors,
-              data: chartDataFromSeries(categories, element.series ?? [], color),
-            });
-          }}
+      <div style={{ position: "relative" }}>
+        <button
+          type="button"
+          title="Chart colors"
+          onClick={() => setPaletteOpen((current) => !current)}
           style={{
-            height: 1,
-            left: "50%",
-            opacity: 0,
-            position: "absolute",
-            top: "50%",
-            width: 1,
+            ...inlineStyles.iconButton,
+            ...(paletteOpen ? inlineStyles.iconButtonActive : {}),
           }}
-        />
-      </label>
+        >
+          <Palette size={16} strokeWidth={2} />
+        </button>
+        {paletteOpen && activeTarget ? (
+          <ChartColorPaletteCard
+            value={activeTarget.color}
+            header={
+              colorTargets.length > 1 ? (
+                <div style={toolbarPaletteStyles.targetList}>
+                  {colorTargets.map((target) => (
+                    <button
+                      key={`${target.mode}-${target.index}`}
+                      type="button"
+                      title={target.label}
+                      style={{
+                        ...toolbarPaletteStyles.targetButton,
+                        ...(target.index === activeTarget.index
+                          ? toolbarPaletteStyles.targetButtonActive
+                          : {}),
+                      }}
+                      onClick={() => setActiveColorIndex(target.index)}
+                    >
+                      <span
+                        style={{
+                          ...toolbarPaletteStyles.targetDot,
+                          background: `#${target.color}`,
+                        }}
+                      />
+                      <span style={toolbarPaletteStyles.targetLabel}>
+                        {target.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null
+            }
+            onChange={(color) =>
+              onChange(index, updateChartColorTarget(element, activeTarget.index, color))
+            }
+            onClose={() => setPaletteOpen(false)}
+            style={toolbarPaletteStyles.paletteCard}
+          />
+        ) : null}
+      </div>
 
       <button
         type="button"
@@ -115,6 +149,54 @@ export function ChartToolbar({
     </InlineToolbar>
   );
 }
+
+const toolbarPaletteStyles = {
+  paletteCard: {
+    left: 0,
+    position: "absolute",
+    top: 36,
+    zIndex: 30,
+  },
+  targetButton: {
+    alignItems: "center",
+    background: "#FFFFFF",
+    border: "1px solid #E6E6EA",
+    borderRadius: 999,
+    color: "#191919",
+    cursor: "pointer",
+    display: "inline-flex",
+    flex: "0 0 auto",
+    fontSize: 11,
+    fontWeight: 700,
+    gap: 6,
+    height: 28,
+    maxWidth: 132,
+    padding: "0 9px",
+  },
+  targetButtonActive: {
+    background: "#F4F3FF",
+    borderColor: "#7C51F8",
+    color: "#7C51F8",
+  },
+  targetDot: {
+    border: "1px solid #E6E6EA",
+    borderRadius: 999,
+    flex: "0 0 auto",
+    height: 12,
+    width: 12,
+  },
+  targetLabel: {
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  targetList: {
+    display: "flex",
+    gap: 6,
+    maxWidth: 212,
+    overflowX: "auto",
+  },
+} satisfies Record<string, CSSProperties>;
 
 function downloadChartData(element: ChartSlideElement) {
   const blob = new Blob([chartDataToCsv(element)], {

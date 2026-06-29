@@ -222,6 +222,11 @@ const elementItems = [
 const templateBlocksCache = new Map<string, TemplateBlock[]>();
 const BLOCK_PREVIEW_WIDTH = 1280;
 const BLOCK_PREVIEW_HEIGHT = 720;
+const DEFAULT_BAR_CHART_SOURCE = "presenton-default-bar-chart";
+const DEFAULT_LINE_CHART_SOURCE = "presenton-default-line-chart";
+const DEFAULT_AREA_CHART_SOURCE = "presenton-default-area-chart";
+const DEFAULT_PIE_CHART_SOURCE = "presenton-default-pie-chart";
+const DEFAULT_CHART_INSERT_SIZE = { width: 2.5, height: 2.5 };
 
 const makeTextElement = ({
   text,
@@ -257,29 +262,29 @@ const makeTextElement = ({
     family: "Arial",
     size,
     color,
-	    bold,
-	    italic,
-	    line_height: lineHeight,
-	  },
-	});
+    bold,
+    italic,
+    line_height: lineHeight,
+  },
+});
 
 const makeBulletListElement = (): SlideElement => ({
   type: "text-list",
   position: { x: 0.95, y: 1.2 },
   size: { width: 5.4, height: 1.5 },
-	  marker: "bullet",
-	  items: [
-	    [{ text: "First point" }],
-	    [{ text: "Second point" }],
-	    [{ text: "Third point" }],
-	  ],
+  marker: "bullet",
+  items: [
+    [{ text: "First point" }],
+    [{ text: "Second point" }],
+    [{ text: "Third point" }],
+  ],
   font: {
     family: "Arial",
-	    size: 18,
-	    color: "101323",
-	    line_height: 1.3,
-	  },
-	});
+    size: 18,
+    color: "101323",
+    line_height: 1.3,
+  },
+});
 
 const createTextInsertElements = (kind?: string): SlideElement[] => {
   switch (kind) {
@@ -356,17 +361,125 @@ const chartTypeFromPaletteId = (id?: string): ChartType | null => {
 };
 
 const makeChartElement = (chartType: ChartType): SlideElement => {
-  const isCircular = chartType === "pie" || chartType === "donut";
-  const label =
-    chartType === "bar"
-      ? "Bar chart"
-      : chartType === "line"
-        ? "Line chart"
-        : chartType === "area"
-          ? "Area chart"
-          : chartType === "pie"
-            ? "Pie chart"
-            : "Donut chart";
+  if (chartType === "bar") {
+    const categories = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const values = [70, 120, 45, 145, 105, 105, 45];
+    const seriesColors = ["4D20C5"];
+
+    return {
+      type: "chart",
+      position: { x: 0.78, y: 0.55 },
+      size: { ...DEFAULT_CHART_INSERT_SIZE },
+      chart_type: "bar",
+      title: "Weekly Report\nJun 10-12",
+      color: "4D20C5",
+      axis_color: "D8D8D8",
+      data_labels_color: "4B55A5",
+      data_labels: true,
+      grid: true,
+      x_axis: true,
+      y_axis: true,
+      categories,
+      series: [{ name: "Students Number", values }],
+      series_colors: seriesColors,
+      source: DEFAULT_BAR_CHART_SOURCE,
+      data: categories.map((category, index) => ({
+        label: category,
+        value: values[index] ?? 0,
+        color: seriesColors[0],
+      })),
+    };
+  }
+
+  if (chartType === "line") {
+    const categories = ["2021", "2022", "2023", "2024", "2025", "2026"];
+    const values = [15, 45, 85, 50, 15, 55];
+    const seriesColors = ["4D20C5"];
+
+    return {
+      type: "chart",
+      position: { x: 0.78, y: 0.55 },
+      size: { ...DEFAULT_CHART_INSERT_SIZE },
+      chart_type: "line",
+      title: "Enrollment Over Years\n2021-2026",
+      color: "4D20C5",
+      axis_color: "D8D8D8",
+      data_labels_color: "4D20C5",
+      data_labels: false,
+      grid: true,
+      x_axis: true,
+      y_axis: false,
+      categories,
+      series: [{ name: "Students Number", values }],
+      series_colors: seriesColors,
+      source: DEFAULT_LINE_CHART_SOURCE,
+      data: categories.map((category, index) => ({
+        label: category,
+        value: values[index] ?? 0,
+        color: seriesColors[0],
+      })),
+    };
+  }
+
+  if (chartType === "area") {
+    const categories = ["2021", "2022", "2023", "2024", "2025", "2026"];
+    const values = [25, 74, 46, 57, 62, 67];
+    const seriesColors = ["4D20C5"];
+
+    return {
+      type: "chart",
+      position: { x: 0.78, y: 0.55 },
+      size: { ...DEFAULT_CHART_INSERT_SIZE },
+      chart_type: "area",
+      title: "Enrollment Over Years\n2021-2026",
+      color: "7555F6",
+      axis_color: "D8D8D8",
+      data_labels_color: "4D20C5",
+      data_labels: false,
+      grid: true,
+      x_axis: true,
+      y_axis: false,
+      categories,
+      series: [{ name: "Students Number", values }],
+      series_colors: seriesColors,
+      source: DEFAULT_AREA_CHART_SOURCE,
+      data: categories.map((category, index) => ({
+        label: category,
+        value: values[index] ?? 0,
+        color: seriesColors[0],
+      })),
+    };
+  }
+
+  if (chartType === "pie") {
+    const categories = ["Category A", "Category B", "Category C"];
+    const values = [55, 25, 20];
+    const seriesColors = ["7555F6", "AA9AF8", "E7E3FA"];
+
+    return {
+      type: "chart",
+      position: { x: 0.78, y: 0.55 },
+      size: { ...DEFAULT_CHART_INSERT_SIZE },
+      chart_type: "pie",
+      title: "Weekly Report\nJun 10-12",
+      color: "7555F6",
+      axis_color: "D8D8D8",
+      data_labels_color: "191919",
+      data_labels: true,
+      categories,
+      series: [{ name: "Weekly Report", values }],
+      series_colors: seriesColors,
+      source: DEFAULT_PIE_CHART_SOURCE,
+      data: categories.map((category, index) => ({
+        label: category,
+        value: values[index] ?? 0,
+        color: seriesColors[index] ?? seriesColors[0],
+      })),
+    };
+  }
+
+  const isCircular = chartType === "donut";
+  const label = "Donut chart";
   const categories = ["Q1", "Q2", "Q3", "Q4"];
   const values = [38, 54, 47, 68];
   const seriesColors = ["7F22FE", "155DFC", "F59E0B", "12B76A"];
@@ -375,15 +488,15 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
     type: "chart",
     position: { x: 1.05, y: 1.05 },
     size: { width: isCircular ? 4.4 : 5.2, height: 2.6 },
-	    chart_type: chartType,
-	    title: label,
-	    color: "7F22FE",
-	    axis_color: "D0D5DD",
-	    data_labels_color: "475467",
-	    data_labels: chartType !== "area",
-	    categories,
-	    series: [{ name: label, values }],
-	    series_colors: seriesColors,
+    chart_type: chartType,
+    title: label,
+    color: "7F22FE",
+    axis_color: "D0D5DD",
+    data_labels_color: "475467",
+    data_labels: true,
+    categories,
+    series: [{ name: label, values }],
+    series_colors: seriesColors,
     data: categories.map((category, index) => ({
       label: category,
       value: values[index] ?? 0,
@@ -421,10 +534,10 @@ const makeImageElement = ({
   type: "image",
   position: { x, y },
   size: { width, height },
-	  fit: "cover",
-	  name,
-	  border_radius: imageRadius,
-	});
+  fit: "cover",
+  name,
+  border_radius: imageRadius,
+});
 
 const createImageInsertElements = (kind?: string): SlideElement[] => {
   switch (kind) {
@@ -511,7 +624,7 @@ const createElementInsertElements = (kind?: string): SlideElement[] => {
           size: { width: 2.6, height: 1.35 },
           fill: { color: "F4F3FF", opacity: 1 },
           stroke: { color: "7A5AF8", width: 1.5 },
-	          border_radius: { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 },
+          border_radius: { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 },
         },
       ];
     case "ellipse":
@@ -555,7 +668,7 @@ const NavButton = ({
       onClick={onClick}
       className={cn(
         "group flex  w-full flex-col items-center justify-center gap-1 text-[12px] leading-none transition-colors",
-        active ? "text-[#101323]" : "text-[#111827] "
+        active ? "text-[#101323]" : "text-[#111827] ",
       )}
       aria-pressed={active}
     >
@@ -563,7 +676,7 @@ const NavButton = ({
         className={cn(
           "flex  items-center justify-center border border-transparent text-black p-1.5 rounded-[10px] transition-all",
           active && "bg-white   border-[#EDEEEF]",
-          active && "text-[#101323]"
+          active && "text-[#101323]",
         )}
         style={{
           boxShadow: active ? "0 6.6px 13.2px 0 rgba(124, 81, 248, 0.14)" : "",
@@ -900,7 +1013,10 @@ async function loadTemplateBlocksForPresentation(
   return [];
 }
 
-function templateBlocksCacheKey(presentationId: string, presentationData: unknown) {
+function templateBlocksCacheKey(
+  presentationId: string,
+  presentationData: unknown,
+) {
   const candidateIds = collectCandidateTemplateIds(presentationData).join(",");
   const layoutIds = collectPresentationLayoutIds(presentationData).join(",");
   return `${presentationId}:${candidateIds}:${layoutIds}`;
@@ -1001,11 +1117,7 @@ function BlockPreviewButton({
       <div className="relative">
         <BlockThumbnail block={block} />
         <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-[#111827] shadow-[0_4px_12px_rgba(16,24,40,0.16)]">
-          <GripVertical
-            className="h-3.5 w-3.5"
-            strokeWidth={1.8}
-            aria-hidden
-          />
+          <GripVertical className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden />
         </span>
       </div>
 
@@ -1437,7 +1549,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
     if (!detail.handled) {
       notify.warning(
         "Chart unavailable",
-        "Select the chart again before editing it."
+        "Select the chart again before editing it.",
       );
       return;
     }
@@ -1475,13 +1587,13 @@ const PresentationActions = (props: PresentationActionsProps) => {
     };
 
     window.dispatchEvent(
-      new CustomEvent(TEMPLATE_V2_INSERT_ELEMENTS_EVENT, { detail })
+      new CustomEvent(TEMPLATE_V2_INSERT_ELEMENTS_EVENT, { detail }),
     );
 
     if (!detail.handled) {
       notify.warning(
         "Insert unavailable",
-        "Content can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected."
+        "Content can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected.",
       );
     }
   };

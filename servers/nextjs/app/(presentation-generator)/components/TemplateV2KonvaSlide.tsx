@@ -35,7 +35,6 @@ import {
   SLIDE_W,
   type ChartElement,
   type ChartSeries,
-  type ChartType,
   type SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
 import { ElementToolbar } from "@/components/slide-editor/workspace/ElementToolbar";
@@ -43,6 +42,10 @@ import {
   loadKonvaImage,
   svgToDataUri,
 } from "@/components/slide-editor/slide-surface/konva/exportAssets";
+import {
+  TemplateV2ChartElement as RawChartElement,
+  rawChartType,
+} from "@/components/slide-editor/slide-surface/konva/TemplateV2ChartElement";
 import { buildSvgUpdateUrl } from "@/lib/svg-color";
 import { updateSlideUi } from "@/store/slices/presentationGeneration";
 import { resolveBackendAssetSource } from "@/utils/api";
@@ -1630,114 +1633,6 @@ function RawTableElement({
   );
 }
 
-function RawChartElement({
-  element,
-  width,
-  height,
-  interactive,
-}: {
-  element: RawElement;
-  width: number;
-  height: number;
-  interactive: boolean;
-}) {
-  const categories = readArray(element.categories).map(String);
-  const series = readArray(element.series).filter(isRecord);
-  const firstSeries = asRecord(series[0]) ?? {};
-  const values = readArray(firstSeries.values ?? firstSeries.data).map(
-    (value) => readNumber(value) ?? 0,
-  );
-  const chartType = readString(element.chart_type) ?? readString(element.chartType) ?? "bar";
-  const max = Math.max(1, ...values.map((value) => Math.abs(value)));
-  const colors = readArray(element.series_colors ?? element.seriesColors).map(String);
-  const color = withHash(colors[0] ?? "#7C51F8");
-  const pad = 24;
-  const plotW = Math.max(1, width - pad * 2);
-  const plotH = Math.max(1, height - pad * 2);
-
-  if (chartType === "line" || chartType === "area") {
-    const points = values.flatMap((value, index) => {
-      const x = pad + (values.length <= 1 ? 0 : (index / (values.length - 1)) * plotW);
-      const y = pad + plotH - (value / max) * plotH;
-      return [x, y];
-    });
-    return (
-      <Group listening={interactive}>
-        <Line points={[pad, pad, pad, pad + plotH, pad + plotW, pad + plotH]} stroke="#98A2B3" strokeWidth={1} />
-        <Line points={points} stroke={color} strokeWidth={3} tension={0.25} />
-        <Text x={pad} y={4} width={plotW} text={readString(element.title) ?? ""} fill="#344054" fontSize={14} />
-      </Group>
-    );
-  }
-
-  if (chartType === "pie" || chartType === "donut") {
-    const total = values.reduce((sum, value) => sum + Math.abs(value), 0) || 1;
-    const outerRadius = Math.max(1, Math.min(width, height) * 0.38);
-    const innerRadius = chartType === "donut" ? outerRadius * 0.55 : 0;
-    let rotation = -90;
-    return (
-      <Group listening={interactive}>
-        {values.map((value, index) => {
-          const angle = (Math.abs(value) / total) * 360;
-          const segmentRotation = rotation;
-          rotation += angle;
-          return (
-            <Arc
-              key={index}
-              x={width / 2}
-              y={height / 2}
-              innerRadius={innerRadius}
-              outerRadius={outerRadius}
-              angle={angle}
-              rotation={segmentRotation}
-              fill={withHash(colors[index] ?? color)}
-            />
-          );
-        })}
-        <Text
-          x={24}
-          y={4}
-          width={Math.max(1, width - 48)}
-          text={readString(element.title) ?? ""}
-          fill="#344054"
-          fontSize={14}
-          align="center"
-        />
-      </Group>
-    );
-  }
-
-  const barGap = 8;
-  const barW = values.length > 0 ? Math.max(4, (plotW - barGap * (values.length - 1)) / values.length) : 0;
-  return (
-    <Group listening={interactive}>
-      <Line points={[pad, pad, pad, pad + plotH, pad + plotW, pad + plotH]} stroke="#98A2B3" strokeWidth={1} />
-      {values.map((value, index) => {
-        const barH = (value / max) * plotH;
-        return (
-          <Group key={index} x={pad + index * (barW + barGap)}>
-            <Rect
-              y={pad + plotH - barH}
-              width={barW}
-              height={barH}
-              fill={withHash(colors[index] ?? color)}
-            />
-            <Text
-              y={pad + plotH + 4}
-              width={barW}
-              text={categories[index] ?? ""}
-              fill="#667085"
-              fontSize={10}
-              align="center"
-            />
-          </Group>
-        );
-      })}
-      <Text x={pad} y={4} width={plotW} text={readString(element.title) ?? ""} fill="#344054" fontSize={14} />
-    </Group>
-  );
-}
-
 function RawInfographicElement({
   element,
   width,
@@ -1967,8 +1862,47 @@ function updateElementInUi(
     updater,
   );
   if (elements === currentElements) return sourceUi;
-  components[selection.componentIndex] = { ...component, elements };
+  components[selection.componentIndex] = normalizeSingleChartWrapperComponent(
+    { ...component, elements },
+    selection,
+  );
   return { ...sourceUi, components };
+}
+
+function normalizeSingleChartWrapperComponent(
+  component: RawComponent,
+  selection: ElementSelection,
+): RawComponent {
+  if (selection.elementPath.length !== 1) return component;
+  const elements = readArray(component.elements);
+  if (elements.length !== 1) return component;
+  const child = asRecord(elements[0]);
+  if (!child || readString(child.type) !== "chart") return component;
+  if ((readNumber(component.rotation) ?? 0) !== 0) return component;
+
+  const childBox = elementBox(child);
+  const componentPosition = readPoint(component.position);
+  return {
+    ...component,
+    position: {
+      x: componentPosition.x + childBox.x,
+      y: componentPosition.y + childBox.y,
+    },
+    size: {
+      width: childBox.width,
+      height: childBox.height,
+    },
+    elements: [
+      {
+        ...child,
+        position: { x: 0, y: 0 },
+        size: {
+          width: childBox.width,
+          height: childBox.height,
+        },
+      },
+    ],
+  };
 }
 
 function updateElementArray(
@@ -3966,21 +3900,29 @@ function rawChartToEditorChart(element: RawElement): ChartElement {
   const colors = readArray(
     element.series_colors ?? element.seriesColors,
   ).map(String);
+  const chartType = rawChartType(element.chart_type ?? element.chartType);
+  const usesUnifiedColor =
+    chartType === "bar" || chartType === "line" || chartType === "area";
+  const chartColors = usesUnifiedColor
+    ? [colors[0] ?? readString(element.color) ?? "7C51F8"]
+    : colors;
   const firstSeries = normalizedSeries[0];
   const data = normalizedCategories.slice(0, 8).map((label, index) => ({
     label,
     value: firstSeries.values[index] ?? 0,
-    color: colors[index] ?? colors[0],
+    color: usesUnifiedColor
+      ? chartColors[0]
+      : chartColors[index] ?? chartColors[0],
   }));
 
   return {
     ...element,
     type: "chart",
-    chart_type: rawChartType(element.chart_type ?? element.chartType),
+    chart_type: chartType,
     data: data.length > 0 ? data : [{ label: "Item 1", value: 0 }],
     categories: normalizedCategories,
     series: normalizedSeries,
-    series_colors: colors,
+    series_colors: chartColors,
     axis_color: element.axis_color ?? element.axisColor,
     data_labels_color: element.data_labels_color ?? element.labelColor,
     x_axis: element.x_axis ?? element.xAxis,
@@ -3989,21 +3931,6 @@ function rawChartToEditorChart(element: RawElement): ChartElement {
     y_axis_title: element.y_axis_title ?? element.yAxisTitle,
     data_labels: element.data_labels ?? element.dataLabels,
   };
-}
-
-function rawChartType(value: unknown): ChartType {
-  switch (readString(value)) {
-    case "area":
-      return "area";
-    case "line":
-      return "line";
-    case "pie":
-      return "pie";
-    case "donut":
-      return "donut";
-    default:
-      return "bar";
-  }
 }
 
 function editorChartToRawChart(source: RawElement, chart: UnknownRecord) {
