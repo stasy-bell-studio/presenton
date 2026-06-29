@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useReducer, useState } from "react";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   AlignCenter,
   AreaChart,
@@ -37,10 +37,12 @@ import {
   adaptTemplateV2ComponentToElement,
   extractTemplateV2Layouts,
   extractTemplateV2MergedComponents,
+  type TemplateV2Layout,
   type TemplateV2ImportResponse,
 } from "@/components/slide-editor/lib/template-v2-import";
 import Chat from "./Chat";
 import TemplateService from "../../services/api/template";
+import { TemplateV2KonvaSlide } from "../../components/TemplateV2KonvaSlide";
 import {
   TEMPLATE_V2_CHART_EDITOR_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
@@ -218,6 +220,8 @@ const elementItems = [
 ] satisfies PaletteItem[];
 
 const templateBlocksCache = new Map<string, TemplateBlock[]>();
+const BLOCK_PREVIEW_WIDTH = 1280;
+const BLOCK_PREVIEW_HEIGHT = 720;
 
 const makeTextElement = ({
   text,
@@ -691,9 +695,10 @@ function templateBlockFromComponent(
     (id ? humanizeIdentifier(id) : `Component ${index + 1}`);
   const description = readRecordString(raw, "description") ?? "";
   const elementCount = readRecordArray(raw, "elements").length;
+  const keyBase = id ?? title;
 
   return {
-    key: id ?? `${title}-${index}`,
+    key: `${keyBase}-${index}`,
     title,
     description,
     elementCount,
@@ -901,6 +906,127 @@ function templateBlocksCacheKey(presentationId: string, presentationData: unknow
   return `${presentationId}:${candidateIds}:${layoutIds}`;
 }
 
+function useBlockPreviewScale() {
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const [previewWidth, setPreviewWidth] = useState(0);
+
+  useEffect(() => {
+    const node = previewRef.current;
+    if (!node) return;
+
+    const updateWidth = (width = node.getBoundingClientRect().width) => {
+      setPreviewWidth((current) =>
+        Math.abs(current - width) < 0.5 ? current : width,
+      );
+    };
+
+    updateWidth();
+
+    if (typeof ResizeObserver === "undefined") {
+      const handleResize = () => updateWidth();
+      window.addEventListener("resize", handleResize);
+      return () => {
+        window.removeEventListener("resize", handleResize);
+      };
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      updateWidth(entries[0]?.contentRect.width);
+    });
+    observer.observe(node);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  return {
+    previewRef,
+    scale: previewWidth > 0 ? previewWidth / BLOCK_PREVIEW_WIDTH : 0,
+  };
+}
+
+function blockPreviewLayout(block: TemplateBlock): TemplateV2Layout {
+  return {
+    id: `block-preview-${block.key}`,
+    components: [block.raw],
+  };
+}
+
+function BlockThumbnail({ block }: { block: TemplateBlock }) {
+  const { previewRef, scale } = useBlockPreviewScale();
+  const layout = useMemo(() => blockPreviewLayout(block), [block]);
+
+  return (
+    <div
+      ref={previewRef}
+      className="relative aspect-video w-full overflow-hidden rounded-[6px] bg-white"
+    >
+      <div
+        className={cn(
+          "pointer-events-none absolute left-0 top-0 origin-top-left",
+          scale > 0 ? "opacity-100" : "opacity-0",
+        )}
+        style={{
+          width: BLOCK_PREVIEW_WIDTH,
+          height: BLOCK_PREVIEW_HEIGHT,
+          transform: `scale(${scale || 1})`,
+        }}
+      >
+        <TemplateV2KonvaSlide
+          layout={layout}
+          isEditMode={false}
+          slideId={null}
+          slideIndex={block.index}
+        />
+      </div>
+    </div>
+  );
+}
+
+function BlockPreviewButton({
+  block,
+  onInsertBlock,
+}: {
+  block: TemplateBlock;
+  onInsertBlock: (block: TemplateBlock) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="group relative w-full overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40"
+      onClick={() => onInsertBlock(block)}
+      aria-label={`Insert ${block.title}`}
+    >
+      <div className="relative">
+        <BlockThumbnail block={block} />
+        <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-[#111827] shadow-[0_4px_12px_rgba(16,24,40,0.16)]">
+          <GripVertical
+            className="h-3.5 w-3.5"
+            strokeWidth={1.8}
+            aria-hidden
+          />
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-start justify-between gap-2">
+        <h4 className="min-w-0 text-[12px] font-semibold leading-4 text-[#101323]">
+          {block.title}
+        </h4>
+        <span className="shrink-0 whitespace-nowrap text-[9px] leading-4 text-[#98A2B3]">
+          {block.elementCount}{" "}
+          {block.elementCount === 1 ? "element" : "elements"}
+        </span>
+      </div>
+      {block.description ? (
+        <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[#667085]">
+          {block.description}
+        </p>
+      ) : null}
+    </button>
+  );
+}
+
 const BlocksPanel = ({
   presentationId,
   presentationData,
@@ -1006,35 +1132,11 @@ const BlocksPanel = ({
         {!loading &&
           !error &&
           visibleBlocks.map((block) => (
-            <button
+            <BlockPreviewButton
               key={block.key}
-              type="button"
-              className="relative w-full rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] p-4 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF]"
-              onClick={() => onInsertBlock(block)}
-            >
-              <span className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-white text-[#111827] shadow-[0_4px_12px_rgba(16,24,40,0.16)]">
-                <GripVertical
-                  className="h-3.5 w-3.5"
-                  strokeWidth={1.8}
-                  aria-hidden
-                />
-              </span>
-              <h4 className="pr-8 text-[14px] font-semibold leading-5 text-[#101323]">
-                {block.title}
-              </h4>
-              {block.description ? (
-                <p className="mt-2 line-clamp-3 text-[10px] leading-4 text-[#667085]">
-                  {block.description}
-                </p>
-              ) : null}
-              <div className="mt-3 flex items-center gap-2">
-                <div className="h-[3px] w-8 rounded-full bg-[#7F22FE]" />
-                <span className="text-[9px] leading-3 text-[#98A2B3]">
-                  {block.elementCount}{" "}
-                  {block.elementCount === 1 ? "element" : "elements"}
-                </span>
-              </div>
-            </button>
+              block={block}
+              onInsertBlock={onInsertBlock}
+            />
           ))}
       </div>
     </div>

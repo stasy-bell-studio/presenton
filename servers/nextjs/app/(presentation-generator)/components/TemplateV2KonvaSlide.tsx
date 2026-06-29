@@ -31,6 +31,7 @@ import {
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
 import {
+  SLIDE_H,
   SLIDE_W,
   type ChartElement,
   type ChartSeries,
@@ -74,6 +75,7 @@ export type TemplateV2ChartElement = ChartElement;
 const STAGE_WIDTH = 1280;
 const STAGE_HEIGHT = 720;
 const EDITOR_SCALE = STAGE_WIDTH / SLIDE_W;
+const EDITOR_SCALE_Y = STAGE_HEIGHT / SLIDE_H;
 const SOURCE_PX_TO_PT = (72 * SLIDE_W) / STAGE_WIDTH;
 const TEXT_AVERAGE_CHAR_EM = 0.5;
 const DECORATIVE_LINE_LENGTH = 80;
@@ -87,6 +89,12 @@ type RawElement = UnknownRecord;
 type Size = { width: number; height: number };
 type Point = { x: number; y: number };
 type Box = Point & Size;
+type InsertedElementConversion = {
+  scaleX: number;
+  scaleY: number;
+  usesEditorUnits: boolean;
+  scaleTemplateText: boolean;
+};
 type ChildArrayInfo = {
   key: "children" | "elements" | "child" | "item";
   items: unknown[];
@@ -2739,7 +2747,8 @@ function insertedElementToComponent(
   label: string | undefined,
   index: number,
 ) {
-  const box = sourceElementBox(element);
+  const conversion = sourceElementConversion(element);
+  const box = sourceElementBox(element, conversion);
   return {
     id: `${normalizeId(label ?? readString(element.type) ?? "inserted")}_${index + 1}`,
     description: label ?? "Inserted element",
@@ -2747,7 +2756,7 @@ function insertedElementToComponent(
     size: { width: box.width, height: box.height },
     elements: [
       {
-        ...rawElementFromInsertedElement(element),
+        ...rawElementFromInsertedElement(element, conversion),
         position: { x: 0, y: 0 },
         size: { width: box.width, height: box.height },
       },
@@ -2755,29 +2764,270 @@ function insertedElementToComponent(
   };
 }
 
-function rawElementFromInsertedElement(element: UnknownRecord): RawElement {
+function rawElementFromInsertedElement(
+  element: UnknownRecord,
+  conversion: InsertedElementConversion,
+): RawElement {
   const type = readString(element.type) ?? "rectangle";
-  if (type === "chart") return editorChartToRawChart(element, element);
+  const rawElement = scaleInsertedElementGeometry(element, conversion);
+  const normalizedElement = {
+    ...rawElement,
+    font: rawFontToSource(rawElement.font, conversion.scaleTemplateText),
+    border_radius: scaleInsertedBorderRadius(
+      rawElement.border_radius ?? rawElement.borderRadius,
+      conversion,
+    ),
+    line_height: rawElement.line_height ?? rawElement.lineHeight,
+  };
+  const textScaledElement = scaleInsertedTextCollections(
+    normalizedElement,
+    conversion.scaleTemplateText,
+  );
+
+  if (type === "chart") {
+    return editorChartToRawChart(textScaledElement, textScaledElement);
+  }
+
+  return textScaledElement;
+}
+
+function sourceElementConversion(element: UnknownRecord): InsertedElementConversion {
+  const size = readSize(element.size);
+  const usesEditorUnits = size.width <= 20 && size.height <= 12;
   return {
-    ...element,
-    font: rawFontToSource(element.font),
-    border_radius: element.border_radius ?? element.borderRadius,
-    line_height: element.line_height ?? element.lineHeight,
+    usesEditorUnits,
+    scaleX: usesEditorUnits ? EDITOR_SCALE : 1,
+    scaleY: usesEditorUnits ? EDITOR_SCALE_Y : 1,
+    scaleTemplateText: usesEditorUnits && hasTemplateV2Metadata(element),
   };
 }
 
-function sourceElementBox(element: UnknownRecord): Box {
+function sourceElementBox(
+  element: UnknownRecord,
+  conversion = sourceElementConversion(element),
+): Box {
   const position = readPoint(element.position);
   const size = readSize(element.size);
-  const looksLikeEditorUnits = size.width <= 20 && size.height <= 12;
-  const scaleX = looksLikeEditorUnits ? STAGE_WIDTH / 10 : 1;
-  const scaleY = looksLikeEditorUnits ? STAGE_HEIGHT / 5.625 : 1;
   return {
-    x: position.x * scaleX,
-    y: position.y * scaleY,
-    width: Math.max(1, size.width * scaleX),
-    height: Math.max(1, size.height * scaleY),
+    x: position.x * conversion.scaleX,
+    y: position.y * conversion.scaleY,
+    width: Math.max(1, size.width * conversion.scaleX),
+    height: Math.max(1, size.height * conversion.scaleY),
   };
+}
+
+function scaleInsertedElementGeometry(
+  element: UnknownRecord,
+  conversion: InsertedElementConversion,
+): RawElement {
+  const convertedChildren = convertInsertedChildArrays(element, conversion);
+  if (!conversion.usesEditorUnits) {
+    return convertedChildren;
+  }
+
+  return stripUndefined({
+    ...convertedChildren,
+    position: scaleInsertedPoint(convertedChildren.position, conversion),
+    size: scaleInsertedSize(convertedChildren.size, conversion),
+    padding: scaleInsertedSpacing(convertedChildren.padding, conversion),
+    gap: scaleInsertedDistance(convertedChildren.gap, conversion.scaleX),
+    column_gap: scaleInsertedDistance(
+      convertedChildren.column_gap,
+      conversion.scaleX,
+    ),
+    row_gap: scaleInsertedDistance(convertedChildren.row_gap, conversion.scaleY),
+    layout: scaleInsertedLayout(convertedChildren.layout, conversion),
+  });
+}
+
+function convertInsertedChildArrays(
+  element: UnknownRecord,
+  conversion: InsertedElementConversion,
+): RawElement {
+  const scaleChildText =
+    conversion.scaleTemplateText || hasTemplateV2Metadata(element);
+  const childConversion = {
+    ...conversion,
+    scaleTemplateText: scaleChildText,
+  };
+  const next: RawElement = { ...element };
+
+  if (Array.isArray(element.children)) {
+    next.children = element.children.map((child) =>
+      isRecord(child) ? rawElementFromInsertedElement(child, childConversion) : child,
+    );
+  }
+  if (Array.isArray(element.elements)) {
+    next.elements = element.elements.map((child) =>
+      isRecord(child) ? rawElementFromInsertedElement(child, childConversion) : child,
+    );
+  }
+  if (isRecord(element.child)) {
+    next.child = rawElementFromInsertedElement(element.child, childConversion);
+  }
+  if (isRecord(element.item)) {
+    next.item = rawElementFromInsertedElement(element.item, childConversion);
+  }
+
+  return next;
+}
+
+function scaleInsertedPoint(
+  value: unknown,
+  conversion: InsertedElementConversion,
+) {
+  const point = asRecord(value);
+  if (!point) return value;
+  return {
+    ...point,
+    x: scaleInsertedDistance(point.x, conversion.scaleX),
+    y: scaleInsertedDistance(point.y, conversion.scaleY),
+  };
+}
+
+function scaleInsertedSize(
+  value: unknown,
+  conversion: InsertedElementConversion,
+) {
+  const size = asRecord(value);
+  if (!size) return value;
+  return {
+    ...size,
+    width: scaleInsertedDistance(size.width, conversion.scaleX),
+    height: scaleInsertedDistance(size.height, conversion.scaleY),
+  };
+}
+
+function scaleInsertedSpacing(
+  value: unknown,
+  conversion: InsertedElementConversion,
+) {
+  const spacing = asRecord(value);
+  if (!spacing) return value;
+  return stripUndefined({
+    ...spacing,
+    top: scaleInsertedDistance(spacing.top, conversion.scaleY),
+    right: scaleInsertedDistance(spacing.right, conversion.scaleX),
+    bottom: scaleInsertedDistance(spacing.bottom, conversion.scaleY),
+    left: scaleInsertedDistance(spacing.left, conversion.scaleX),
+    x: scaleInsertedDistance(spacing.x, conversion.scaleX),
+    y: scaleInsertedDistance(spacing.y, conversion.scaleY),
+    horizontal: scaleInsertedDistance(spacing.horizontal, conversion.scaleX),
+    vertical: scaleInsertedDistance(spacing.vertical, conversion.scaleY),
+  });
+}
+
+function scaleInsertedLayout(
+  value: unknown,
+  conversion: InsertedElementConversion,
+) {
+  const layout = asRecord(value);
+  if (!layout) return value;
+  return stripUndefined({
+    ...layout,
+    basis: scaleInsertedDistance(layout.basis, conversion.scaleX),
+    min_width: scaleInsertedDistance(layout.min_width, conversion.scaleX),
+    max_width: scaleInsertedDistance(layout.max_width, conversion.scaleX),
+    min_height: scaleInsertedDistance(layout.min_height, conversion.scaleY),
+    max_height: scaleInsertedDistance(layout.max_height, conversion.scaleY),
+  });
+}
+
+function scaleInsertedBorderRadius(
+  value: unknown,
+  conversion: InsertedElementConversion,
+) {
+  if (!conversion.usesEditorUnits) return value;
+  if (typeof value === "number") return value * conversion.scaleX;
+  const radius = asRecord(value);
+  if (!radius) return value;
+  return stripUndefined({
+    ...radius,
+    radius: scaleInsertedDistance(radius.radius, conversion.scaleX),
+    tl: scaleInsertedDistance(radius.tl, conversion.scaleX),
+    tr: scaleInsertedDistance(radius.tr, conversion.scaleX),
+    bl: scaleInsertedDistance(radius.bl, conversion.scaleX),
+    br: scaleInsertedDistance(radius.br, conversion.scaleX),
+    topLeft: scaleInsertedDistance(radius.topLeft, conversion.scaleX),
+    topRight: scaleInsertedDistance(radius.topRight, conversion.scaleX),
+    bottomLeft: scaleInsertedDistance(radius.bottomLeft, conversion.scaleX),
+    bottomRight: scaleInsertedDistance(radius.bottomRight, conversion.scaleX),
+  });
+}
+
+function scaleInsertedDistance(value: unknown, scale: number) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value * scale
+    : value;
+}
+
+function hasTemplateV2Metadata(element: UnknownRecord) {
+  return Boolean(
+    element.component_id ||
+      element.component_instance_id ||
+      element.component_slot ||
+      element.component_description ||
+      (Array.isArray(element.design_variables) &&
+        element.design_variables.length > 0),
+  );
+}
+
+function scaleInsertedTextCollections(
+  element: RawElement,
+  scaleTemplateText: boolean,
+): RawElement {
+  if (!scaleTemplateText) return element;
+  return stripUndefined({
+    ...element,
+    runs: scaleInsertedTextRuns(element.runs, scaleTemplateText),
+    items: scaleInsertedTextListItems(element.items, scaleTemplateText),
+    columns: scaleInsertedTableCells(element.columns, scaleTemplateText),
+    rows: scaleInsertedTableRows(element.rows, scaleTemplateText),
+  });
+}
+
+function scaleInsertedTextRuns(value: unknown, scaleTemplateText: boolean) {
+  if (!Array.isArray(value)) return value;
+  return value.map((run) => {
+    if (!isRecord(run)) return run;
+    return {
+      ...run,
+      font: rawFontToSource(run.font, scaleTemplateText),
+    };
+  });
+}
+
+function scaleInsertedTextListItems(
+  value: unknown,
+  scaleTemplateText: boolean,
+) {
+  if (!Array.isArray(value)) return value;
+  return value.map((item) =>
+    Array.isArray(item)
+      ? scaleInsertedTextRuns(item, scaleTemplateText)
+      : item,
+  );
+}
+
+function scaleInsertedTableRows(value: unknown, scaleTemplateText: boolean) {
+  if (!Array.isArray(value)) return value;
+  return value.map((row) =>
+    Array.isArray(row)
+      ? scaleInsertedTableCells(row, scaleTemplateText)
+      : row,
+  );
+}
+
+function scaleInsertedTableCells(value: unknown, scaleTemplateText: boolean) {
+  if (!Array.isArray(value)) return value;
+  return value.map((cell) => {
+    if (!isRecord(cell)) return cell;
+    return {
+      ...cell,
+      font: rawFontToSource(cell.font, scaleTemplateText),
+      runs: scaleInsertedTextRuns(cell.runs, scaleTemplateText),
+    };
+  });
 }
 
 function eventTargetsThisSlide(
@@ -3889,13 +4139,18 @@ function applyTextStyle(element: RawElement, style: TextEditStyle): RawElement {
   };
 }
 
-function rawFontToSource(value: unknown) {
+function rawFontToSource(value: unknown, scaleTemplateText = false) {
   const font = asRecord(value) ?? {};
-  return {
+  const size = readNumber(font.size);
+  return stripUndefined({
     ...font,
+    size:
+      scaleTemplateText && size != null
+        ? size / SOURCE_PX_TO_PT
+        : font.size,
     line_height: font.line_height ?? font.lineHeight,
     letter_spacing: font.letter_spacing ?? font.letterSpacing,
-  };
+  });
 }
 
 function fillColor(fill: unknown) {
@@ -4050,6 +4305,12 @@ function readOptionalSize(value: unknown): Size | null {
 
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function stripUndefined<T extends UnknownRecord>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as T;
 }
 
 function asRecord(value: unknown): UnknownRecord | null {
