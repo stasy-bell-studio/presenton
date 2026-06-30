@@ -5,6 +5,7 @@ import {
   AlignCenter,
   AreaChart,
   BarChart3,
+  ChevronDown,
   Circle,
   Columns2,
   Grid3X3,
@@ -97,16 +98,23 @@ type TemplateBlock = {
   index: number;
 };
 
+type TemplateBlockGroup = {
+  key: string;
+  title: string;
+  description: string;
+  variants: TemplateBlock[];
+};
+
 type BlocksPanelState = {
-  blocks: TemplateBlock[];
+  blocks: TemplateBlockGroup[];
   error: string | null;
   loading: boolean;
 };
 
 type BlocksPanelAction =
-  | { type: "cached"; blocks: TemplateBlock[] }
+  | { type: "cached"; blocks: TemplateBlockGroup[] }
   | { type: "loading" }
-  | { type: "loaded"; blocks: TemplateBlock[] }
+  | { type: "loaded"; blocks: TemplateBlockGroup[] }
   | { type: "failed"; message: string };
 
 const initialBlocksPanelState: BlocksPanelState = {
@@ -220,7 +228,7 @@ const elementItems = [
   { id: "line", label: "Line", icon: Minus },
 ] satisfies PaletteItem[];
 
-const templateBlocksCache = new Map<string, TemplateBlock[]>();
+const templateBlocksCache = new Map<string, TemplateBlockGroup[]>();
 const BLOCK_PREVIEW_WIDTH = 1280;
 const BLOCK_PREVIEW_HEIGHT = 720;
 const DEFAULT_BAR_CHART_SOURCE = "presenton-default-bar-chart";
@@ -874,15 +882,33 @@ function componentVariants(component: unknown): unknown[] {
     .filter(Boolean);
 }
 
-function templateBlocksFromTemplate(template: unknown): TemplateBlock[] {
+function templateBlockGroupsFromTemplate(template: unknown): TemplateBlockGroup[] {
   const components = extractTemplateV2MergedComponents(template);
   return components
-    .flatMap((component) => {
+    .map((component, componentIndex) => {
+      const baseBlock = templateBlockFromComponent(component, componentIndex);
+      if (!baseBlock) return null;
       const variants = componentVariants(component);
-      return variants.length > 0 ? variants : [component];
+      const variantSources = variants.length > 0 ? variants : [component];
+      const variantBlocks = variantSources
+        .map((variant, variantIndex) => {
+          const block = templateBlockFromComponent(variant, componentIndex);
+          return block
+            ? { ...block, key: `${baseBlock.key}-variant-${variantIndex}` }
+            : null;
+        })
+        .filter((block): block is TemplateBlock => Boolean(block));
+
+      return variantBlocks.length > 0
+        ? {
+            key: baseBlock.key,
+            title: baseBlock.title,
+            description: baseBlock.description,
+            variants: variantBlocks,
+          }
+        : null;
     })
-    .map(templateBlockFromComponent)
-    .filter((block): block is TemplateBlock => Boolean(block));
+    .filter((group): group is TemplateBlockGroup => Boolean(group));
 }
 
 function uniqueStrings(values: Array<string | null | undefined>) {
@@ -999,8 +1025,8 @@ function templateMatchesLayoutIds(
 
 async function loadTemplateBlocksForPresentation(
   presentationData: unknown,
-): Promise<TemplateBlock[]> {
-  const embeddedBlocks = templateBlocksFromTemplate(presentationData);
+): Promise<TemplateBlockGroup[]> {
+  const embeddedBlocks = templateBlockGroupsFromTemplate(presentationData);
   if (embeddedBlocks.length > 0) return embeddedBlocks;
 
   const candidateIds = collectCandidateTemplateIds(presentationData);
@@ -1009,7 +1035,7 @@ async function loadTemplateBlocksForPresentation(
       const template = (await TemplateService.getTemplateV2Details(
         templateId,
       )) as TemplateV2ImportResponse;
-      const blocks = templateBlocksFromTemplate(template);
+      const blocks = templateBlockGroupsFromTemplate(template);
       if (blocks.length > 0) return blocks;
     } catch {
       // Candidate ids can include legacy template slugs; ignore and try the next source.
@@ -1028,7 +1054,7 @@ async function loadTemplateBlocksForPresentation(
         )) as TemplateV2ImportResponse;
         if (!templateMatchesLayoutIds(template, layoutIds)) continue;
 
-        const blocks = templateBlocksFromTemplate(template);
+        const blocks = templateBlockGroupsFromTemplate(template);
         if (blocks.length > 0) return blocks;
       } catch {
         // Keep searching; one bad template should not break the blocks panel.
@@ -1128,7 +1154,7 @@ function BlockThumbnail({ block }: { block: TemplateBlock }) {
   );
 }
 
-function BlockPreviewButton({
+function BlockVariantButton({
   block,
   onInsertBlock,
 }: {
@@ -1138,7 +1164,8 @@ function BlockPreviewButton({
   return (
     <button
       type="button"
-      className="group relative w-full overflow-hidden rounded-[8px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40"
+      data-block-variant
+      className="group relative w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40"
       onClick={() => onInsertBlock(block)}
       aria-label={`Insert ${block.title}`}
     >
@@ -1148,22 +1175,85 @@ function BlockPreviewButton({
           <GripVertical className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden />
         </span>
       </div>
-
-      <div className="mt-2 flex items-start justify-between gap-2">
-        <h4 className="min-w-0 text-[12px] font-semibold leading-4 text-[#101323]">
-          {block.title}
-        </h4>
-        <span className="shrink-0 whitespace-nowrap text-[9px] leading-4 text-[#98A2B3]">
-          {block.elementCount}{" "}
-          {block.elementCount === 1 ? "element" : "elements"}
-        </span>
-      </div>
-      {block.description ? (
-        <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-[#667085]">
-          {block.description}
-        </p>
-      ) : null}
     </button>
+  );
+}
+
+function BlockGroupCard({
+  group,
+  onInsertBlock,
+}: {
+  group: TemplateBlockGroup;
+  onInsertBlock: (block: TemplateBlock) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [hasExpanded, setHasExpanded] = useState(false);
+  const firstVariant = group.variants[0];
+  const additionalVariants = group.variants.slice(1);
+  const variantCount = group.variants.length;
+
+  const toggleExpanded = () => {
+    if (!expanded) setHasExpanded(true);
+    setExpanded((current) => !current);
+  };
+
+  return (
+    <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-3 transition-shadow hover:shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
+      <h4 className="mb-4 truncate text-center text-[16px] font-medium leading-5 text-[#171717]">
+        {group.title}
+      </h4>
+
+      {firstVariant ? (
+        <BlockVariantButton
+          block={firstVariant}
+          onInsertBlock={onInsertBlock}
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+          expanded
+            ? "grid-rows-[1fr] opacity-100"
+            : "grid-rows-[0fr] opacity-0",
+        )}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-3 pt-3">
+            {hasExpanded
+              ? additionalVariants.map((block) => (
+                  <BlockVariantButton
+                    key={block.key}
+                    block={block}
+                    onInsertBlock={onInsertBlock}
+                  />
+                ))
+              : null}
+          </div>
+        </div>
+      </div>
+
+      {variantCount > 1 ? (
+        <button
+          type="button"
+          className="mt-3 flex w-full items-center justify-between gap-3 border-t border-[#E5E7EB] pt-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40"
+          aria-expanded={expanded}
+          onClick={toggleExpanded}
+        >
+          <span className="shrink-0 rounded-full border border-[#D6BBFB] bg-[#FAF8FF] px-3 py-1.5 text-[11px] font-medium leading-4 text-[#7F00FF]">
+            {variantCount} Layouts
+          </span>
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 shrink-0 text-[#171717] transition-transform duration-200",
+              expanded && "rotate-180",
+            )}
+            strokeWidth={2}
+            aria-hidden
+          />
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -1189,9 +1279,14 @@ const BlocksPanel = ({
     const query = blockPrompt.trim().toLowerCase();
     if (!query) return blocks;
     return blocks.filter(
-      (block) =>
-        block.title.toLowerCase().includes(query) ||
-        block.description.toLowerCase().includes(query),
+      (group) =>
+        group.title.toLowerCase().includes(query) ||
+        group.description.toLowerCase().includes(query) ||
+        group.variants.some(
+          (variant) =>
+            variant.title.toLowerCase().includes(query) ||
+            variant.description.toLowerCase().includes(query),
+        ),
     );
   }, [blockPrompt, blocks]);
 
@@ -1271,10 +1366,10 @@ const BlocksPanel = ({
         )}
         {!loading &&
           !error &&
-          visibleBlocks.map((block) => (
-            <BlockPreviewButton
-              key={block.key}
-              block={block}
+          visibleBlocks.map((group) => (
+            <BlockGroupCard
+              key={group.key}
+              group={group}
               onInsertBlock={onInsertBlock}
             />
           ))}
