@@ -1,15 +1,22 @@
-import type { CSSProperties } from "react";
-import type { TableCellSelection, TableSlideElement } from "../state";
+import { useCallback, useRef } from "react";
+import type {
+  TableCellSelection,
+  TableSlideElement,
+  TextSlideElement,
+} from "../state";
 import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
   setTableCellText,
-  tableCellText,
   tableRowsAsStrings,
 } from "../lib/element-model";
 import type { Font, TableCell } from "../lib/slide-schema";
 import { inlineStyles } from "./inlineStyles";
+import { TextToolbar } from "./TextToolbar";
+
+const DEFAULT_TABLE_NAME = "Default Table";
+const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
 
 export function TableInlineEditor({
   element,
@@ -26,6 +33,7 @@ export function TableInlineEditor({
   onChange: (index: number, element: TableSlideElement) => void;
   onClose: () => void;
 }) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
   const box = elementBox(element);
   const rows = [element.columns, ...element.rows];
   const stringRows = tableRowsAsStrings(element);
@@ -43,15 +51,54 @@ export function TableInlineEditor({
   const isHeader = rowIndex === 0;
   const cell = rows[rowIndex]?.[colIndex] ?? { runs: [] };
   const font = tableCellFont(cell, tableFont, isHeader);
-  const cellWidth = (box.w * scale) / columnCount;
-  const cellHeight = (box.h * scale) / rowCount;
+  const tableWidth = box.w * scale;
+  const tableHeight = box.h * scale;
+  const isDefaultTable = isDefaultTableElement(element, stringRows);
+  const bodyRowCount = Math.max(1, rowCount - 1);
+  const defaultHeaderHeight = clamp(tableHeight * 0.26, 46, 104);
+  const defaultBodyRowHeight =
+    (Math.max(1, tableHeight - defaultHeaderHeight)) / bodyRowCount;
+  const cellWidth = tableWidth / columnCount;
+  const cellHeight = isDefaultTable
+    ? isHeader
+      ? defaultHeaderHeight
+      : defaultBodyRowHeight
+    : tableHeight / rowCount;
   const cellLeft = box.x * scale + colIndex * cellWidth;
-  const cellTop = box.y * scale + rowIndex * cellHeight;
-  const paddingX = Math.max(4, 0.08 * scale);
-  const paddingY = Math.max(3, 0.04 * scale);
+  const cellTop =
+    box.y * scale +
+    (isDefaultTable
+      ? isHeader
+        ? 0
+        : defaultHeaderHeight + (rowIndex - 1) * defaultBodyRowHeight
+      : rowIndex * cellHeight);
+  const paddingX = isDefaultTable
+    ? isHeader
+      ? clamp(tableWidth * 0.025, 18, 32)
+      : clamp(tableWidth * 0.018, 12, 26)
+    : Math.max(4, 0.08 * scale);
+  const paddingY = isDefaultTable ? 0 : Math.max(3, 0.04 * scale);
+  const textElement: TextSlideElement = {
+    type: "text",
+    position: { x: cellLeft / scale, y: cellTop / scale },
+    size: { width: cellWidth / scale, height: cellHeight / scale },
+    font,
+    alignment: {
+      horizontal: cell.alignment ?? "left",
+      vertical: "middle",
+    },
+    runs: normalizedTextRuns(cell, font),
+  };
+  const textFont = elementFont(textElement);
+  const closeAfterBlur = useCallback(() => {
+    window.setTimeout(() => {
+      const active = document.activeElement;
+      if (active && editorRef.current?.contains(active)) return;
+      onClose();
+    }, 0);
+  }, [onClose]);
 
-  const updateCellText = (text: string) => {
-    const nextCell = setTableCellText(cell, text);
+  const updateCell = (nextCell: TableCell) => {
     if (isHeader) {
       onChange(index, {
         ...element,
@@ -78,21 +125,58 @@ export function TableInlineEditor({
     });
   };
 
+  const updateCellText = (text: string) => {
+    updateCell(setTableCellText(cell, text));
+  };
+
+  const updateCellTextElement = (nextTextElement: TextSlideElement) => {
+    updateCell({
+      ...cell,
+      font: nextTextElement.font ?? cell.font,
+      alignment: nextTextElement.alignment?.horizontal ?? cell.alignment,
+      runs: normalizedTextRuns(nextTextElement, nextTextElement.font ?? font),
+    });
+  };
+
   return (
-    <>
+    <div
+      ref={editorRef}
+      data-inline-edit-ignore="true"
+      onBlur={closeAfterBlur}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      style={{
+        position: "absolute",
+        zIndex: 30,
+        inset: 0,
+        pointerEvents: "none",
+      }}
+    >
+      <div style={{ pointerEvents: "auto" }}>
+        <TextToolbar
+          element={textElement}
+          index={index}
+          scale={scale}
+          onChange={(_index, nextTextElement) =>
+            updateCellTextElement(nextTextElement)
+          }
+        />
+      </div>
       <textarea
         autoFocus
-        value={tableCellText(cell)}
+        data-inline-edit-ignore="true"
+        value={textRunsContent(textElement.runs)}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
         onChange={(event) => updateCellText(event.target.value)}
-        onBlur={onClose}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
-            event.currentTarget.blur();
+            onClose();
           }
           if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
-            event.currentTarget.blur();
+            onClose();
           }
         }}
         style={{
@@ -102,29 +186,27 @@ export function TableInlineEditor({
           top: cellTop,
           width: cellWidth,
           height: cellHeight,
+          pointerEvents: "auto",
           padding: `${paddingY}px ${paddingX}px`,
           background: withHash(
-            cell.color?.color ?? (isHeader ? "0B1F3A" : "FFFFFF"),
+            cell.color?.color ?? (isHeader ? "F7F7FA" : "FFFFFF"),
           ),
-          color: withHash(font.color ?? tableFont.color),
-          fontFamily: `${font.family ?? tableFont.family}, Helvetica, sans-serif`,
+          color: withHash(textFont.color),
+          caretColor: withHash(textFont.color),
+          fontFamily: `${textFont.family}, Helvetica, sans-serif`,
           fontSize:
-            (font.size ?? tableFont.size) * PT_TO_PX * (scale / PX_PER_IN),
-          fontStyle: font.italic ? "italic" : "normal",
-          fontWeight: font.bold ? 700 : 400,
-          lineHeight: font.line_height ?? 1.12,
-          textAlign: colIndex === 0 ? "left" : "center",
+            textFont.size * PT_TO_PX * (scale / PX_PER_IN),
+          fontStyle: textFont.italic ? "italic" : "normal",
+          fontWeight: textFont.bold ? 700 : 400,
+          lineHeight: textFont.lineHeight ?? 1.12,
+          textAlign: textElement.alignment?.horizontal ?? "left",
+          letterSpacing:
+            ((textFont.letterSpacing ?? 0) / 100) *
+            PT_TO_PX *
+            (scale / PX_PER_IN),
         }}
       />
-      <span
-        aria-hidden="true"
-        style={{
-          ...cellEditorGripStyle,
-          left: cellLeft + cellWidth / 2 - 24,
-          top: cellTop - 7,
-        }}
-      />
-    </>
+    </div>
   );
 }
 
@@ -162,6 +244,22 @@ function tableCellFont(
   };
 }
 
+function normalizedTextRuns(
+  source: Pick<TextSlideElement, "runs"> | TableCell,
+  font: Font | null | undefined,
+) {
+  const runs = source.runs.length > 0 ? source.runs : [{ text: " " }];
+  return runs.map((run) => ({
+    ...run,
+    text: run.text || " ",
+    font: run.font ?? font ?? undefined,
+  }));
+}
+
+function textRunsContent(runs: TableCell["runs"]) {
+  return runs.map((run) => run.text).join("");
+}
+
 function formatTableCell(cell: string) {
   if (!/[",\n\r]/.test(cell)) return cell;
   return `"${cell.replace(/"/g, '""')}"`;
@@ -195,19 +293,26 @@ function parseTableRow(line: string) {
   return cells;
 }
 
-const cellEditorStyle: CSSProperties = {
-  border: "3px solid #7C51F8",
+const cellEditorStyle = {
+  zIndex: 31,
+  border: "1px solid #7C51F8",
+  outline: "none",
+  resize: "none",
+  margin: 0,
   backgroundClip: "padding-box",
-};
+} as const;
 
-const cellEditorGripStyle: CSSProperties = {
-  position: "absolute",
-  zIndex: 8,
-  width: 48,
-  height: 10,
-  borderRadius: 999,
-  border: "1px solid rgba(15, 23, 42, 0.12)",
-  background: "#FFFFFF",
-  boxShadow: "0 1px 4px rgba(15, 23, 42, 0.18)",
-  pointerEvents: "none",
-};
+function isDefaultTableElement(element: TableSlideElement, rows: string[][]) {
+  const headers = rows[0] ?? [];
+  const hasDefaultName =
+    (element as TableSlideElement & { name?: string }).name === DEFAULT_TABLE_NAME;
+  const hasDefaultHeaders =
+    headers.length === DEFAULT_TABLE_HEADERS.length &&
+    DEFAULT_TABLE_HEADERS.every((header, index) => headers[index] === header);
+
+  return hasDefaultName || hasDefaultHeaders;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}

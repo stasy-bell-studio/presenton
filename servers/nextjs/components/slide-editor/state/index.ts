@@ -22,3 +22,4 @@ export type TableCellSelection = {
 
 export { getComponentRun, type ComponentRun } from "./componentGroups";
 export { createDefaultElement } from "./createDefaultElement";
+export { useTableCellSelection } from "./useTableCellSelection";

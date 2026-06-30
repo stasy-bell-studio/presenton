@@ -1,5 +1,7 @@
 import {
-  AlignJustify,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
   ChevronLeft,
   ChevronRight,
   Columns3,
@@ -13,12 +15,16 @@ import type { TableCellSelection, TableSlideElement } from "../state";
 import { withHash } from "../editorUtils";
 import {
   elementBox,
-  elementFont,
   setTableRowsFromStrings,
   tableRowsAsStrings,
 } from "../lib/element-model";
 import type { TableCell } from "../lib/slide-schema";
 import { DeferredColorInput } from "./DeferredColorInput";
+
+type TableCellAlignment = NonNullable<TableCell["alignment"]>;
+
+const TABLE_CELL_ALIGNMENTS = ["left", "center", "right"] as const satisfies
+  readonly TableCellAlignment[];
 
 export function TableToolbar({
   element,
@@ -37,7 +43,6 @@ export function TableToolbar({
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const box = elementBox(element);
-  const font = elementFont(element);
   const rows = tableRowsAsStrings(element);
   const columnCount = Math.max(1, ...rows.map((row) => row.length));
   const activeRow = Math.min(
@@ -57,7 +62,15 @@ export function TableToolbar({
       ? element.columns[activeColumn]
       : element.rows[activeRow - 1]?.[activeColumn];
   const activeCellFillColor =
-    activeCell?.color?.color ?? (activeRow === 0 ? "0B1F3A" : "FFFFFF");
+    activeCell?.color?.color ?? (activeRow === 0 ? "F7F7FA" : "FFFFFF");
+  const activeCellAlignment: TableCellAlignment =
+    activeCell?.alignment ?? "left";
+  const ActiveCellAlignmentIcon =
+    activeCellAlignment === "center"
+      ? AlignCenter
+      : activeCellAlignment === "right"
+        ? AlignRight
+        : AlignLeft;
   const canAddRow = rows.length < 8;
   const canAddColumn = columnCount < 6;
   const canDeleteRow = rows.length > 2;
@@ -150,15 +163,9 @@ export function TableToolbar({
   const openColorPicker = () => {
     colorInputRef.current?.click();
   };
-  const updateActiveCellFillColor = (color: string) => {
-    const patchCell = (cell: TableCell | undefined): TableCell => ({
-      ...(cell ?? { runs: [] }),
-      color: {
-        ...(cell?.color ?? {}),
-        color,
-      },
-    });
-
+  const updateActiveCell = (
+    patchCell: (cell: TableCell | undefined) => TableCell,
+  ) => {
     if (activeRow === 0) {
       onChange(index, {
         ...element,
@@ -183,6 +190,26 @@ export function TableToolbar({
           : row,
       ),
     });
+  };
+  const updateActiveCellFillColor = (color: string) => {
+    updateActiveCell((cell) => ({
+      ...(cell ?? { runs: [] }),
+      color: {
+        ...(cell?.color ?? {}),
+        color,
+      },
+    }));
+  };
+  const cycleActiveCellAlignment = () => {
+    const activeIndex = TABLE_CELL_ALIGNMENTS.indexOf(activeCellAlignment);
+    const nextAlignment =
+      TABLE_CELL_ALIGNMENTS[
+        (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
+      ] ?? "left";
+    updateActiveCell((cell) => ({
+      ...(cell ?? { runs: [] }),
+      alignment: nextAlignment,
+    }));
   };
   const runMenuAction = (action: () => void) => {
     action();
@@ -236,10 +263,11 @@ export function TableToolbar({
           <button
             type="button"
             aria-label="Table alignment"
-            title="Table alignment"
+            title={`Align ${nextAlignmentLabel(activeCellAlignment)}`}
             style={iconButtonStyle}
+            onClick={cycleActiveCellAlignment}
           >
-            <AlignJustify size={20} strokeWidth={2.25} />
+            <ActiveCellAlignmentIcon size={20} strokeWidth={2.25} />
           </button>
           <Divider />
           <button
@@ -467,6 +495,15 @@ function Divider() {
 
 function truncateLabel(label: string) {
   return label.length > 12 ? `${label.slice(0, 11)}…` : label;
+}
+
+function nextAlignmentLabel(alignment: TableCellAlignment) {
+  const activeIndex = TABLE_CELL_ALIGNMENTS.indexOf(alignment);
+  return (
+    TABLE_CELL_ALIGNMENTS[
+      (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
+    ] ?? "left"
+  );
 }
 
 const toolbarShellStyle: CSSProperties = {

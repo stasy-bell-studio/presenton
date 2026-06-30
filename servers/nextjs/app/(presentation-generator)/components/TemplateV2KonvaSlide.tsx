@@ -37,6 +37,12 @@ import {
   type ChartSeries,
   type SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
+import {
+  useTableCellSelection,
+  type TableCellSelection,
+  type TableSlideElement,
+} from "@/components/slide-editor/state";
+import { TableInlineEditor } from "@/components/slide-editor/inline";
 import { ElementToolbar } from "@/components/slide-editor/workspace/ElementToolbar";
 import {
   loadKonvaImage,
@@ -46,6 +52,7 @@ import {
   TemplateV2ChartElement as RawChartElement,
   rawChartType,
 } from "@/components/slide-editor/slide-surface/konva/TemplateV2ChartElement";
+import { TemplateV2TableElement as RawTableElement } from "@/components/slide-editor/slide-surface/konva/TemplateV2TableElement";
 import { buildSvgUpdateUrl } from "@/lib/svg-color";
 import { updateSlideUi } from "@/store/slices/presentationGeneration";
 import { resolveBackendAssetSource } from "@/utils/api";
@@ -155,7 +162,7 @@ type Selection = ComponentSelection | ElementSelection | null;
 
 type InlineEdit =
   | {
-    kind: "text" | "text-list" | "table" | "svg";
+    kind: "text" | "text-list" | "svg";
     selection: ElementSelection;
     draft: string;
     frame?: Box | null;
@@ -199,6 +206,18 @@ function TemplateV2KonvaSlideComponent({
   const [{ canUndo, canRedo }, setHistoryAvailability] = useState({
     canUndo: false,
     canRedo: false,
+  });
+  const {
+    clearTableCellEditing,
+    clearTableCellSelection,
+    editingTableCell,
+    editTableCellSelection,
+    selectedTableCell,
+    selectTableCellSelection,
+    visibleSelectedTableCell,
+  } = useTableCellSelection<Selection, ElementSelection>({
+    keyForSelection,
+    selection,
   });
 
   const components = useMemo(
@@ -263,21 +282,25 @@ function TemplateV2KonvaSlideComponent({
     currentUiRef.current = next;
     setUiDraft(next);
     setSelection(null);
+    clearTableCellSelection();
     setInlineEdit(null);
     setIconEditorSelection(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
     setHistoryAvailability({ canUndo: false, canRedo: false });
-  }, [layout]);
+  }, [clearTableCellSelection, layout]);
 
   useEffect(() => {
     if (!isEditMode) return;
     const transformer = transformerRef.current;
     if (!transformer) return;
-    const node = selectedKey ? nodeRefs.current.get(selectedKey) : null;
+    const node =
+      selectedKey && !selectedTableCell
+        ? nodeRefs.current.get(selectedKey)
+        : null;
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [isEditMode, selectedKey]);
+  }, [isEditMode, selectedKey, selectedTableCell]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -360,8 +383,39 @@ function TemplateV2KonvaSlideComponent({
     (nextSelection: Selection) => {
       activateSurface();
       setSelection(nextSelection);
+      clearTableCellSelection();
     },
-    [activateSurface],
+    [activateSurface, clearTableCellSelection],
+  );
+
+  const selectTableCell = useCallback(
+    (
+      elementSelection: ElementSelection,
+      rowIndex: number,
+      colIndex: number,
+    ) => {
+      activateSurface();
+      setSelection(elementSelection);
+      setInlineEdit(null);
+      setIconEditorSelection(null);
+      selectTableCellSelection(elementSelection, rowIndex, colIndex);
+    },
+    [activateSurface, selectTableCellSelection],
+  );
+
+  const editTableCell = useCallback(
+    (
+      elementSelection: ElementSelection,
+      rowIndex: number,
+      colIndex: number,
+    ) => {
+      activateSurface();
+      setSelection(elementSelection);
+      setInlineEdit(null);
+      setIconEditorSelection(null);
+      editTableCellSelection(elementSelection, rowIndex, colIndex);
+    },
+    [activateSurface, editTableCellSelection],
   );
 
   const updateComponent = useCallback(
@@ -390,9 +444,10 @@ function TemplateV2KonvaSlideComponent({
     if (!selection) return;
     commitUi(deleteSelectionFromUi(currentUiRef.current, selection));
     setSelection(null);
+    clearTableCellSelection();
     setInlineEdit(null);
     setIconEditorSelection(null);
-  }, [commitUi, selection]);
+  }, [clearTableCellSelection, commitUi, selection]);
 
   const createClipboardPayload = useCallback((): TemplateV2ClipboardPayload | null => {
     if (!selection) return null;
@@ -449,6 +504,7 @@ function TemplateV2KonvaSlideComponent({
     (elementSelection: ElementSelection) => {
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       if (!element) return;
+      clearTableCellEditing();
       const type = readString(element.type);
       const frame = renderedLocalBoxForElementSelection(
         currentUiRef.current,
@@ -470,13 +526,6 @@ function TemplateV2KonvaSlideComponent({
           frame,
           style: rawTextStyle(element),
         });
-      } else if (type === "table") {
-        setInlineEdit({
-          kind: "table",
-          selection: elementSelection,
-          draft: rawTableContent(element),
-          frame,
-        });
       } else if (type === "svg") {
         setInlineEdit({
           kind: "svg",
@@ -486,7 +535,7 @@ function TemplateV2KonvaSlideComponent({
         });
       }
     },
-    [],
+    [clearTableCellEditing],
   );
 
   const closeInlineEditor = useCallback(
@@ -839,6 +888,7 @@ function TemplateV2KonvaSlideComponent({
           activateSurface();
           if (event.target === event.target.getStage()) {
             setSelection(null);
+            clearTableCellSelection();
             setInlineEdit(null);
           }
         }}
@@ -846,6 +896,7 @@ function TemplateV2KonvaSlideComponent({
           activateSurface();
           if (event.target === event.target.getStage()) {
             setSelection(null);
+            clearTableCellSelection();
             setInlineEdit(null);
           }
         }}
@@ -860,8 +911,11 @@ function TemplateV2KonvaSlideComponent({
               elementPath={[elementIndex]}
               isEditMode={isEditMode}
               editingKey={editingKey}
+              selectedTableCell={visibleSelectedTableCell}
               setNodeRef={setSelectionNodeRef}
               onSelect={select}
+              onTableCellSelect={selectTableCell}
+              onTableCellEdit={editTableCell}
               onOpenEditor={handleElementDoubleClick}
               onElementChange={updateElement}
               parentBox={STAGE_BOX}
@@ -875,8 +929,11 @@ function TemplateV2KonvaSlideComponent({
               componentIndex={componentIndex}
               isEditMode={isEditMode}
               editingKey={editingKey}
+              selectedTableCell={visibleSelectedTableCell}
               setNodeRef={setSelectionNodeRef}
               onSelect={select}
+              onTableCellSelect={selectTableCell}
+              onTableCellEdit={editTableCell}
               onOpenElementEditor={handleElementDoubleClick}
               onComponentChange={updateComponent}
               onElementChange={updateElement}
@@ -905,7 +962,7 @@ function TemplateV2KonvaSlideComponent({
           index={selection.componentIndex}
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
-          selectedTableCell={null}
+          selectedTableCell={selectedTableCell}
           onChange={(_index, element) =>
             applyComponentToolbarChange(element)
           }
@@ -917,17 +974,33 @@ function TemplateV2KonvaSlideComponent({
         selectedElement &&
         selectedBox &&
         toolbarElement &&
-        !isRawIconElement(selectedElement) ? (
+        !isRawIconElement(selectedElement) &&
+        !(editingTableCell && readString(selectedElement.type) === "table") ? (
         <ElementToolbar
           element={toolbarElement}
           index={selection.componentIndex}
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
-          selectedTableCell={null}
+          selectedTableCell={selectedTableCell}
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onEditChart={() => openChartEditor(selection)}
           onEditImage={() => openImageUpload(selection)}
           onEditText={() => openInlineEditor(selection)}
+        />
+      ) : null}
+      {isEditMode &&
+        selection?.kind === "element" &&
+        editingTableCell &&
+        toolbarElement &&
+        readString((toolbarElement as UnknownRecord).type) === "table" ? (
+        <TableInlineEditor
+          key={`${keyForSelection(selection)}:${editingTableCell.rowIndex}:${editingTableCell.colIndex}`}
+          element={toolbarElement as TableSlideElement}
+          index={selection.componentIndex}
+          scale={EDITOR_SCALE}
+          selectedCell={editingTableCell}
+          onChange={(_index, element) => applyToolbarElementChange(element)}
+          onClose={clearTableCellEditing}
         />
       ) : null}
       {inlineEdit && inlineEditElement && inlineEditBox ? (
@@ -976,8 +1049,11 @@ function RawComponentNode({
   componentIndex,
   isEditMode,
   editingKey,
+  selectedTableCell,
   setNodeRef,
   onSelect,
+  onTableCellSelect,
+  onTableCellEdit,
   onOpenElementEditor,
   onComponentChange,
   onElementChange,
@@ -986,8 +1062,19 @@ function RawComponentNode({
   componentIndex: number;
   isEditMode: boolean;
   editingKey: string | null;
+  selectedTableCell: TableCellSelection | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
   onSelect: (selection: Selection) => void;
+  onTableCellSelect: (
+    selection: ElementSelection,
+    rowIndex: number,
+    colIndex: number,
+  ) => void;
+  onTableCellEdit: (
+    selection: ElementSelection,
+    rowIndex: number,
+    colIndex: number,
+  ) => void;
   onOpenElementEditor: (selection: ElementSelection) => void;
   onComponentChange: (
     componentIndex: number,
@@ -1084,8 +1171,11 @@ function RawComponentNode({
           elementPath={[elementIndex]}
           isEditMode={isEditMode}
           editingKey={editingKey}
+          selectedTableCell={selectedTableCell}
           setNodeRef={setNodeRef}
           onSelect={onSelect}
+          onTableCellSelect={onTableCellSelect}
+          onTableCellEdit={onTableCellEdit}
           onOpenEditor={onOpenElementEditor}
           onElementChange={onElementChange}
           parentBox={box}
@@ -1105,9 +1195,12 @@ const MemoizedRawComponentNode = memo(
       previous.isEditMode !== next.isEditMode ||
       previous.setNodeRef !== next.setNodeRef ||
       previous.onSelect !== next.onSelect ||
+      previous.onTableCellSelect !== next.onTableCellSelect ||
+      previous.onTableCellEdit !== next.onTableCellEdit ||
       previous.onOpenElementEditor !== next.onOpenElementEditor ||
       previous.onComponentChange !== next.onComponentChange ||
-      previous.onElementChange !== next.onElementChange
+      previous.onElementChange !== next.onElementChange ||
+      previous.selectedTableCell !== next.selectedTableCell
     ) {
       return false;
     }
@@ -1128,8 +1221,11 @@ function RawElementNode({
   elementPath,
   isEditMode,
   editingKey,
+  selectedTableCell,
   setNodeRef,
   onSelect,
+  onTableCellSelect,
+  onTableCellEdit,
   onOpenEditor,
   onElementChange,
   parentBox,
@@ -1141,8 +1237,19 @@ function RawElementNode({
   elementPath: number[];
   isEditMode: boolean;
   editingKey: string | null;
+  selectedTableCell: TableCellSelection | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
   onSelect: (selection: Selection) => void;
+  onTableCellSelect: (
+    selection: ElementSelection,
+    rowIndex: number,
+    colIndex: number,
+  ) => void;
+  onTableCellEdit: (
+    selection: ElementSelection,
+    rowIndex: number,
+    colIndex: number,
+  ) => void;
   onOpenEditor: (selection: ElementSelection) => void;
   onElementChange: (
     selection: ElementSelection,
@@ -1154,17 +1261,34 @@ function RawElementNode({
 }) {
   const groupRef = useRef<Konva.Group | null>(null);
   const box = renderBox ?? elementBox(element);
-  const selection: ElementSelection = {
-    kind: "element",
-    componentIndex,
-    elementPath,
-  };
+  const selection = useMemo<ElementSelection>(
+    () => ({
+      kind: "element",
+      componentIndex,
+      elementPath,
+    }),
+    [componentIndex, elementPath],
+  );
   const key = keyForSelection(selection);
+  const selectedCell =
+    selectedTableCell?.elementPath === key ? selectedTableCell : null;
   const editing = editingKey === key;
   const childInfo = childArrayInfo(element);
   const children = childInfo?.items ?? [];
   const laidOutChildren = layoutChildren(element, children, box);
   const clipChildren = shouldClipElementChildren(element, childInfo);
+  const handleTableCellSelect = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      onTableCellSelect(selection, rowIndex, colIndex);
+    },
+    [onTableCellSelect, selection],
+  );
+  const handleTableCellEdit = useCallback(
+    (rowIndex: number, colIndex: number) => {
+      onTableCellEdit(selection, rowIndex, colIndex);
+    },
+    [onTableCellEdit, selection],
+  );
 
   return (
     <Group
@@ -1246,6 +1370,9 @@ function RawElementNode({
           width={box.width}
           height={box.height}
           interactive={isEditMode}
+          selectedTableCell={selectedCell}
+          onTableCellSelect={handleTableCellSelect}
+          onTableCellEdit={handleTableCellEdit}
         />
       )}
       {laidOutChildren.map(({ child, index, box: childBox, layoutManaged }) => (
@@ -1256,8 +1383,11 @@ function RawElementNode({
           elementPath={[...elementPath, index]}
           isEditMode={isEditMode}
           editingKey={editingKey}
+          selectedTableCell={selectedTableCell}
           setNodeRef={setNodeRef}
           onSelect={onSelect}
+          onTableCellSelect={onTableCellSelect}
+          onTableCellEdit={onTableCellEdit}
           onOpenEditor={onOpenEditor}
           onElementChange={onElementChange}
           parentBox={{
@@ -1280,8 +1410,11 @@ const MemoizedRawElementNode = memo(RawElementNode, (previous, next) => {
     previous.componentIndex !== next.componentIndex ||
     previous.isEditMode !== next.isEditMode ||
     previous.layoutManaged !== next.layoutManaged ||
+    previous.selectedTableCell !== next.selectedTableCell ||
     previous.setNodeRef !== next.setNodeRef ||
     previous.onSelect !== next.onSelect ||
+    previous.onTableCellSelect !== next.onTableCellSelect ||
+    previous.onTableCellEdit !== next.onTableCellEdit ||
     previous.onOpenEditor !== next.onOpenEditor ||
     previous.onElementChange !== next.onElementChange ||
     !numberPathEqual(previous.elementPath, next.elementPath) ||
@@ -1310,11 +1443,17 @@ function RawElementVisual({
   width,
   height,
   interactive,
+  selectedTableCell,
+  onTableCellSelect,
+  onTableCellEdit,
 }: {
   element: RawElement;
   width: number;
   height: number;
   interactive: boolean;
+  selectedTableCell: TableCellSelection | null;
+  onTableCellSelect: (rowIndex: number, colIndex: number) => void;
+  onTableCellEdit: (rowIndex: number, colIndex: number) => void;
 }) {
   const type = readString(element.type);
   if (isBoxVisualType(type)) {
@@ -1407,7 +1546,17 @@ function RawElementVisual({
     return <RawSvgElement element={element} width={width} height={height} interactive={interactive} />;
   }
   if (type === "table") {
-    return <RawTableElement element={element} width={width} height={height} interactive={interactive} />;
+    return (
+      <RawTableElement
+        element={element}
+        width={width}
+        height={height}
+        interactive={interactive}
+        selectedCell={selectedTableCell}
+        onCellSelect={onTableCellSelect}
+        onCellEdit={onTableCellEdit}
+      />
+    );
   }
   if (type === "chart") {
     return <RawChartElement element={element} width={width} height={height} interactive={interactive} />;
@@ -1424,7 +1573,10 @@ const MemoizedRawElementVisual = memo(
     previous.element === next.element &&
     previous.width === next.width &&
     previous.height === next.height &&
-    previous.interactive === next.interactive,
+    previous.interactive === next.interactive &&
+    previous.selectedTableCell === next.selectedTableCell &&
+    previous.onTableCellSelect === next.onTableCellSelect &&
+    previous.onTableCellEdit === next.onTableCellEdit,
 );
 
 function RawRichTextElement({
@@ -1636,63 +1788,6 @@ function RawSvgElement({
   );
 }
 
-function RawTableElement({
-  element,
-  width,
-  height,
-  interactive,
-}: {
-  element: RawElement;
-  width: number;
-  height: number;
-  interactive: boolean;
-}) {
-  const rows = rawTableRows(element);
-  const rowCount = Math.max(1, rows.length);
-  const colCount = Math.max(1, ...rows.map((row) => row.length));
-  const cellW = width / colCount;
-  const cellH = height / rowCount;
-  const font = rawFont(element);
-
-  return (
-    <Group listening={interactive}>
-      {rows.map((row, rowIndex) =>
-        Array.from({ length: colCount }, (_, colIndex) => {
-          const cell = asRecord(row[colIndex]) ?? {};
-          const firstRun = asRecord(readArray(cell.runs)[0]) ?? {};
-          const cellFont = asRecord(cell.font) ?? asRecord(firstRun.font) ?? {};
-          const fill =
-            fillColor(cell.fill ?? cell.color) ??
-            (rowIndex === 0 ? "#F2F4F7" : "#FFFFFF");
-          return (
-            <Group key={`${rowIndex}-${colIndex}`} x={colIndex * cellW} y={rowIndex * cellH}>
-              <Rect
-                width={cellW}
-                height={cellH}
-                fill={fill}
-                stroke={strokeColor(cell.stroke) ?? "#D0D5DD"}
-                strokeWidth={strokeWidth(cell.stroke) || 1}
-              />
-              <Text
-                x={6}
-                y={4}
-                width={Math.max(1, cellW - 12)}
-                height={Math.max(1, cellH - 8)}
-                text={rawTableCellText(cell)}
-                fill={withHash(readString(cellFont.color) ?? font.color)}
-                fontFamily={`${readString(cellFont.family) ?? font.family}, Helvetica, sans-serif`}
-                fontSize={readNumber(cellFont.size) ?? font.size}
-                fontStyle={rowIndex === 0 || cellFont.bold ? "bold" : "normal"}
-                verticalAlign="middle"
-              />
-            </Group>
-          );
-        }),
-      )}
-    </Group>
-  );
-}
-
 function RawInfographicElement({
   element,
   width,
@@ -1862,7 +1957,7 @@ function RawInlineEditor({
           border: "1px solid #7C51F8",
           outline: "none",
           resize: "none",
-          padding: kind === "table" ? 8 : 0,
+          padding: 0,
           background: isCode
             ? "rgba(7,20,37,0.96)"
             : "rgba(255,255,255,0.08)",
@@ -3358,9 +3453,6 @@ function elementWithInlineDraft(
     const next = setRawTextListContent(element, draft);
     return preserveInlineEditFrame(style ? applyTextStyle(next, style) : next, frame);
   }
-  if (kind === "table") {
-    return preserveInlineEditFrame(setRawTableContent(element, draft), frame);
-  }
   if (kind === "svg") {
     return preserveInlineEditFrame(setRawSvgContent(element, draft), frame);
   }
@@ -3513,18 +3605,6 @@ function setRawTextListContent(element: RawElement, draft: string): RawElement {
   return { ...element, items };
 }
 
-function rawTableRows(element: RawElement) {
-  const columns = readArray(element.columns);
-  const rows = readArray(element.rows);
-  return [columns, ...rows].filter((row) => Array.isArray(row)) as unknown[][];
-}
-
-function rawTableContent(element: RawElement) {
-  return rawTableRows(element)
-    .map((row) => row.map(rawTableCellText).join("\t"))
-    .join("\n");
-}
-
 function rawTableCellText(cell: unknown) {
   if (typeof cell === "string" || typeof cell === "number") {
     return String(cell);
@@ -3539,44 +3619,6 @@ function rawTableCellText(cell: unknown) {
   }
   const textRecord = asRecord(record.text);
   return readString(textRecord?.text) ?? readString(record.text) ?? "";
-}
-
-function rawTableCellWithText(source: unknown, text: string): unknown {
-  if (typeof source === "string" || typeof source === "number") return text;
-  const record = asRecord(source);
-  if (!record) return { runs: text ? [{ text }] : [] };
-  const runs = readArray(record.runs);
-  if (runs.length > 0 || Object.hasOwn(record, "runs")) {
-    const firstRun = asRecord(runs[0]) ?? {};
-    return { ...record, runs: text ? [{ ...firstRun, text }] : [] };
-  }
-  const textRecord = asRecord(record.text);
-  return textRecord
-    ? { ...record, text: { ...textRecord, text } }
-    : { ...record, text };
-}
-
-function setRawTableContent(element: RawElement, draft: string): RawElement {
-  const sourceRows = rawTableRows(element);
-  const textRows = draft
-    .split(/\r?\n/)
-    .map((row) => row.split("\t"))
-    .filter((row) => row.some((cell) => cell.trim().length > 0));
-  const rows = textRows.map((row, rowIndex) =>
-    row.map((text, colIndex) => {
-      const sourceRow =
-        sourceRows[rowIndex] ?? sourceRows[sourceRows.length - 1] ?? [];
-      return rawTableCellWithText(
-        sourceRow[colIndex] ?? sourceRow[sourceRow.length - 1],
-        text,
-      );
-    }),
-  );
-  return {
-    ...element,
-    columns: rows[0] ?? [],
-    rows: rows.slice(1),
-  };
 }
 
 function rawSvgContent(element: RawElement) {

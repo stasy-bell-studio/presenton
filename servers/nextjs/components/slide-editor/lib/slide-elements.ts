@@ -255,31 +255,22 @@ export const ELEMENT_REGISTRY = {
     export: { pptx: "table", pdf: "raster" },
     createDefault: () => ({
       ...base,
-      size: { width: 5.2, height: 2.1 },
+      name: "Default Table",
+      position: { x: 0.55, y: 1.1 },
+      size: { width: 8.9, height: 2.8 },
       type: "table",
-      font: { family: "Arial", size: 11, color: "1A2B45" },
-	      columns: [
-	        {
-	          runs: [{ text: "Metric" }],
-	          color: { color: "0B1F3A" },
-	          font: { color: "FFFFFF", bold: true },
-	        },
-	        {
-	          runs: [{ text: "Current" }],
-	          color: { color: "0B1F3A" },
-	          font: { color: "FFFFFF", bold: true },
-	        },
-	        {
-	          runs: [{ text: "Target" }],
-	          color: { color: "0B1F3A" },
-	          font: { color: "FFFFFF", bold: true },
-	        },
-	      ],
-	      rows: [
-	        [{ runs: [{ text: "Adoption" }] }, { runs: [{ text: "52%" }] }, { runs: [{ text: "70%" }] }],
-	        [{ runs: [{ text: "Revenue" }] }, { runs: [{ text: "$1.2M" }] }, { runs: [{ text: "$1.8M" }] }],
-	        [{ runs: [{ text: "Retention" }] }, { runs: [{ text: "84%" }] }, { runs: [{ text: "90%" }] }],
-	      ],
+      font: { family: "Arial", size: 22, color: "4A4A4A" },
+      columns: ["Name", "Title", "Status", "Position"].map((text) => ({
+        runs: [{ text }],
+        color: { color: "F7F7FA" },
+        font: { color: "4A4A4A", bold: true },
+      })),
+      rows: Array.from({ length: 3 }, () =>
+        Array.from({ length: 4 }, () => ({
+          runs: [],
+          color: { color: "FFFFFF" },
+        })),
+      ),
     }),
   },
   image: {
