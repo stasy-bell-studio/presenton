@@ -1000,7 +1000,6 @@ function RawComponentNode({
 }) {
   const groupRef = useRef<Konva.Group | null>(null);
   const box = componentBox(component);
-  const stageBox = { x: 0, y: 0, width: STAGE_WIDTH, height: STAGE_HEIGHT };
   const selection: ComponentSelection = { kind: "component", componentIndex };
   const key = keyForSelection(selection);
   const elements = readArray(component.elements).filter(isRecord) as RawElement[];
@@ -1021,7 +1020,6 @@ function RawComponentNode({
       clipWidth={isEditMode ? undefined : box.width}
       clipHeight={isEditMode ? undefined : box.height}
       draggable={isEditMode}
-      dragBoundFunc={(pos) => clampAbsoluteBox(pos, box, stageBox)}
       onMouseDown={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
@@ -1047,7 +1045,7 @@ function RawComponentNode({
         if (!node) return;
         onComponentChange(componentIndex, (current) => ({
           ...current,
-          position: positionFromNodeInParent(node, stageBox, box),
+          position: node.position(),
         }));
       }}
       onTransformEnd={(event) => {
@@ -1066,7 +1064,7 @@ function RawComponentNode({
         };
         onComponentChange(componentIndex, (current) =>
           resizeComponent(current, {
-            ...positionFromNodeInParent(node, stageBox, nextBox),
+            ...node.position(),
             width: nextBox.width,
             height: nextBox.height,
             scaleX,
@@ -2107,21 +2105,6 @@ function positionFromNodeInParent(
     renderedBox,
     parentBox,
   );
-}
-
-function clampAbsoluteBox(pos: Point, box: Box, parentBox: Box): Point {
-  return {
-    x: clamp(
-      pos.x,
-      parentBox.x,
-      parentBox.x + Math.max(0, parentBox.width - box.width),
-    ),
-    y: clamp(
-      pos.y,
-      parentBox.y,
-      parentBox.y + Math.max(0, parentBox.height - box.height),
-    ),
-  };
 }
 
 function clampRelativePosition(pos: Point, box: Box, parentSize: Size): Point {
