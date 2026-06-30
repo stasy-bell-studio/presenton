@@ -26,7 +26,6 @@ import {
   Rect,
   Stage,
   Text,
-  Transformer,
 } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
@@ -64,6 +63,7 @@ import {
   type TemplateV2ClipboardPayload,
 } from "./template-v2-clipboard/clipboard";
 import { useTemplateV2Clipboard } from "./template-v2-clipboard/useTemplateV2Clipboard";
+import { TemplateV2SelectionTransformers } from "./template-v2-selection/TemplateV2SelectionTransformers";
 import {
   TEMPLATE_V2_CHART_EDITOR_EVENT,
   TEMPLATE_V2_CHART_UPDATE_EVENT,
@@ -188,7 +188,6 @@ function TemplateV2KonvaSlideComponent({
   const dispatch = useDispatch();
   const surfaceId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const transformerRef = useRef<Konva.Transformer | null>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
@@ -236,12 +235,19 @@ function TemplateV2KonvaSlideComponent({
     [],
   );
   const selectedKey = selection ? keyForSelection(selection) : null;
+  const selectedParentComponentKey =
+    selection?.kind === "element" &&
+    selection.componentIndex !== ROOT_ELEMENTS_COMPONENT_INDEX
+      ? keyForSelection({
+          kind: "component",
+          componentIndex: selection.componentIndex,
+        })
+      : null;
   const editingKey = inlineEdit ? keyForSelection(inlineEdit.selection) : null;
   const selectedElement =
     selection?.kind === "element"
       ? getElementAtSelection(uiDraft, selection)
       : null;
-  const selectedElementIsLine = readString(selectedElement?.type) === "line";
   const selectedComponent =
     selection?.kind === "component"
       ? asRecord(readArray(uiDraft.components)[selection.componentIndex])
@@ -289,18 +295,6 @@ function TemplateV2KonvaSlideComponent({
     redoStackRef.current = [];
     setHistoryAvailability({ canUndo: false, canRedo: false });
   }, [clearTableCellSelection, layout]);
-
-  useEffect(() => {
-    if (!isEditMode) return;
-    const transformer = transformerRef.current;
-    if (!transformer) return;
-    const node =
-      selectedKey && !selectedTableCell
-        ? nodeRefs.current.get(selectedKey)
-        : null;
-    transformer.nodes(node ? [node] : []);
-    transformer.getLayer()?.batchDraw();
-  }, [isEditMode, selectedKey, selectedTableCell]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -940,16 +934,12 @@ function TemplateV2KonvaSlideComponent({
             />
           ))}
           {isEditMode ? (
-            <Transformer
-              ref={transformerRef}
-              anchorSize={selectedElementIsLine ? 12 : undefined}
-              borderEnabled={!selectedElementIsLine}
-              enabledAnchors={
-                selectedElementIsLine
-                  ? ["middle-left", "middle-right"]
-                  : undefined
-              }
-              rotateEnabled={!selectedElementIsLine}
+            <TemplateV2SelectionTransformers
+              nodeRefs={nodeRefs}
+              parentComponentKey={selectedParentComponentKey}
+              selectedKey={selectedKey}
+              selectionKind={selection?.kind ?? null}
+              suppressSelectedOutline={Boolean(selectedTableCell)}
             />
           ) : null}
         </Layer>
