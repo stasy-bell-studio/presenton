@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
+  Ungroup,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -49,6 +50,7 @@ type TemplateV2LayoutToolbarProps = {
   box: TemplateV2LayoutToolbarBox;
   element: TemplateV2LayoutElement;
   onChange: (changes: RawRecord) => void;
+  onDisintegrate?: () => void;
 };
 
 const LAYOUT_ALIGNMENTS: Array<{
@@ -584,9 +586,11 @@ export function TemplateV2LayoutToolbar({
   box,
   element,
   onChange,
+  onDisintegrate,
 }: TemplateV2LayoutToolbarProps) {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
-  const estimatedWidth = element.type === "container" ? 700 : 440;
+  const estimatedWidth = (element.type === "container" ? 700 : 440) +
+    (onDisintegrate ? 118 : 0);
   const left = Math.max(8, Math.min(box.x, STAGE_WIDTH - estimatedWidth - 8));
   const top =
     box.y >= 58
@@ -610,6 +614,15 @@ export function TemplateV2LayoutToolbar({
         {capitalize(element.type)}
       </span>
       <Divider />
+      {onDisintegrate ? (
+        <>
+          <ControlButton title="Disintegrate" onClick={onDisintegrate}>
+            <Ungroup size={15} aria-hidden />
+            <span>Disintegrate</span>
+          </ControlButton>
+          <Divider />
+        </>
+      ) : null}
 
       {element.type === "flex" ? (
         <FlexControls
