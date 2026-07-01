@@ -430,6 +430,7 @@ export const ImageElementSchema = z
     focus_y: z.number().nullish(),
     border_radius: BorderRadiusSchema.nullish(),
     color: z.string().nullish(),
+    prompt: z.string().nullish(),
     is_icon: z.boolean().nullish(),
   })
   .strict();

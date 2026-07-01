@@ -703,7 +703,26 @@ def _apply_template_v2_image_content(
 
     updated = copy.deepcopy(element)
     updated["data"] = url
+    prompt = _template_v2_asset_prompt(value, element.get("is_icon") is True)
+    if prompt:
+        updated["prompt"] = prompt
     return updated
+
+
+def _template_v2_asset_prompt(value: Any, is_icon: bool) -> Optional[str]:
+    if not isinstance(value, dict):
+        return None
+
+    prompt_keys = (
+        ("icon_query", "__icon_query__", "query", "prompt")
+        if is_icon
+        else ("image_prompt", "__image_prompt__", "prompt", "query")
+    )
+    for key in prompt_keys:
+        prompt = value.get(key)
+        if isinstance(prompt, str) and prompt.strip():
+            return prompt
+    return None
 
 
 def _apply_template_v2_text_list_content(

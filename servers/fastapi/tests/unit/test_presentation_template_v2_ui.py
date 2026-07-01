@@ -1,4 +1,5 @@
 from api.v1.ppt.endpoints import presentation as presentation_endpoint
+from services.chat.memory_layer import PresentationChatMemoryLayer
 
 
 def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
@@ -158,6 +159,7 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
     ]
     assert "text" not in hero_elements[0]
     assert hero_elements[1]["data"] == "/app_data/images/hero.png"
+    assert hero_elements[1]["prompt"] == "Team dashboard"
     assert hero_elements[2]["items"] == [
         [{"text": "First generated bullet"}],
         [{"text": "Second generated bullet"}],
@@ -172,14 +174,54 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
     cards = hero_elements[5]["children"]
     assert cards[0]["children"][0]["runs"][0]["text"] == "First card"
     assert cards[0]["children"][1]["data"] == "/icons/one.svg"
+    assert cards[0]["children"][1]["prompt"] == "growth"
     assert cards[1]["children"][0]["runs"][0]["text"] == "Second card"
     assert cards[1]["children"][1]["data"] == "/icons/two.svg"
+    assert cards[1]["children"][1]["prompt"] == "support"
 
     assert hydrated["components"][1]["elements"][0]["runs"][0]["text"] == "42%"
     assert hydrated["components"][2]["elements"][0]["runs"][0]["text"] == "21%"
     assert "text" not in hydrated["components"][1]["elements"][0]
     assert "text" not in hydrated["components"][2]["elements"][0]
     assert ui["components"][0]["elements"][0]["runs"][0]["text"] == "Old headline"
+
+
+def test_chat_template_v2_image_content_stores_prompt():
+    image = {
+        "type": "image",
+        "decorative": False,
+        "name": "hero_image",
+        "data": "/old-image.png",
+        "is_icon": False,
+    }
+    PresentationChatMemoryLayer._set_template_v2_element_value(
+        image,
+        {
+            "image_prompt": "Analytics dashboard",
+            "image_url": "/app_data/images/dashboard.png",
+        },
+    )
+
+    assert image["data"] == "/app_data/images/dashboard.png"
+    assert image["prompt"] == "Analytics dashboard"
+
+    icon = {
+        "type": "image",
+        "decorative": False,
+        "name": "status_icon",
+        "data": "/old-icon.svg",
+        "is_icon": True,
+    }
+    PresentationChatMemoryLayer._set_template_v2_element_value(
+        icon,
+        {
+            "icon_query": "success check",
+            "icon_url": "/icons/check.svg",
+        },
+    )
+
+    assert icon["data"] == "/icons/check.svg"
+    assert icon["prompt"] == "success check"
 
 
 def test_apply_template_v2_content_to_ui_matches_repeated_content_lengths():

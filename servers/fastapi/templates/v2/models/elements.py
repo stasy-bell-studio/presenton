@@ -197,6 +197,7 @@ class Image(BaseModel):  # Konva Image
     # Schema
     decorative: bool
     name: str
+    prompt: Optional[str] = None
     is_icon: bool
 
 

@@ -1646,6 +1646,12 @@ class PresentationChatMemoryLayer:
             asset_url = cls._template_v2_asset_url(value)
             if asset_url:
                 element["data"] = asset_url
+                prompt = cls._template_v2_asset_prompt(
+                    value,
+                    element.get("is_icon") is True,
+                )
+                if prompt:
+                    element["prompt"] = prompt
             return
 
         if element_type == "chart" and isinstance(value, dict):
@@ -1700,6 +1706,22 @@ class PresentationChatMemoryLayer:
             asset_url = value.get(key)
             if isinstance(asset_url, str) and asset_url.strip():
                 return normalize_slide_asset_url(asset_url)
+        return None
+
+    @staticmethod
+    def _template_v2_asset_prompt(value: Any, is_icon: bool) -> str | None:
+        if not isinstance(value, dict):
+            return None
+
+        prompt_keys = (
+            ("icon_query", "__icon_query__", "query", "prompt")
+            if is_icon
+            else ("image_prompt", "__image_prompt__", "prompt", "query")
+        )
+        for key in prompt_keys:
+            prompt = value.get(key)
+            if isinstance(prompt, str) and prompt.strip():
+                return prompt
         return None
 
     @classmethod
