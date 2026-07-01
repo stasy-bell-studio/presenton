@@ -14,6 +14,8 @@ import {
 } from "../inline";
 import { getElementDefinition, type ElementToolbarKey } from "../registry";
 import type { TableCellSelection } from "../state";
+import type { TextToolbarFontPatch } from "../inline/TextToolbar";
+import type { ResolvedFont } from "../lib/element-model";
 
 type ElementToolbarProps = {
   element: SlideElement;
@@ -21,19 +23,39 @@ type ElementToolbarProps = {
   path: ElementPath;
   scale: number;
   selectedTableCell: TableCellSelection | null;
+  activeTextFont?: Partial<ResolvedFont> | null;
   onChange: (index: number, element: SlideElement, path?: ElementPath) => void;
   onEditChart?: (index: number, path?: ElementPath) => void;
   onEditImage: (index: number, path?: ElementPath) => void;
   onEditText?: (index: number, path?: ElementPath) => void;
+  onTextFontPatch?: (
+    patch: TextToolbarFontPatch,
+    index: number,
+    path?: ElementPath,
+  ) => void;
 };
 
 const TOOLBAR_RENDERERS = {
-  text: ({ element, index, onChange, path, scale }) =>
+  text: ({
+    activeTextFont,
+    element,
+    index,
+    onChange,
+    onTextFontPatch,
+    path,
+    scale,
+  }) =>
     element.type === "text" ? (
       <TextToolbar
+        activeFont={activeTextFont}
         element={element}
         index={index}
         scale={scale}
+        onFontPatch={
+          onTextFontPatch
+            ? (patch) => onTextFontPatch(patch, index, path)
+            : undefined
+        }
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

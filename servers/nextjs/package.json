@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint .",
     "test:layout-code": "node --test tests/layout-code-validator.test.mjs",
+    "test:rich-text": "node --test tests/rich-text.test.ts",
     "check:layout-code": "node scripts/check-layout-code.mjs"
   },
   "dependencies": {

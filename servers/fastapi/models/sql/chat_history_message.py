@@ -12,11 +12,20 @@ class ChatHistoryMessageModel(SQLModel, table=True):
     __tablename__ = "chat_history_messages"
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    presentation_id: uuid.UUID = Field(
+    presentation_id: Optional[uuid.UUID] = Field(
+        default=None,
         sa_column=Column(
             ForeignKey("presentations.id", ondelete="CASCADE"),
             index=True,
-            nullable=False,
+            nullable=True,
+        )
+    )
+    template_v2_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            ForeignKey("template_v2.id", ondelete="CASCADE"),
+            index=True,
+            nullable=True,
         )
     )
     conversation_id: uuid.UUID = Field(index=True)

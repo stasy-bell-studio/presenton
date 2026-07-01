@@ -19,6 +19,7 @@ export function InlineToolbar({
   const box = elementBox(element);
   return (
     <div
+      data-inline-edit-ignore="true"
       style={{
         ...(unstyled ? unstyledToolbarStyle : inlineStyles.toolbar),
         left: Math.max(8, box.x * scale),

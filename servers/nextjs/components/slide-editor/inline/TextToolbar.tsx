@@ -10,8 +10,13 @@ import {
   Underline,
 } from "lucide-react";
 import type { TextSlideElement } from "../state";
+import type { Font } from "../lib/slide-schema";
 import { withHash } from "../editorUtils";
-import { elementFont, mergeFont } from "../lib/element-model";
+import {
+  elementFont,
+  mergeFont,
+  type ResolvedFont,
+} from "../lib/element-model";
 import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 
@@ -36,6 +41,9 @@ const HORIZONTAL_ALIGNMENT_ICONS = {
 
 const MIN_FONT_SIZE = 4;
 const MAX_FONT_SIZE = 240;
+export type TextToolbarFontPatch = Partial<
+  Pick<Font, "family" | "size" | "color" | "bold" | "italic" | "underline">
+>;
 
 function clampFontSize(size: number) {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size));
@@ -47,17 +55,22 @@ function formatToolbarFontSize(size: number) {
 }
 
 export function TextToolbar({
+  activeFont,
   element,
   index,
+  onFontPatch,
   scale,
   onChange,
 }: {
+  activeFont?: Partial<ResolvedFont> | null;
   element: TextSlideElement;
   index: number;
+  onFontPatch?: (patch: TextToolbarFontPatch) => void;
   scale: number;
   onChange: (index: number, element: TextSlideElement) => void;
 }) {
-  const font = elementFont(element);
+  const elementResolvedFont = elementFont(element);
+  const font = { ...elementResolvedFont, ...(activeFont ?? {}) };
   const horizontalAlignment = element.alignment?.horizontal ?? "left";
   const verticalAlignment = element.alignment?.vertical ?? "top";
   const HorizontalAlignmentIcon =
@@ -67,9 +80,16 @@ export function TextToolbar({
     : [font.family, ...FONT_FAMILIES];
   const [openPanel, setOpenPanel] = useState<"opacity" | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const applyFontPatch = (patch: TextToolbarFontPatch) => {
+    if (onFontPatch) {
+      onFontPatch(patch);
+      return;
+    }
+    onChange(index, mergeFont(element, patch));
+  };
   const commitFontSize = (nextSize: number) => {
     if (!Number.isFinite(nextSize)) return;
-    onChange(index, mergeFont(element, { size: clampFontSize(nextSize) }));
+    applyFontPatch({ size: clampFontSize(nextSize) });
   };
   const updateFontSize = (value: string) => {
     commitFontSize(Number.parseFloat(value));
@@ -107,7 +127,7 @@ export function TextToolbar({
             title="Font family"
             value={font.family}
             onChange={(event) =>
-              onChange(index, mergeFont(element, { family: event.target.value }))
+              applyFontPatch({ family: event.target.value })
             }
             style={textToolbarStyles.fontSelect}
           >
@@ -183,9 +203,7 @@ export function TextToolbar({
           <DeferredColorInput
             aria-label="Text color"
             value={font.color}
-            onCommit={(color) =>
-              onChange(index, mergeFont(element, { color }))
-            }
+            onCommit={(color) => applyFontPatch({ color })}
             style={textToolbarStyles.hiddenInput}
           />
         </label>
@@ -198,10 +216,7 @@ export function TextToolbar({
             pressed={font.bold ?? false}
             setHoveredControl={setHoveredControl}
             onClick={() =>
-              onChange(
-                index,
-                mergeFont(element, { bold: !(font.bold ?? false) }),
-              )
+              applyFontPatch({ bold: !(font.bold ?? false) })
             }
           >
             <Bold size={18} strokeWidth={2.25} aria-hidden="true" />
@@ -213,10 +228,7 @@ export function TextToolbar({
             pressed={font.italic ?? false}
             setHoveredControl={setHoveredControl}
             onClick={() =>
-              onChange(
-                index,
-                mergeFont(element, { italic: !(font.italic ?? false) }),
-              )
+              applyFontPatch({ italic: !(font.italic ?? false) })
             }
           >
             <Italic size={18} strokeWidth={2.25} aria-hidden="true" />
@@ -225,7 +237,11 @@ export function TextToolbar({
             title="Underline"
             controlId="underline"
             hoveredControl={hoveredControl}
+            pressed={font.underline ?? false}
             setHoveredControl={setHoveredControl}
+            onClick={() =>
+              applyFontPatch({ underline: !(font.underline ?? false) })
+            }
           >
             <Underline size={18} strokeWidth={2.25} aria-hidden="true" />
           </ToolbarButton>
@@ -355,6 +371,7 @@ function ToolbarButton({
       aria-label={title}
       aria-pressed={pressed}
       onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
       onMouseEnter={() => setHoveredControl(controlId)}
       onMouseLeave={() => setHoveredControl(null)}
       style={{

@@ -172,6 +172,7 @@ export const FontSchema = z
     color: HexColorSchema.nullish(),
     bold: z.boolean().nullish(),
     italic: z.boolean().nullish(),
+    underline: z.boolean().nullish(),
     line_height: z.number().min(0.8).max(2.2).nullish(),
     // Hundredths of a point, matching OOXML character spacing.
     letter_spacing: z.number().min(-200).max(600).nullish(),

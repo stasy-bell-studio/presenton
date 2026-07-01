@@ -24,6 +24,7 @@ export type ResolvedFont = {
   color: string;
   bold?: boolean | null;
   italic?: boolean | null;
+  underline?: boolean | null;
   lineHeight?: number | null;
   letterSpacing?: number | null;
   wrap?: Font["wrap"];
@@ -106,6 +107,7 @@ export function elementFont(element: {
     color: element.font?.color ?? DEFAULT_TEXT_COLOR,
     bold: element.font?.bold ?? null,
     italic: element.font?.italic ?? null,
+    underline: element.font?.underline ?? null,
     lineHeight: element.font?.line_height ?? null,
     letterSpacing: element.font?.letter_spacing ?? null,
     wrap: element.font?.wrap ?? null,

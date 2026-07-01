@@ -424,7 +424,16 @@ class PresentationChatService:
         tool_name: str,
         arguments: str | None,
     ) -> dict[str, Any] | None:
-        if tool_name not in {"getSlideAtIndex", "saveSlide", "deleteSlide"}:
+        if tool_name not in {
+            "getSlideAtIndex",
+            "saveSlide",
+            "deleteSlide",
+            "getSlideElements",
+            "updateSlideElement",
+            "deleteSlideComponent",
+            "deleteSlideElement",
+            "addSlideComponent",
+        }:
             return None
 
         parsed_args: dict[str, Any]
@@ -445,6 +454,13 @@ class PresentationChatService:
             focus_payload["slide_index"] = normalized_index
             focus_payload["slide_number"] = normalized_index + 1
 
+        component_id = parsed_args.get("componentId") or parsed_args.get("component_id")
+        if isinstance(component_id, str) and component_id:
+            focus_payload["component_id"] = component_id
+        element_path = parsed_args.get("elementPath") or parsed_args.get("element_path")
+        if isinstance(element_path, str) and element_path:
+            focus_payload["element_path"] = element_path
+
         target_slide_indices = PresentationChatService._extract_target_slide_indices(
             parsed_args
         )
@@ -462,7 +478,16 @@ class PresentationChatService:
         tool_name: str,
         tool_result: dict[str, Any],
     ) -> dict[str, Any] | None:
-        if tool_name not in {"getSlideAtIndex", "saveSlide", "deleteSlide"}:
+        if tool_name not in {
+            "getSlideAtIndex",
+            "saveSlide",
+            "deleteSlide",
+            "getSlideElements",
+            "updateSlideElement",
+            "deleteSlideComponent",
+            "deleteSlideElement",
+            "addSlideComponent",
+        }:
             return None
         if not tool_result.get("ok"):
             return None
@@ -489,6 +514,13 @@ class PresentationChatService:
             normalized_index = max(0, index)
             focus_payload["slide_index"] = normalized_index
             focus_payload["slide_number"] = normalized_index + 1
+
+        component_id = result.get("component_id")
+        if isinstance(component_id, str) and component_id:
+            focus_payload["component_id"] = component_id
+        element_path = result.get("element_path")
+        if isinstance(element_path, str) and element_path:
+            focus_payload["element_path"] = element_path
 
         target_slide_indices = PresentationChatService._extract_target_slide_indices(
             result
@@ -547,6 +579,11 @@ class PresentationChatService:
             "saveSlide": "Saving the slide",
             "deleteSlide": "Deleting the slide",
             "setPresentationTheme": "Applying presentation theme",
+            "getSlideElements": "Inspecting slide elements",
+            "updateSlideElement": "Updating slide element",
+            "deleteSlideComponent": "Removing slide block",
+            "deleteSlideElement": "Removing slide element",
+            "addSlideComponent": "Adding slide block",
         }
         return labels.get(tool_name, f"Running {tool_name}")
 

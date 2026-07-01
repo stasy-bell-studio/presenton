@@ -35,6 +35,7 @@ import {
   SLIDE_W,
   type ChartElement,
   type ChartSeries,
+  type Font,
   type SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
 import { ElementToolbar } from "@/components/slide-editor/workspace/ElementToolbar";
@@ -49,6 +50,12 @@ import {
 import { buildSvgUpdateUrl } from "@/lib/svg-color";
 import { updateSlideUi } from "@/store/slices/presentationGeneration";
 import { resolveBackendAssetSource } from "@/utils/api";
+import {
+  applyFontToAll,
+  applyFontToRange,
+  spliceRuns,
+  type RichRun,
+} from "./richText";
 import { ImagesApi } from "../services/api/images";
 import IconsEditor from "./IconsEditor";
 import {
@@ -160,6 +167,11 @@ type InlineEdit =
     draft: string;
     frame?: Box | null;
     style?: TextEditStyle;
+    // For "text" elements: the per-run (rich text) representation being edited,
+    // plus the current textarea selection so styling can target only that range.
+    runs?: RichRun[];
+    selStart?: number;
+    selEnd?: number;
   }
   | null;
 
@@ -250,6 +262,30 @@ function TemplateV2KonvaSlideComponent({
   const inlineEditBox = inlineEdit
     ? absoluteBoxForSelection(uiDraft, inlineEdit.selection)
     : null;
+  const activeTextToolbarFont = useMemo(() => {
+    if (
+      !inlineEdit ||
+      inlineEdit.kind !== "text" ||
+      !inlineEdit.runs ||
+      !selection ||
+      selection.kind !== "element" ||
+      keyForSelection(inlineEdit.selection) !== keyForSelection(selection)
+    ) {
+      return null;
+    }
+    const base = inlineEditElement
+      ? rawFont(inlineEditElement)
+      : inlineEdit.runs[0]?.font;
+    if (!base) return null;
+    return renderFontForEditorToolbar(
+      fontAtOffset(
+        inlineEdit.runs,
+        inlineEdit.selStart ?? 0,
+        inlineEdit.selEnd ?? 0,
+        base,
+      ),
+    );
+  }, [inlineEdit, inlineEditElement, selection]);
   const iconEditorElement = iconEditorSelection
     ? getElementAtSelection(uiDraft, iconEditorSelection)
     : null;
@@ -455,12 +491,16 @@ function TemplateV2KonvaSlideComponent({
         elementSelection,
       );
       if (type === "text") {
+        const runs = editorRunsFromElement(element) as RichRun[];
         setInlineEdit({
           kind: "text",
           selection: elementSelection,
           draft: rawTextContent(element),
           frame,
           style: rawTextStyle(element),
+          runs,
+          selStart: 0,
+          selEnd: 0,
         });
       } else if (type === "text-list") {
         setInlineEdit({
@@ -494,15 +534,22 @@ function TemplateV2KonvaSlideComponent({
       const current = inlineEdit;
       if (!current) return;
       if (commit) {
-        updateElement(current.selection, (element) =>
-          elementWithInlineDraft(
-            element,
-            current.kind,
-            current.draft,
-            current.style,
-            current.frame,
-          ),
-        );
+        if (current.kind === "text" && current.runs) {
+          const runs = current.runs;
+          updateElement(current.selection, (element) =>
+            elementWithRuns(element, runs, current.frame),
+          );
+        } else {
+          updateElement(current.selection, (element) =>
+            elementWithInlineDraft(
+              element,
+              current.kind,
+              current.draft,
+              current.style,
+              current.frame,
+            ),
+          );
+        }
       }
       setSelection(current.selection);
       setInlineEdit(null);
@@ -527,6 +574,61 @@ function TemplateV2KonvaSlideComponent({
       );
     },
     [selection, updateElement],
+  );
+
+  const applyToolbarTextFontPatch = useCallback(
+    (patch: Partial<Font>) => {
+      if (selection?.kind !== "element") return;
+      const selectionKey = keyForSelection(selection);
+      const activeInlineEdit =
+        inlineEdit?.kind === "text" &&
+        inlineEdit.runs &&
+        keyForSelection(inlineEdit.selection) === selectionKey
+          ? inlineEdit
+          : null;
+
+      if (activeInlineEdit?.runs) {
+        const start = activeInlineEdit.selStart ?? 0;
+        const end = activeInlineEdit.selEnd ?? 0;
+        const richPatch = editorFontPatchToRenderFontPatch(patch);
+        const nextRuns =
+          start === end
+            ? applyFontToAll(activeInlineEdit.runs, richPatch)
+            : applyFontToRange(activeInlineEdit.runs, start, end, richPatch);
+        setInlineEdit((current) =>
+          current &&
+          current.kind === "text" &&
+          current.runs &&
+          keyForSelection(current.selection) === selectionKey
+            ? {
+                ...current,
+                draft: nextRuns.map((run) => run.text).join(""),
+                runs: nextRuns,
+              }
+            : current,
+        );
+        updateElement(
+          activeInlineEdit.selection,
+          (element) => elementWithRuns(element, nextRuns, activeInlineEdit.frame),
+        );
+        setSelection(activeInlineEdit.selection);
+        setInlineEdit(null);
+        return;
+      }
+
+      const current = getElementAtSelection(currentUiRef.current, selection);
+      const box = absoluteBoxForSelection(currentUiRef.current, selection);
+      if (!current || !box) return;
+      const editorElement = rawElementForEditorToolbar(current, box);
+      if (!editorElement || editorElement.type !== "text") return;
+      const next = mergeEditorToolbarElement(
+        current,
+        applyEditorTextFontPatch(editorElement, patch),
+        box,
+      );
+      updateElement(selection, () => next);
+    },
+    [inlineEdit, selection, updateElement],
   );
 
   const applyComponentToolbarChange = useCallback(
@@ -924,25 +1026,51 @@ function TemplateV2KonvaSlideComponent({
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
           selectedTableCell={null}
+          activeTextFont={activeTextToolbarFont}
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onEditChart={() => openChartEditor(selection)}
           onEditImage={() => openImageUpload(selection)}
           onEditText={() => openInlineEditor(selection)}
+          onTextFontPatch={(patch) => applyToolbarTextFontPatch(patch)}
         />
       ) : null}
       {inlineEdit && inlineEditElement && inlineEditBox ? (
-        <RawInlineEditor
-          key={keyForSelection(inlineEdit.selection)}
-          draft={inlineEdit.draft}
-          element={inlineEditElement}
-          kind={inlineEdit.kind}
-          box={inlineEditBox}
-          style={inlineEdit.style}
-          onChange={(draft) =>
-            setInlineEdit((current) => (current ? { ...current, draft } : current))
-          }
-          onClose={(commit) => closeInlineEditor(commit)}
-        />
+        inlineEdit.kind === "text" && inlineEdit.runs ? (
+          <RichTextInlineEditor
+            key={keyForSelection(inlineEdit.selection)}
+            runs={inlineEdit.runs}
+            baseFont={rawFont(inlineEditElement)}
+            box={inlineEditBox}
+            selStart={inlineEdit.selStart ?? 0}
+            selEnd={inlineEdit.selEnd ?? 0}
+            onChangeText={(text) =>
+              setInlineEdit((current) =>
+                current && current.runs
+                  ? { ...current, draft: text, runs: spliceRuns(current.runs, text) }
+                  : current,
+              )
+            }
+            onSelectionChange={(start, end) =>
+              setInlineEdit((current) =>
+                current ? { ...current, selStart: start, selEnd: end } : current,
+              )
+            }
+            onClose={(commit) => closeInlineEditor(commit)}
+          />
+        ) : (
+          <RawInlineEditor
+            key={keyForSelection(inlineEdit.selection)}
+            draft={inlineEdit.draft}
+            element={inlineEditElement}
+            kind={inlineEdit.kind}
+            box={inlineEditBox}
+            style={inlineEdit.style}
+            onChange={(draft) =>
+              setInlineEdit((current) => (current ? { ...current, draft } : current))
+            }
+            onClose={(commit) => closeInlineEditor(commit)}
+          />
+        )
       ) : null}
       {isEditMode &&
         iconEditorSelection &&
@@ -1425,6 +1553,157 @@ const MemoizedRawElementVisual = memo(
     previous.interactive === next.interactive,
 );
 
+const richMeasureCtx: { ctx: CanvasRenderingContext2D | null } = { ctx: null };
+
+function measureContext(): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (!richMeasureCtx.ctx) {
+    richMeasureCtx.ctx = document.createElement("canvas").getContext("2d");
+  }
+  return richMeasureCtx.ctx;
+}
+
+function richFontCss(font: RenderTextFont): string {
+  const italic = font.italic ? "italic " : "";
+  const weight = font.bold ? "700 " : "400 ";
+  return `${italic}${weight}${font.size}px "${font.family}", Helvetica, sans-serif`;
+}
+
+function measureRunText(text: string, font: RenderTextFont): number {
+  if (!text) return 0;
+  const ctx = measureContext();
+  if (!ctx) return text.length * font.size * TEXT_AVERAGE_CHAR_EM;
+  ctx.font = richFontCss(font);
+  const width = ctx.measureText(text).width;
+  const spacing = font.letterSpacing ? font.letterSpacing * text.length : 0;
+  return width + spacing;
+}
+
+// Convert the stored per-run array into render-ready runs, inheriting any
+// missing font properties from the element's base font.
+function editorRunsFromElement(element: RawElement): RenderTextRun[] {
+  const base = rawFont(element);
+  const built: RenderTextRun[] = [];
+  for (const value of readArray(element.runs)) {
+    const record = asRecord(value);
+    if (!record) continue;
+    const text = readString(record.text) ?? "";
+    if (!text) continue;
+    built.push({ text, font: fontFromRecord(asRecord(record.font), base) });
+  }
+  if (built.length === 0) {
+    return [{ text: rawTextContent(element), font: base }];
+  }
+  return built;
+}
+
+type LaidToken = {
+  text: string;
+  font: RenderTextFont;
+  x: number;
+  y: number;
+};
+
+// Minimal inline text-layout engine: greedily word-wraps a sequence of runs
+// (each with its own font) inside `maxWidth`, honouring explicit newlines,
+// horizontal alignment per line and vertical alignment of the whole block.
+// Konva has no native mixed-style text, so each token is later drawn as its
+// own <Text> node.
+function layoutRichText(
+  runs: RenderTextRun[],
+  maxWidth: number,
+  baseFont: RenderTextFont,
+  align: string,
+  verticalAlign: string,
+  boxHeight: number,
+): { tokens: LaidToken[]; contentHeight: number } {
+  type Tok = { text: string; font: RenderTextFont; newline: boolean; space: boolean; width: number };
+  const tokens: Tok[] = [];
+  for (const run of runs) {
+    const display = displayText(run.text);
+    if (!display) continue;
+    for (const part of display.split(/(\n|[ \t]+)/)) {
+      if (part === "") continue;
+      if (part === "\n") {
+        tokens.push({ text: "", font: run.font, newline: true, space: false, width: 0 });
+      } else {
+        const space = /^[ \t]+$/.test(part);
+        tokens.push({
+          text: part,
+          font: run.font,
+          newline: false,
+          space,
+          width: measureRunText(part, run.font),
+        });
+      }
+    }
+  }
+
+  type Line = { toks: Tok[]; height: number; width: number };
+  const lines: Line[] = [];
+  let cur: Tok[] = [];
+  let curWidth = 0;
+  const flush = () => {
+    const height = cur.length
+      ? Math.max(...cur.map((t) => t.font.size * t.font.lineHeight))
+      : baseFont.size * baseFont.lineHeight;
+    lines.push({ toks: cur, height, width: curWidth });
+    cur = [];
+    curWidth = 0;
+  };
+  for (const tok of tokens) {
+    if (tok.newline) {
+      flush();
+      continue;
+    }
+    if (tok.space && cur.length === 0) continue;
+    if (!tok.space && curWidth + tok.width > maxWidth && cur.length > 0) {
+      flush();
+    }
+    cur.push(tok);
+    curWidth += tok.width;
+  }
+  flush();
+
+  const contentHeight = lines.reduce((sum, line) => sum + line.height, 0);
+  let y =
+    verticalAlign === "middle"
+      ? (boxHeight - contentHeight) / 2
+      : verticalAlign === "bottom"
+        ? boxHeight - contentHeight
+        : 0;
+  if (y < 0) y = 0;
+
+  const laid: LaidToken[] = [];
+  for (const line of lines) {
+    let lineWidth = line.width;
+    for (let i = line.toks.length - 1; i >= 0 && line.toks[i].space; i--) {
+      lineWidth -= line.toks[i].width;
+    }
+    let x =
+      align === "center"
+        ? (maxWidth - lineWidth) / 2
+        : align === "right"
+          ? maxWidth - lineWidth
+          : 0;
+    if (x < 0) x = 0;
+    for (const tok of line.toks) {
+      if (tok.text) {
+        const tokenBoxHeight = tok.font.size * tok.font.lineHeight;
+        laid.push({
+          text: tok.text,
+          font: tok.font,
+          x,
+          y: y + (line.height - tokenBoxHeight),
+        });
+      }
+      x += tok.width;
+    }
+    y += line.height;
+  }
+  return { tokens: laid, contentHeight };
+}
+
 function RawRichTextElement({
   element,
   width,
@@ -1439,10 +1718,47 @@ function RawRichTextElement({
   interactive: boolean;
 }) {
   const font = rawFont(element);
-  const content = text ?? rawTextContent(element);
   const align = readString(element.alignment?.horizontal) ?? "left";
   const verticalAlign = readString(element.alignment?.vertical) ?? "top";
 
+  // Multi-run (partially styled) text elements are laid out per-run so each
+  // segment keeps its own font. Everything else — text-list (explicit joined
+  // string) and single-run text — uses the original single-node path, so
+  // existing content renders byte-for-byte as before.
+  const runs = typeof text === "string" ? null : editorRunsFromElement(element);
+  if (runs && runs.length > 1) {
+    const { tokens } = layoutRichText(
+      runs,
+      width,
+      font,
+      align,
+      verticalAlign,
+      height,
+    );
+    return (
+      <Group listening={interactive} {...shadowProps(element)}>
+        {tokens.map((tok, index) => (
+          <Text
+            key={index}
+            x={tok.x}
+            y={tok.y}
+            text={tok.text}
+            fill={withHash(tok.font.color)}
+            fontFamily={`${tok.font.family}, Helvetica, sans-serif`}
+            fontSize={tok.font.size}
+            fontStyle={`${tok.font.bold ? "bold" : "normal"} ${tok.font.italic ? "italic" : ""}`}
+            textDecoration={tok.font.underline ? "underline" : ""}
+            lineHeight={tok.font.lineHeight}
+            letterSpacing={tok.font.letterSpacing}
+            wrap="none"
+            listening={interactive}
+          />
+        ))}
+      </Group>
+    );
+  }
+
+  const content = text ?? rawTextContent(element);
   return (
     <Text
       width={width}
@@ -1814,6 +2130,12 @@ function RawInlineEditor({
     window.setTimeout(() => {
       const active = document.activeElement;
       if (active && editorRef.current?.contains(active)) return;
+      if (
+        active instanceof Element &&
+        active.closest("[data-inline-edit-ignore='true']")
+      ) {
+        return;
+      }
       onClose(true);
     }, 0);
   }, [onClose]);
@@ -1875,6 +2197,153 @@ function RawInlineEditor({
           lineHeight: font.lineHeight,
           letterSpacing: font.letterSpacing,
           textAlign: font.horizontal as CSSProperties["textAlign"],
+        }}
+      />
+    </div>
+  );
+}
+
+// Font that the toolbar should reflect for the current selection: the first
+// selected character, or the character before a collapsed caret.
+function fontAtOffset(
+  runs: RichRun[],
+  start: number,
+  end: number,
+  base: RenderTextFont,
+): RenderTextFont {
+  const fonts: RenderTextFont[] = [];
+  for (const run of runs) {
+    for (let i = 0; i < run.text.length; i++) fonts.push(run.font);
+  }
+  const index = start === end ? start - 1 : start;
+  return fonts[index] ?? fonts[start] ?? fonts[0] ?? base;
+}
+
+function elementWithRuns(
+  element: RawElement,
+  runs: RichRun[],
+  frame?: Box | null,
+): RawElement {
+  const sourceRuns = runs.map((run) => ({
+    text: run.text,
+    font: fontToSource(run.font),
+  }));
+  const text = runs.map((run) => run.text).join("");
+  return preserveInlineEditFrame(
+    { ...element, runs: sourceRuns, text },
+    frame,
+  );
+}
+
+// Selection-aware inline editor for text elements. Uses a native <textarea>
+// (so typing / IME / paste behave natively) and reconciles edits back onto the
+// styled runs via spliceRuns. Formatting is intentionally handled by the
+// existing element toolbar so there is only one visible text toolbar.
+function RichTextInlineEditor({
+  runs,
+  baseFont,
+  box,
+  selStart,
+  selEnd,
+  onChangeText,
+  onSelectionChange,
+  onClose,
+}: {
+  runs: RichRun[];
+  baseFont: RenderTextFont;
+  box: Box;
+  selStart: number;
+  selEnd: number;
+  onChangeText: (text: string) => void;
+  onSelectionChange: (start: number, end: number) => void;
+  onClose: (commit: boolean) => void;
+}) {
+  const editorRef = useRef<HTMLDivElement | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const value = runs.map((run) => run.text).join("");
+
+  const closeAfterBlur = useCallback(() => {
+    window.setTimeout(() => {
+      const el = document.activeElement;
+      if (el && editorRef.current?.contains(el)) return;
+      if (
+        el instanceof Element &&
+        el.closest("[data-inline-edit-ignore='true']")
+      ) {
+        return;
+      }
+      onClose(true);
+    }, 0);
+  }, [onClose]);
+
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta || document.activeElement !== ta) return;
+    if (ta.selectionStart !== selStart || ta.selectionEnd !== selEnd) {
+      try {
+        ta.setSelectionRange(selStart, selEnd);
+      } catch {
+        // Ignore selection restore errors (e.g. detached node).
+      }
+    }
+  }, [selStart, selEnd, runs]);
+
+  const reportSelection = () => {
+    const ta = textareaRef.current;
+    if (ta) onSelectionChange(ta.selectionStart ?? 0, ta.selectionEnd ?? 0);
+  };
+
+  return (
+    <div
+      ref={editorRef}
+      data-inline-edit-ignore="true"
+      onBlur={closeAfterBlur}
+      onPointerDown={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      style={{ position: "absolute", zIndex: 30, inset: 0, pointerEvents: "none" }}
+    >
+      <textarea
+        ref={textareaRef}
+        autoFocus
+        data-inline-edit-ignore="true"
+        value={value}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        onChange={(event) => onChangeText(event.target.value)}
+        onSelect={reportSelection}
+        onKeyUp={reportSelection}
+        onMouseUp={reportSelection}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            onClose(false);
+          }
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+            event.preventDefault();
+            onClose(true);
+          }
+        }}
+        style={{
+          position: "absolute",
+          zIndex: 31,
+          left: box.x,
+          top: box.y,
+          width: box.width,
+          height: box.height,
+          pointerEvents: "auto",
+          border: "1px solid #7C51F8",
+          outline: "none",
+          resize: "none",
+          padding: 0,
+          background: "rgba(255,255,255,0.08)",
+          color: withHash(baseFont.color),
+          caretColor: withHash(baseFont.color),
+          fontFamily: `${baseFont.family}, Helvetica, sans-serif`,
+          fontSize: baseFont.size,
+          fontWeight: baseFont.bold ? 700 : 400,
+          fontStyle: baseFont.italic ? "italic" : "normal",
+          lineHeight: baseFont.lineHeight,
+          letterSpacing: baseFont.letterSpacing,
         }}
       />
     </div>
@@ -3865,6 +4334,51 @@ function editorFontRecordToRaw(value: unknown, fallback: unknown) {
     size: size == null ? size : size / SOURCE_PX_TO_PT,
     line_height: font.line_height ?? font.lineHeight,
     letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  };
+}
+
+function renderFontForEditorToolbar(font: RenderTextFont) {
+  return {
+    family: font.family,
+    size: font.size * SOURCE_PX_TO_PT,
+    color: font.color,
+    bold: font.bold,
+    italic: font.italic,
+    underline: font.underline,
+  };
+}
+
+function editorFontPatchToRenderFontPatch(
+  patch: Partial<Font>,
+): Partial<RenderTextFont> {
+  return {
+    ...(patch.family != null ? { family: patch.family } : {}),
+    ...(patch.size != null ? { size: patch.size / SOURCE_PX_TO_PT } : {}),
+    ...(patch.color != null ? { color: patch.color } : {}),
+    ...(patch.bold != null ? { bold: patch.bold } : {}),
+    ...(patch.italic != null ? { italic: patch.italic } : {}),
+    ...(patch.underline != null ? { underline: patch.underline } : {}),
+  };
+}
+
+function applyEditorTextFontPatch(
+  element: SlideElement,
+  patch: Partial<Font>,
+): SlideElement {
+  if (element.type !== "text") return element;
+  return {
+    ...element,
+    font: {
+      ...(element.font ?? {}),
+      ...patch,
+    },
+    runs: element.runs.map((run) => ({
+      ...run,
+      font: {
+        ...(run.font ?? element.font ?? {}),
+        ...patch,
+      },
+    })),
   };
 }
 
