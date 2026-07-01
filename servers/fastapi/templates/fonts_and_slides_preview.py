@@ -56,6 +56,9 @@ class FontCheckResponse(BaseModel):
     unavailable_fonts: List[FontInfo]
 
 
+FontInfoData = Tuple[str, Optional[str]] | Tuple[str, Optional[str], List[str]]
+
+
 class FontsUploadAndSlidesPreviewResponse(BaseModel):
     slide_image_urls: List[str]
     pptx_url: str
@@ -453,13 +456,18 @@ def _font_info_entry(
 
 
 def _font_info_entries(
-    fonts_data: List[Tuple[str, Optional[str]]],
+    fonts_data: List[FontInfoData],
     variants_by_normalized_name: Dict[str, Set[str]],
     original_names_by_normalized_variant: Optional[Dict[Tuple[str, str], str]] = None,
 ) -> List[FontInfo]:
     entries: List[FontInfo] = []
-    for name, url in fonts_data:
-        variants = _variants_for_font_name(name, variants_by_normalized_name)
+    for font_data in fonts_data:
+        if len(font_data) == 3:
+            name, url, explicit_variants = font_data
+            variants = normalize_font_variants(explicit_variants)
+        else:
+            name, url = font_data
+            variants = _variants_for_font_name(name, variants_by_normalized_name)
         for variant in variants:
             original_name = (original_names_by_normalized_variant or {}).get(
                 (normalize_font_family_name(name), variant)

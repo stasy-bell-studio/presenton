@@ -265,6 +265,18 @@ def test_font_info_entries_preserve_original_variant_name():
     assert entries[0].variants == ["bold"]
 
 
+def test_font_info_entries_use_explicit_variants_without_family_expansion():
+    entries = fonts_and_slides_preview._font_info_entries(
+        [("HK Grotesk", None, ["regular"])],
+        {"HK Grotesk": {"regular", "bold", "bold_italic"}},
+    )
+
+    assert len(entries) == 1
+    assert entries[0].name == "HK Grotesk Regular"
+    assert entries[0].variant == "regular"
+    assert entries[0].variants == ["regular"]
+
+
 def test_preview_dimensions_preserve_converter_aspect_ratio():
     assert fonts_and_slides_preview._preview_dimensions_from_document(
         1280.0, 960.0
@@ -620,6 +632,7 @@ def test_get_available_and_unavailable_fonts_for_pptx_returns_bold_google_font_u
         (
             "Open Sans",
             "https://fonts.googleapis.com/css2?family=Open+Sans:wght@400&display=swap",
+            ["regular"],
         )
     ]
 
@@ -663,8 +676,68 @@ def test_get_available_and_unavailable_fonts_for_pptx_returns_variant_google_fon
         (
             "Montserrat",
             "https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,400;0,700;1,400&display=swap",
+            ["regular", "bold", "italic"],
         )
     ]
+
+
+def test_get_available_and_unavailable_fonts_for_pptx_is_variant_aware(
+    monkeypatch,
+):
+    async def fake_to_thread(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(pptx_font_utils.asyncio, "to_thread", fake_to_thread)
+    monkeypatch.setattr(
+        pptx_font_utils,
+        "extract_raw_fonts_and_embedded_details",
+        lambda pptx_path, temp_dir: (
+            {"HK Grotesk", "HK Grotesk Semi-Bold"},
+            [object()],
+            [],
+        ),
+    )
+    monkeypatch.setattr(
+        pptx_font_utils,
+        "extract_used_font_variants_from_pptx",
+        lambda pptx_path: {
+            "HK Grotesk": {"regular"},
+            "HK Grotesk Semi-Bold": {"bold"},
+        },
+    )
+    monkeypatch.setattr(
+        pptx_font_utils,
+        "get_index_of_matching_font_detail_or_none",
+        lambda font_name, _details: 0
+        if font_name == "HK Grotesk Semi-Bold"
+        else None,
+    )
+
+    async def fake_check_google_font_availability(font_name: str, variants=None) -> bool:
+        assert font_name == "HK Grotesk"
+        assert variants == ["regular"]
+        return False
+
+    monkeypatch.setattr(
+        pptx_font_utils,
+        "check_google_font_availability",
+        fake_check_google_font_availability,
+    )
+
+    available_fonts, unavailable_fonts = asyncio.run(
+        pptx_font_utils.get_available_and_unavailable_fonts_for_pptx(
+            "presentation.pptx", "/tmp"
+        )
+    )
+
+    assert available_fonts == [
+        (
+            "HK Grotesk Semi-Bold",
+            "https://example.com/just-a-placeholder-url.ttf",
+            ["bold"],
+        )
+    ]
+    assert unavailable_fonts == [("HK Grotesk", None, ["regular"])]
 
 
 def test_extract_used_fonts_from_pptx_only_returns_fonts_used_by_slide_content(tmp_path):

@@ -121,6 +121,37 @@ Analyze components `id` and `description` and create clusters of similar compone
 """
 
 
+def _ensure_unique_slide_layout_ids(layouts: list[SlideLayout]) -> list[SlideLayout]:
+    used_ids: set[str] = set()
+    unique_layouts: list[SlideLayout] = []
+    duplicate_count = 0
+
+    for index, layout in enumerate(layouts):
+        if layout.id not in used_ids:
+            used_ids.add(layout.id)
+            unique_layouts.append(layout)
+            continue
+
+        duplicate_count += 1
+        suffix = index + 1
+        candidate_id = f"{layout.id}_{suffix}"
+        while candidate_id in used_ids:
+            suffix += 1
+            candidate_id = f"{layout.id}_{suffix}"
+        used_ids.add(candidate_id)
+        unique_layouts.append(
+            layout.model_copy(deep=True, update={"id": candidate_id})
+        )
+
+    if duplicate_count:
+        LOGGER.warning(
+            "[templates.v2.generate] repaired duplicate slide layout ids count=%d",
+            duplicate_count,
+        )
+
+    return unique_layouts
+
+
 def generate_template(
     layouts: RawSlideLayouts,
     slide_image_urls: list[str],
@@ -168,9 +199,8 @@ def generate_template(
                 slide_count,
             )
 
-    generated = SlideLayouts(
-        layouts=[layouts_by_index[index] for index in range(slide_count)]
-    )
+    ordered_layouts = [layouts_by_index[index] for index in range(slide_count)]
+    generated = SlideLayouts(layouts=_ensure_unique_slide_layout_ids(ordered_layouts))
     LOGGER.info(
         "[templates.v2.generate] direct slide layout generation complete "
         "slides=%d components=%d duration_ms=%.1f",

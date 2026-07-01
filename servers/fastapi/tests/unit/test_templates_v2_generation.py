@@ -491,6 +491,29 @@ def test_generate_template_generates_each_slide_and_preserves_order(monkeypatch)
     ]
 
 
+def test_generate_template_repairs_duplicate_generated_layout_ids(monkeypatch):
+    raw_layouts = RawSlideLayouts(
+        layouts=[_raw_layout("first"), _raw_layout("second")]
+    )
+
+    def fake_generate(source_layout, slide_index, slide_image_url, fonts=None):
+        return SlideLayout.model_validate(_generated_layout("duplicate_layout"))
+
+    monkeypatch.setattr(
+        "templates.v2.generation.generate_slide_layout", fake_generate
+    )
+
+    generated = generate_template(
+        raw_layouts,
+        ["https://example.com/first.png", "https://example.com/second.png"],
+    )
+
+    assert [layout.id for layout in generated.layouts] == [
+        "duplicate_layout",
+        "duplicate_layout_2",
+    ]
+
+
 def test_generate_template_rejects_empty_source():
     with pytest.raises(ValueError, match="at least one"):
         generate_template(RawSlideLayouts(layouts=[]), [])

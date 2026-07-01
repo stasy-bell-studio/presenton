@@ -156,10 +156,11 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
     assert hero_elements[0]["runs"] == [
         {"text": "Generated headline", "font": {"bold": True}}
     ]
+    assert "text" not in hero_elements[0]
     assert hero_elements[1]["data"] == "/app_data/images/hero.png"
     assert hero_elements[2]["items"] == [
-        {"type": "text", "text": "First generated bullet"},
-        {"type": "text", "text": "Second generated bullet"},
+        [{"text": "First generated bullet"}],
+        [{"text": "Second generated bullet"}],
     ]
     assert hero_elements[3]["columns"][0]["runs"][0]["text"] == "Region"
     assert hero_elements[3]["rows"][0][1]["runs"][0]["text"] == "12"
@@ -176,6 +177,8 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
 
     assert hydrated["components"][1]["elements"][0]["runs"][0]["text"] == "42%"
     assert hydrated["components"][2]["elements"][0]["runs"][0]["text"] == "21%"
+    assert "text" not in hydrated["components"][1]["elements"][0]
+    assert "text" not in hydrated["components"][2]["elements"][0]
     assert ui["components"][0]["elements"][0]["runs"][0]["text"] == "Old headline"
 
 
@@ -320,6 +323,6 @@ def test_apply_template_v2_content_to_ui_matches_repeated_content_lengths():
     assert grid_children[0]["children"][0]["runs"][0]["text"] == "Generated grid one"
     assert grid_children[1]["children"][0]["runs"][0]["text"] == "Generated grid two"
     assert text_list_items == [
-        {"type": "text", "text": "Generated bullet one"},
-        {"type": "text", "text": "Generated bullet two"},
+        [{"text": "Generated bullet one"}],
+        [{"text": "Generated bullet two"}],
     ]

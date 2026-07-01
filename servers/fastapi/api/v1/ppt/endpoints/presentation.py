@@ -679,8 +679,8 @@ def _apply_template_v2_text_content(
     updated = copy.deepcopy(element)
     runs = element.get("runs")
     first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
-    updated["text"] = text
     updated["runs"] = [{**first_run, "text": text}]
+    updated.pop("text", None)
     return updated
 
 
@@ -713,11 +713,27 @@ def _apply_template_v2_text_list_content(
     if not isinstance(value, list):
         return copy.deepcopy(element)
 
+    existing_items = element.get("items")
+    if not isinstance(existing_items, list):
+        existing_items = []
+
     items = []
-    for item in value:
+    for index, item in enumerate(value):
         text = _read_template_v2_text(item)
         if text:
-            items.append({"type": "text", "text": text})
+            existing_runs = (
+                existing_items[index]
+                if index < len(existing_items) and isinstance(existing_items[index], list)
+                else None
+            )
+            first_run = (
+                existing_runs[0]
+                if isinstance(existing_runs, list)
+                and existing_runs
+                and isinstance(existing_runs[0], dict)
+                else {}
+            )
+            items.append([{**first_run, "text": text}])
 
     updated = copy.deepcopy(element)
     updated["items"] = items
