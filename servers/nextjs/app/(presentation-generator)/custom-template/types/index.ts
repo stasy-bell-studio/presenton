@@ -213,8 +213,15 @@ export interface FontManagerProps {
 
 export interface SlidePreviewSectionProps {
   previewData: FontUploadPreviewResponse;
-  onInitTemplate: () => void;
+  onInitTemplate: (metadata?: TemplateCreationMetadata) => void;
   isLoading: boolean;
+  defaultTemplateName: string;
+  requiresTemplateMetadata?: boolean;
+}
+
+export interface TemplateCreationMetadata {
+  name: string;
+  description?: string;
 }
 
 export interface TemplateCreationProgressProps {

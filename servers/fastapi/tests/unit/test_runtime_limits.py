@@ -250,6 +250,40 @@ def test_render_htmls_to_images_falls_back_for_older_runtime(tmp_path):
     ]
 
 
+def test_render_htmls_to_images_falls_back_when_batch_render_fails(tmp_path):
+    output_paths = [tmp_path / "preview-1.png", tmp_path / "preview-2.png"]
+    for output_path in output_paths:
+        output_path.write_bytes(b"png")
+    service = ExportTaskService(timeout_seconds=10)
+    rendered_htmls = []
+
+    async def fake_run_task(_task_payload, _response_error_detail):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Export task failed. returncode=244 stderr="
+                "[index] Failed to render HTML to images stdout="
+            ),
+        )
+
+    async def fake_render_html_to_image(html, width, height):
+        rendered_htmls.append((html, width, height))
+        return SimpleNamespace(path=str(output_paths[len(rendered_htmls) - 1]))
+
+    service._run_task = fake_run_task
+    service.render_html_to_image = fake_render_html_to_image
+
+    result = asyncio.run(
+        service.render_htmls_to_images(["<html>1</html>", "<html>2</html>"], 320, 180)
+    )
+
+    assert result.paths == [str(path) for path in output_paths]
+    assert rendered_htmls == [
+        ("<html>1</html>", 320, 180),
+        ("<html>2</html>", 320, 180),
+    ]
+
+
 def test_export_converter_resolver_accepts_linux_amd64_name(tmp_path, monkeypatch):
     monkeypatch.delenv("BUILT_PYTHON_MODULE_PATH", raising=False)
     monkeypatch.setattr("services.export_task_service.sys_platform", lambda: "linux")

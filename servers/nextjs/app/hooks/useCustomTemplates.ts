@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 
 import { compileCustomLayout, CompiledLayout } from "./compileLayout";
 import TemplateService from "../(presentation-generator)/services/api/template";
+import { useFontLoader as loadFontAssets } from "../(presentation-generator)/hooks/useFontLoad";
 import type { TemplateV2Layout } from "@/app/(presentation-generator)/custom-template/types";
-import { normalizeBackendAssetUrls } from "@/utils/api";
+import { normalizeTemplateV2Fonts } from "@/components/slide-editor/lib/template-v2-import";
+import { normalizeBackendAssetUrls, resolveBackendAssetUrl } from "@/utils/api";
 
 /**
  * API response types
@@ -25,6 +27,7 @@ interface TemplateV2DetailResponse {
     layout_count?: number;
     layouts?: unknown;
     raw_layouts?: unknown;
+    assets?: unknown;
 }
 
 export interface RawLayoutResponse {
@@ -67,6 +70,8 @@ export interface CustomTemplates {
     name: string;
 
     description?: string;
+
+    thumbnail?: string;
 
     layoutCount: number;
 
@@ -270,6 +275,9 @@ export function useCustomTemplateSummaries({
                     id: item.id,
                     name: item.name || "Custom Template",
                     description: item.description ?? undefined,
+                    thumbnail: item.thumbnail
+                        ? resolveBackendAssetUrl(item.thumbnail)
+                        : undefined,
                     layoutCount: item.layout_count ?? 0,
                     isCustom: true as const,
                     source: "v2",
@@ -568,7 +576,15 @@ export function useTemplateV2Preview(
     templateId: string,
     { enabled = true }: { enabled?: boolean } = {}
 ) {
-    const { layouts, loading, error } = useTemplateV2Details(enabled ? templateId : "");
+    const { template, layouts, loading, error } = useTemplateV2Details(enabled ? templateId : "");
+
+    useEffect(() => {
+        if (!enabled || !template) return;
+
+        const fonts = normalizeTemplateV2Fonts(template);
+        loadFontAssets(fonts);
+    }, [enabled, template]);
+
     return {
         previewLayouts: enabled ? layouts.slice(0, 2) : [],
         loading: enabled ? loading : false,

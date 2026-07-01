@@ -124,6 +124,12 @@ class _ListSession:
                     "Quarterly Review",
                     "Board deck template",
                     TEMPLATE_LAYOUTS,
+                    {
+                        "slide_image_urls": [
+                            "/app_data/images/slide-1.png",
+                            "/app_data/images/slide-2.png",
+                        ]
+                    },
                     now,
                     now,
                 )
@@ -224,6 +230,7 @@ def test_list_templates_v2_returns_paginated_summary():
     assert response.items[0].name == "Quarterly Review"
     assert response.items[0].description == "Board deck template"
     assert response.items[0].layout_count == 1
+    assert response.items[0].thumbnail == "/app_data/images/slide-1.png"
 
 
 def test_reconstruct_template_v2_slide_layout_returns_generated_layout(

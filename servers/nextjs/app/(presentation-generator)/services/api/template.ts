@@ -26,6 +26,7 @@ export interface TemplateV2ListItem {
     name: string;
     description?: string | null;
     layout_count?: number;
+    thumbnail?: string | null;
     created_at?: string;
     updated_at?: string;
 }
