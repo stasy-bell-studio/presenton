@@ -507,7 +507,7 @@ function RawDefaultPieChart({
 
   return (
     <Group listening={interactive}>
-      <Rect width={width} height={height} fill="#FFFFFF" />
+      <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
       <Text
         x={0}
         y={titleY}
@@ -723,7 +723,7 @@ function RawDefaultBarChart({
 
   return (
     <Group listening={interactive}>
-      <Rect width={width} height={height} fill="#FFFFFF" />
+      <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
       <Text
         x={0}
         y={titleY}
@@ -1033,7 +1033,7 @@ function RawDefaultAreaChart({
 
   return (
     <Group listening={interactive}>
-      <Rect width={width} height={height} fill="#FFFFFF" />
+      <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
       <Text
         x={0}
         y={titleY}
@@ -1335,7 +1335,7 @@ function RawDefaultLineChart({
 
   return (
     <Group listening={interactive}>
-      <Rect width={width} height={height} fill="#FFFFFF" />
+      <Rect width={width} height={height} fill="rgba(0,0,0,0)" />
       <Text
         x={0}
         y={titleY}

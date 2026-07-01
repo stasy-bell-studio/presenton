@@ -28,6 +28,7 @@ import {
 } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
+import { renderMarkdownTextRuns } from "@/components/slide-editor/lib/markdown-text";
 import { effectiveLineHeight } from "@/components/slide-editor/lib/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/lib/text-runs";
 import type {
@@ -1907,20 +1908,29 @@ function RawRichTextElement({
 function rawRenderTextRuns(element: RawElement): RenderTextRun[] {
   const baseFont = rawFont(element);
   const runs = readArray(element.runs)
-    .map((run) => {
+    .flatMap((run) => {
       const record = asRecord(run);
-      const text = displayText(readString(record?.text) ?? "");
-      if (!text) return null;
-      return {
+      const text = readString(record?.text) ?? "";
+      if (!text) return [];
+      const sourceRun = {
         text,
-        font: fontFromRecord(asRecord(record?.font), baseFont),
-      } satisfies RenderTextRun;
+        font: fontToSource(fontFromRecord(asRecord(record?.font), baseFont)),
+      } satisfies TextRun;
+      return renderMarkdownTextRuns([sourceRun]).map((renderedRun) => ({
+        text: renderedRun.text,
+        font: fontFromRecord(asRecord(renderedRun.font), baseFont),
+      }));
     })
-    .filter(Boolean) as RenderTextRun[];
+    .filter((run) => run.text) as RenderTextRun[];
 
   return runs.length > 0
     ? runs
-    : [{ text: displayText(rawTextContent(element)), font: baseFont }];
+    : renderMarkdownTextRuns([
+        { text: rawTextContent(element) || " ", font: fontToSource(baseFont) },
+      ]).map((run) => ({
+        text: run.text,
+        font: fontFromRecord(asRecord(run.font), baseFont),
+      }));
 }
 
 function textRunsHaveMixedStyle(runs: RenderTextRun[]) {
@@ -3785,8 +3795,11 @@ function rawTextRunsForEditor(element: RawElement): TextRun[] {
     })
     .filter(Boolean) as TextRun[];
 
-  if (runs.length > 0) return runs;
-  return [{ text: rawTextContent(element) || " ", font: fallbackFont }];
+  return renderMarkdownTextRuns(
+    runs.length > 0
+      ? runs
+      : [{ text: rawTextContent(element) || " ", font: fallbackFont }],
+  );
 }
 
 function setRawTextContent(
@@ -3797,12 +3810,14 @@ function setRawTextContent(
   const styled = style ? applyTextStyle(element, style) : element;
   const sourceRuns = readArray(styled.runs);
   const firstRun = asRecord(sourceRuns[0]) ?? {};
-  const runs = markdownTextRuns(text, rawFont(styled)).map((run) => ({
+  const runs = renderMarkdownTextRuns([
+    { text, font: fontToSource(rawFont(styled)) },
+  ]).map((run) => ({
     ...firstRun,
     text: run.text,
     font: {
       ...(asRecord(firstRun.font) ?? {}),
-      ...fontToSource(run.font),
+      ...(asRecord(run.font) ?? {}),
     },
   }));
   return {
@@ -3843,48 +3858,6 @@ function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
     line_height: font.line_height ?? font.lineHeight,
     letter_spacing: font.letter_spacing ?? font.letterSpacing,
   };
-}
-
-function markdownTextRuns(text: string, baseFont: RenderTextFont): RenderTextRun[] {
-  const runs: RenderTextRun[] = [];
-  let index = 0;
-  let buffer = "";
-  let bold = false;
-  let italic = false;
-
-  const flush = () => {
-    if (!buffer) return;
-    runs.push({
-      text: buffer,
-      font: {
-        ...baseFont,
-        bold: baseFont.bold || bold,
-        italic: baseFont.italic || italic,
-      },
-    });
-    buffer = "";
-  };
-
-  while (index < text.length) {
-    const nextTwo = text.slice(index, index + 2);
-    const nextOne = text[index];
-    if (nextTwo === "**" || nextTwo === "__") {
-      flush();
-      bold = !bold;
-      index += 2;
-      continue;
-    }
-    if (nextOne === "*" || nextOne === "_") {
-      flush();
-      italic = !italic;
-      index += 1;
-      continue;
-    }
-    buffer += nextOne;
-    index += 1;
-  }
-  flush();
-  return runs.length > 0 ? runs : [{ text: " ", font: baseFont }];
 }
 
 function rawTextListContent(element: RawElement) {
