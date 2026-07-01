@@ -8,7 +8,6 @@ import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils"
 import {
     useCustomTemplateSummaries,
     useCustomTemplatePreview,
-    useTemplateV2Preview,
     CustomTemplates,
 } from "@/app/hooks/useCustomTemplates";
 import CreateCustomTemplate from "./CreateCustomTemplate";
@@ -19,20 +18,34 @@ import {
     LayoutsBadge,
     InbuiltTemplatePreview,
     CustomTemplatePreview,
-    TemplateV2CustomTemplatePreview,
 } from "../../../components/TemplatePreviewComponents";
+
+function TemplateV2ThumbnailPreview({ thumbnail, templateName }: { thumbnail?: string; templateName: string }) {
+    if (!thumbnail) {
+        return (
+            <div className="relative z-10 flex h-full items-center justify-center rounded-xl border border-[#EDEEEF] bg-white/80">
+                <div className="h-10 w-16 rounded-md border border-dashed border-[#C9CDD8] bg-[#F7F8FB]" />
+            </div>
+        );
+    }
+
+    return (
+        <div className="relative z-10 flex h-full items-center justify-center">
+            <div
+                aria-label={`${templateName} thumbnail`}
+                className="h-full w-full rounded-xl border border-[#EDEEEF] bg-white bg-cover bg-center shadow-sm"
+                role="img"
+                style={{ backgroundImage: `url(${JSON.stringify(thumbnail)})` }}
+            />
+        </div>
+    );
+}
 
 export const CustomTemplateCard = React.memo(function CustomTemplateCard({ template }: { template: CustomTemplates }) {
     const router = useRouter();
     const isTemplateV2 = template.source === "v2";
     const { previewLayouts, loading } = useCustomTemplatePreview(`${template.id}`, {
         enabled: !isTemplateV2,
-    });
-    const {
-        previewLayouts: templateV2PreviewLayouts,
-        loading: templateV2Loading,
-    } = useTemplateV2Preview(`${template.id}`, {
-        enabled: isTemplateV2,
     });
     const handleOpen = useCallback(() => {
         trackEvent(MixpanelEvent.Templates_Custom_Opened, { template_id: template.id, template_name: template.name });
@@ -55,10 +68,9 @@ export const CustomTemplateCard = React.memo(function CustomTemplateCard({ templ
             <TemplatePreviewStage>
                 <LayoutsBadge count={template.layoutCount} />
                 {isTemplateV2 ? (
-                    <TemplateV2CustomTemplatePreview
-                        previewLayouts={templateV2PreviewLayouts}
-                        loading={templateV2Loading}
-                        templateId={template.id}
+                    <TemplateV2ThumbnailPreview
+                        thumbnail={template.thumbnail}
+                        templateName={template.name}
                     />
                 ) : (
                     <CustomTemplatePreview
@@ -78,6 +90,7 @@ export const CustomTemplateCard = React.memo(function CustomTemplateCard({ templ
     return (
         prev.template.id === next.template.id &&
         prev.template.name === next.template.name &&
+        prev.template.thumbnail === next.template.thumbnail &&
         prev.template.layoutCount === next.template.layoutCount &&
         prev.template.source === next.template.source
     );

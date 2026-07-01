@@ -39,6 +39,11 @@ type LibreOfficeGateAction = {
     payload: Partial<LibreOfficeGateSnapshot>;
 };
 
+function getDefaultTemplateName(file: File | null): string {
+    if (!file?.name) return "";
+    return file.name.replace(/\.pptx$/i, "").trim();
+}
+
 const initialLibreOfficeGate: LibreOfficeGateSnapshot = {
     status: "checking",
     message: "Checking LibreOffice availability...",
@@ -579,6 +584,7 @@ const CustomTemplatePage = ({
     const showSlides = state.step === 'template-creation' || state.step === 'completed';
     const isProcessingCompleted = state.step === 'completed';
     const hasV2GeneratedSlides = slides.some((slide) => slide.v2Layout);
+    const defaultTemplateName = getDefaultTemplateName(selectedFile);
 
 
 
@@ -628,6 +634,8 @@ const CustomTemplatePage = ({
                             previewData={state.previewData}
                             onInitTemplate={initTemplateCreation}
                             isLoading={state.isLoading}
+                            defaultTemplateName={defaultTemplateName}
+                            requiresTemplateMetadata={useTemplateV2Generation}
                         />
                     )}
 

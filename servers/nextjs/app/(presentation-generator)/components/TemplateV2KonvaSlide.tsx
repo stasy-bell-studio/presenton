@@ -28,6 +28,7 @@ import {
 } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
+import { disintegrateTemplateV2ComponentInUi } from "@/components/slide-editor/lib/template-v2-disintegration";
 import { renderMarkdownTextRuns } from "@/components/slide-editor/lib/markdown-text";
 import { effectiveLineHeight } from "@/components/slide-editor/lib/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/lib/text-runs";
@@ -633,6 +634,27 @@ function TemplateV2KonvaSlideComponent({
     [selection, updateComponent],
   );
 
+  const disintegrateSelectedComponent = useCallback(() => {
+    if (selection?.kind !== "component") return;
+    const result = disintegrateTemplateV2ComponentInUi(
+      currentUiRef.current,
+      selection.componentIndex,
+      {
+        childArrayInfo,
+        componentBox,
+        elementBox,
+        isBoxVisualType,
+        layoutChildren,
+      },
+    );
+    if (!result) return;
+    commitUi(result.ui as RawUi);
+    setSelection(result.selection);
+    clearInlineEdit();
+    clearTableCellSelection();
+    setIconEditorSelection(null);
+  }, [clearInlineEdit, clearTableCellSelection, commitUi, selection]);
+
   const openImageUpload = useCallback(
     (elementSelection: ElementSelection) => {
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
@@ -1016,6 +1038,11 @@ function TemplateV2KonvaSlideComponent({
           box={layoutToolbarTarget.box}
           element={layoutToolbarTarget.element}
           onChange={applyLayoutElementChange}
+          onDisintegrate={
+            selection?.kind === "component"
+              ? disintegrateSelectedComponent
+              : undefined
+          }
         />
       ) : null}
       {isEditMode &&

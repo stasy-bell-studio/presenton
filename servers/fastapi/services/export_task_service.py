@@ -591,12 +591,19 @@ class ExportTaskService:
                 "HTML-to-images export task did not produce a response file",
             )
         except HTTPException as exc:
-            if "Invalid task type" not in str(exc.detail):
+            if "Invalid task type" in str(exc.detail):
+                LOGGER.warning(
+                    "[export_runtime] html-to-images is unavailable; "
+                    "falling back to one task per HTML document"
+                )
+            elif exc.status_code == 500:
+                LOGGER.warning(
+                    "[export_runtime] html-to-images failed; "
+                    "falling back to one task per HTML document. detail=%s",
+                    exc.detail,
+                )
+            else:
                 raise
-            LOGGER.warning(
-                "[export_runtime] html-to-images is unavailable; "
-                "falling back to one task per HTML document"
-            )
             results = [
                 await self.render_html_to_image(html, width, height) for html in htmls
             ]

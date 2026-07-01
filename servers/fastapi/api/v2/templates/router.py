@@ -64,6 +64,7 @@ class TemplateV2ListItem(BaseModel):
     name: str
     description: Optional[str] = None
     layout_count: int = 0
+    thumbnail: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -262,6 +263,20 @@ def _get_template_fonts(template: TemplateV2) -> dict[str, str]:
     return _coerce_font_map(template.assets.get("fonts"))
 
 
+def _get_template_thumbnail_from_assets(assets: Any) -> str | None:
+    if not isinstance(assets, dict):
+        return None
+
+    slide_image_urls = assets.get("slide_image_urls")
+    if not isinstance(slide_image_urls, list):
+        return None
+
+    for slide_image_url in slide_image_urls:
+        if isinstance(slide_image_url, str) and slide_image_url.strip():
+            return slide_image_url.strip()
+    return None
+
+
 @TEMPLATES_V2_ROUTER.get("", response_model=TemplateV2ListResponse)
 async def list_templates_v2(
     page: int = Query(default=1, ge=1),
@@ -276,6 +291,7 @@ async def list_templates_v2(
             TemplateV2.name,
             TemplateV2.description,
             TemplateV2.layouts,
+            TemplateV2.assets,
             TemplateV2.created_at,
             TemplateV2.updated_at,
         )
@@ -290,10 +306,11 @@ async def list_templates_v2(
             name=name,
             description=description,
             layout_count=_count_layouts(layouts),
+            thumbnail=_get_template_thumbnail_from_assets(assets),
             created_at=created_at,
             updated_at=updated_at,
         )
-        for template_id, name, description, layouts, created_at, updated_at in result.all()
+        for template_id, name, description, layouts, assets, created_at, updated_at in result.all()
     ]
     return TemplateV2ListResponse(
         items=items,

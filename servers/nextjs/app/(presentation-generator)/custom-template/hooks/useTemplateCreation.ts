@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { notify } from "@/components/ui/sonner";
 import { getHeader, getHeaderForFormData } from "@/app/(presentation-generator)/services/api/header";
 import { ApiResponseHandler } from "@/app/(presentation-generator)/services/api/api-error-handler";
@@ -11,6 +11,7 @@ import {
     ProcessedSlide,
     TemplateV2ImportResponse,
     TemplateV2Layout,
+    TemplateCreationMetadata,
 } from "../types";
 import { getApiUrl } from "@/utils/api";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
@@ -33,6 +34,19 @@ const initialState: TemplateCreationState = {
 
 function readTemplateV2Id(template: TemplateV2ImportResponse): string | null {
     return typeof template.id === "string" ? template.id : null;
+}
+
+function normalizeTemplateMetadata(
+    metadata?: TemplateCreationMetadata | null
+): TemplateCreationMetadata | null {
+    const name = metadata?.name?.trim();
+    if (!name) return null;
+
+    const description = metadata?.description?.trim();
+    return {
+        name,
+        ...(description ? { description } : {}),
+    };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,6 +83,7 @@ export const useTemplateCreation = ({
     const [state, setState] = useState<TemplateCreationState>(initialState);
     const [uploadedFonts, setUploadedFonts] = useState<UploadedFont[]>([]);
     const [slides, setSlides] = useState<ProcessedSlide[]>([]);
+    const templateMetadataRef = useRef<TemplateCreationMetadata | null>(null);
 
     // Helper to update state partially
     const updateState = useCallback((updates: Partial<TemplateCreationState>) => {
@@ -80,6 +95,7 @@ export const useTemplateCreation = ({
         setState(initialState);
         setUploadedFonts([]);
         setSlides([]);
+        templateMetadataRef.current = null;
     }, []);
 
     // Step 1: Check fonts in PPTX file
@@ -241,8 +257,13 @@ export const useTemplateCreation = ({
 
     const generateTemplateV2 = useCallback(async (
         previewData: FontUploadPreviewResponse,
-        options: { retrySlideIndex?: number } = {}
+        options: {
+            retrySlideIndex?: number;
+            metadata?: TemplateCreationMetadata | null;
+        } = {}
     ): Promise<string | null> => {
+        const metadata = normalizeTemplateMetadata(options.metadata)
+            ?? templateMetadataRef.current;
         const initialSlides: ProcessedSlide[] = previewData.slide_image_urls.map(
             (url, index) => ({
                 slide_number: index + 1,
@@ -279,6 +300,8 @@ export const useTemplateCreation = ({
                     pptx_url: previewData.modified_pptx_url,
                     slide_image_urls: previewData.slide_image_urls,
                     fonts: previewData.fonts,
+                    ...(metadata ? { name: metadata.name } : {}),
+                    ...(metadata?.description ? { description: metadata.description } : {}),
                 }),
             });
 
@@ -558,14 +581,23 @@ export const useTemplateCreation = ({
     }, [updateState]);
 
     // Step 3: Initialize template creation
-    const initTemplateCreation = useCallback(async (): Promise<string | null> => {
+    const initTemplateCreation = useCallback(async (
+        metadata?: TemplateCreationMetadata
+    ): Promise<string | null> => {
         if (!state.previewData) {
             notify.error("No preview data", "Generate a preview before continuing.");
             return null;
         }
 
+        const normalizedMetadata = normalizeTemplateMetadata(metadata);
+        if (normalizedMetadata) {
+            templateMetadataRef.current = normalizedMetadata;
+        }
+
         if (useTemplateV2Generation) {
-            return generateTemplateV2(state.previewData);
+            return generateTemplateV2(state.previewData, {
+                metadata: normalizedMetadata,
+            });
         }
 
         updateState({ isLoading: true, error: null, step: 'template-creation' });
