@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type { SlideElement } from "../lib/slide-schema";
 import { rootPath, type ElementPath } from "../lib/element-path";
+import type { TextSelectionRange } from "../lib/text-runs";
 import {
   BulletsToolbar,
   ChartToolbar,
@@ -21,6 +22,7 @@ type ElementToolbarProps = {
   path: ElementPath;
   scale: number;
   selectedTableCell: TableCellSelection | null;
+  textSelectionRange?: TextSelectionRange | null;
   onChange: (index: number, element: SlideElement, path?: ElementPath) => void;
   onEditChart?: (index: number, path?: ElementPath) => void;
   onEditImage: (index: number, path?: ElementPath) => void;
@@ -28,12 +30,13 @@ type ElementToolbarProps = {
 };
 
 const TOOLBAR_RENDERERS = {
-  text: ({ element, index, onChange, path, scale }) =>
+  text: ({ element, index, onChange, path, scale, textSelectionRange }) =>
     element.type === "text" ? (
       <TextToolbar
         element={element}
         index={index}
         scale={scale}
+        selectionRange={textSelectionRange}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

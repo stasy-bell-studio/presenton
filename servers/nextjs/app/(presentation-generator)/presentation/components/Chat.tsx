@@ -23,7 +23,13 @@ import React, {
 import { notify } from "@/components/ui/sonner";
 import MarkdownRenderer from "@/components/MarkDownRender";
 import { PresentationChatApi } from "../../services/api/chat";
-import type { ChatStreamTrace } from "../../services/api/chat";
+import type {
+  ChatConversationSummary,
+  ChatHistoryMessage,
+  ChatMessageResponse,
+  ChatStreamHandlers,
+  ChatStreamTrace,
+} from "../../services/api/chat";
 import ToolTip from "@/components/ToolTip";
 import { cn } from "@/lib/utils";
 
@@ -235,6 +241,15 @@ const presentationQuickPrompts = [
   "Convert to pitch flow",
 ];
 
+const templateV2QuickPrompts = [
+  "Summarize this template",
+  "Find editable text",
+  "Change slide 2 title",
+  "Update an image URL",
+  "Remove a component",
+  "Inspect slide 1 layout",
+];
+
 type ChatMessage = {
   id: string;
   role: "user" | "assistant" | "error";
@@ -245,7 +260,11 @@ type ChatMessage = {
 
 type ChatProps = {
   presentationId: string;
-  variant?: "presentation" | "outline";
+  resourceId?: string;
+  chatAdapter?: ChatApiAdapter;
+  conversationStorageScope?: string;
+  resourceLabel?: string;
+  variant?: "presentation" | "outline" | "template-v2";
   currentSlide?: number;
   onBeforeSend?: () => Promise<void> | void;
   onPresentationChanged?: () => Promise<void> | void;
@@ -259,6 +278,40 @@ type ChatProps = {
   }) => void;
   onChatSendingStateChange?: (isSending: boolean) => void;
   onFollowModeChange?: (isEnabled: boolean) => void;
+};
+
+export type ChatApiAdapter = {
+  listConversations: (resourceId: string) => Promise<ChatConversationSummary[]>;
+  getHistory: (
+    resourceId: string,
+    conversationId: string
+  ) => Promise<{ messages: ChatHistoryMessage[] }>;
+  streamMessage: (
+    payload: {
+      resourceId: string;
+      message: string;
+      conversation_id?: string;
+    },
+    handlers?: ChatStreamHandlers,
+    options?: { signal?: AbortSignal }
+  ) => Promise<ChatMessageResponse>;
+};
+
+const presentationChatAdapter: ChatApiAdapter = {
+  listConversations: (resourceId) =>
+    PresentationChatApi.listConversations(resourceId),
+  getHistory: (resourceId, conversationId) =>
+    PresentationChatApi.getHistory(resourceId, conversationId),
+  streamMessage: (payload, handlers, options) =>
+    PresentationChatApi.streamMessage(
+      {
+        presentation_id: payload.resourceId,
+        message: payload.message,
+        conversation_id: payload.conversation_id,
+      },
+      handlers,
+      options
+    ),
 };
 
 type AssistantActivity = {
@@ -278,8 +331,8 @@ const createMessageId = () => {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
 
-const conversationStorageKey = (presentationId: string) =>
-  `presenton:chat:conversationId:${presentationId}`;
+const conversationStorageKey = (scope: string, resourceId: string) =>
+  `presenton:chat:${scope}:conversationId:${resourceId}`;
 
 const AssistantMarker = () => (
   <div className="mb-3 flex items-center gap-1.5 text-[#A4A7AE]">
@@ -304,6 +357,18 @@ const TOOL_LABELS: Record<string, string> = {
   saveSlide: "Slide saver",
   deleteSlide: "Slide remover",
   setPresentationTheme: "Theme applier",
+  getTemplateSummary: "Template reader",
+  getSlideLayout: "Template slide reader",
+  searchTemplateContent: "Template search",
+  getEditableElements: "Element finder",
+  updateElementContent: "Content updater",
+  deleteComponent: "Component remover",
+  swapComponentVariant: "Variant swapper",
+  getSlideElements: "Element finder",
+  updateSlideElement: "Content updater",
+  deleteSlideComponent: "Block remover",
+  deleteSlideElement: "Element remover",
+  addSlideComponent: "Block adder",
 };
 
 const MUTATING_TOOLS = new Set([
@@ -314,10 +379,27 @@ const MUTATING_TOOLS = new Set([
   "saveSlide",
   "deleteSlide",
   "setPresentationTheme",
+  "updateElementContent",
+  "deleteComponent",
+  "swapComponentVariant",
+  "updateSlideElement",
+  "deleteSlideComponent",
+  "deleteSlideElement",
+  "addSlideComponent",
 ]);
 // Only focus slides when the agent is actively mutating them.
 // Read/open traces (e.g. getSlideAtIndex) can happen ahead of edits and feel jumpy.
-const SLIDE_FOCUS_TOOLS = new Set(["saveSlide", "deleteSlide"]);
+const SLIDE_FOCUS_TOOLS = new Set([
+  "saveSlide",
+  "deleteSlide",
+  "updateElementContent",
+  "deleteComponent",
+  "swapComponentVariant",
+  "updateSlideElement",
+  "deleteSlideComponent",
+  "deleteSlideElement",
+  "addSlideComponent",
+]);
 const SLIDE_FOCUS_STATUSES = new Set(["start"]);
 const MIN_SLIDE_FOCUS_DWELL_MS = 700;
 
@@ -382,6 +464,27 @@ const humanizeTraceMessage = (message: string, tool?: string) => {
   }
   if (lower === "applying presentation theme") {
     return "Applying the selected theme.";
+  }
+  if (lower === "reading template structure") {
+    return "Reading the template structure.";
+  }
+  if (lower === "opening the requested template slide") {
+    return "Opening the selected template slide.";
+  }
+  if (lower === "searching template content") {
+    return "Searching template content.";
+  }
+  if (lower === "finding editable elements") {
+    return "Finding editable elements.";
+  }
+  if (lower === "updating template content") {
+    return "Updating template content.";
+  }
+  if (lower === "deleting the template component") {
+    return "Deleting the selected component.";
+  }
+  if (lower === "swapping component variant") {
+    return "Swapping the component variant.";
   }
   if (lower.startsWith("using tools:")) {
     const toolNames = trimmed
@@ -533,6 +636,10 @@ const readTraceSlideIndex = (trace: ChatStreamTrace) => {
 
 const Chat = ({
   presentationId,
+  resourceId,
+  chatAdapter = presentationChatAdapter,
+  conversationStorageScope = "presentation",
+  resourceLabel = "presentation",
   variant = "presentation",
   currentSlide,
   onBeforeSend,
@@ -569,6 +676,7 @@ const Chat = ({
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
   const didIncrementalRefreshRef = useRef(false);
+  const activeResourceId = resourceId ?? presentationId;
 
   useEffect(() => {
     let cancelled = false;
@@ -583,7 +691,7 @@ const Chat = ({
     setErrorMessage(null);
     setExpandedActivityByMessage({});
 
-    if (!presentationId) {
+    if (!activeResourceId) {
       return;
     }
 
@@ -593,12 +701,13 @@ const Chat = ({
         if (typeof sessionStorage === "undefined") {
           return;
         }
-        const sKey = conversationStorageKey(presentationId);
+        const sKey = conversationStorageKey(
+          conversationStorageScope,
+          activeResourceId
+        );
         let activeId = sessionStorage.getItem(sKey) ?? null;
         if (!activeId) {
-          const list = await PresentationChatApi.listConversations(
-            presentationId
-          );
+          const list = await chatAdapter.listConversations(activeResourceId);
           if (Array.isArray(list) && list.length > 0) {
             activeId = list[0]!.conversation_id;
             sessionStorage.setItem(sKey, activeId);
@@ -607,10 +716,7 @@ const Chat = ({
         if (!activeId) {
           return;
         }
-        const data = await PresentationChatApi.getHistory(
-          presentationId,
-          activeId
-        );
+        const data = await chatAdapter.getHistory(activeResourceId, activeId);
         if (cancelled) {
           return;
         }
@@ -648,7 +754,7 @@ const Chat = ({
     return () => {
       cancelled = true;
     };
-  }, [presentationId]);
+  }, [activeResourceId, chatAdapter, conversationStorageScope]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
@@ -795,6 +901,11 @@ const Chat = ({
         "UI context: the user is editing the outline draft before template/layout selection. Use outline draft tools for outline add/edit/delete/reorder requests; do not use layout or finished-slide tools for outline-only edits."
       );
     }
+    if (variant === "template-v2") {
+      contextLines.push(
+        "UI context: the user is editing a TemplateV2 reusable template. Use TemplateV2 tools only; do not use v1 presentation slide tools or regenerate whole slides."
+      );
+    }
 
     if (typeof currentSlide === "number") {
       contextLines.push(
@@ -818,8 +929,10 @@ const Chat = ({
     setActiveMutationToolCount(0);
     setErrorMessage(null);
     setExpandedActivityByMessage({});
-    if (presentationId && typeof sessionStorage !== "undefined") {
-      sessionStorage.removeItem(conversationStorageKey(presentationId));
+    if (activeResourceId && typeof sessionStorage !== "undefined") {
+      sessionStorage.removeItem(
+        conversationStorageKey(conversationStorageScope, activeResourceId)
+      );
     }
 
     inputRef.current?.focus();
@@ -964,10 +1077,10 @@ const Chat = ({
       return;
     }
 
-    if (!presentationId) {
+    if (!activeResourceId) {
       notify.error(
-        "Presentation not ready",
-        "The presentation is not ready yet."
+        `${resourceLabel.charAt(0).toUpperCase()}${resourceLabel.slice(1)} not ready`,
+        `The ${resourceLabel} is not ready yet.`
       );
       return;
     }
@@ -1006,9 +1119,9 @@ const Chat = ({
 
     try {
       await onBeforeSend?.();
-      const response = await PresentationChatApi.streamMessage(
+      const response = await chatAdapter.streamMessage(
         {
-          presentation_id: presentationId,
+          resourceId: activeResourceId,
           message: buildBackendMessage(trimmedMessage),
           conversation_id: conversationId ?? undefined,
         },
@@ -1077,8 +1190,11 @@ const Chat = ({
           typeof response.conversation_id === "string"
             ? response.conversation_id
             : previous;
-        if (next && presentationId && typeof sessionStorage !== "undefined") {
-          sessionStorage.setItem(conversationStorageKey(presentationId), next);
+        if (next && activeResourceId && typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem(
+            conversationStorageKey(conversationStorageScope, activeResourceId),
+            next
+          );
         }
         return next;
       });
@@ -1167,6 +1283,7 @@ const Chat = ({
   };
 
   const isOutlineVariant = variant === "outline";
+  const isTemplateV2Variant = variant === "template-v2";
 
   return (
     <div className={cn("flex h-full w-full flex-col bg-white", "")}>
@@ -1228,6 +1345,26 @@ const Chat = ({
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {outlineQuickPrompts.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => applyPrompt(prompt)}
+                      className="cursor-pointer rounded-[10px] border border-[#F4F4F4] px-2.5 py-1 text-left transition-colors hover:bg-[#FAFAFA]"
+                    >
+                      <span className="text-[11px] font-normal leading-[15px] tracking-[0.367px] text-[#364153]">
+                        {prompt}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : isTemplateV2Variant ? (
+              <div>
+                <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
+                  QUICK PROMPTS
+                </h4>
+                <div className="flex flex-wrap gap-2">
+                  {templateV2QuickPrompts.map((prompt) => (
                     <button
                       key={prompt}
                       type="button"
@@ -1411,6 +1548,8 @@ const Chat = ({
           placeholder={
             isOutlineVariant
               ? "Regenerate this outline"
+              : isTemplateV2Variant
+              ? "Change slide 2 title"
               : "Improve slide design"
           }
           aria-invalid={Boolean(errorMessage)}

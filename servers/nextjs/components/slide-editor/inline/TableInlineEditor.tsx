@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import type {
   TableCellSelection,
   TableSlideElement,
@@ -8,12 +8,17 @@ import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
-  setTableCellText,
   tableRowsAsStrings,
 } from "../lib/element-model";
-import type { Font, TableCell } from "../lib/slide-schema";
+import type { Font, TableCell, TextRun } from "../lib/slide-schema";
+import { effectiveLineHeight } from "../lib/text-line-height";
+import {
+  textRunsContent,
+  type TextSelectionRange,
+} from "../lib/text-runs";
 import { inlineStyles } from "./inlineStyles";
 import { TextToolbar } from "./TextToolbar";
+import { TiptapInlineTextEditor } from "./TiptapInlineTextEditor";
 
 const DEFAULT_TABLE_NAME = "Default Table";
 const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
@@ -34,6 +39,8 @@ export function TableInlineEditor({
   onClose: () => void;
 }) {
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const [textSelectionRange, setTextSelectionRange] =
+    useState<TextSelectionRange | null>(null);
   const box = elementBox(element);
   const rows = [element.columns, ...element.rows];
   const stringRows = tableRowsAsStrings(element);
@@ -90,6 +97,16 @@ export function TableInlineEditor({
     runs: normalizedTextRuns(cell, font),
   };
   const textFont = elementFont(textElement);
+  const cellText = textRunsContent(textElement.runs);
+  const textFontSizePx = textFont.size * PT_TO_PX * (scale / PX_PER_IN);
+  const editorLineHeight = effectiveLineHeight({
+    text: cellText,
+    width: Math.max(1, cellWidth - paddingX * 2),
+    fontSize: textFontSizePx,
+    lineHeight: textFont.lineHeight,
+    fallback: 1.12,
+    wrap: textFont.wrap,
+  });
   const closeAfterBlur = useCallback(() => {
     window.setTimeout(() => {
       const active = document.activeElement;
@@ -103,9 +120,9 @@ export function TableInlineEditor({
       onChange(index, {
         ...element,
         columns: Array.from({ length: columnCount }, (_, nextColIndex) =>
-            nextColIndex === colIndex
-              ? nextCell
-              : element.columns[nextColIndex] ?? { runs: [] },
+          nextColIndex === colIndex
+            ? nextCell
+            : element.columns[nextColIndex] ?? { runs: [] },
         ),
       });
       return;
@@ -125,16 +142,18 @@ export function TableInlineEditor({
     });
   };
 
-  const updateCellText = (text: string) => {
-    updateCell(setTableCellText(cell, text));
-  };
-
   const updateCellTextElement = (nextTextElement: TextSlideElement) => {
     updateCell({
       ...cell,
       font: nextTextElement.font ?? cell.font,
       alignment: nextTextElement.alignment?.horizontal ?? cell.alignment,
       runs: normalizedTextRuns(nextTextElement, nextTextElement.font ?? font),
+    });
+  };
+  const updateCellRuns = (runs: TextRun[]) => {
+    updateCell({
+      ...cell,
+      runs: runs.length > 0 ? runs : [{ text: " ", font }],
     });
   };
 
@@ -157,29 +176,21 @@ export function TableInlineEditor({
           element={textElement}
           index={index}
           scale={scale}
+          selectionRange={textSelectionRange}
           onChange={(_index, nextTextElement) =>
             updateCellTextElement(nextTextElement)
           }
         />
       </div>
-      <textarea
-        autoFocus
-        data-inline-edit-ignore="true"
-        value={textRunsContent(textElement.runs)}
-        onMouseDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        onChange={(event) => updateCellText(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onClose();
-          }
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            onClose();
-          }
-        }}
-        style={{
+      <TiptapInlineTextEditor
+        baseFont={textElement.font ?? font}
+        runs={textElement.runs}
+        onBlurOutside={onClose}
+        onCommitShortcut={onClose}
+        onEscape={onClose}
+        onRunsChange={updateCellRuns}
+        onSelectionChange={setTextSelectionRange}
+        editorStyle={{
           ...inlineStyles.textEditor,
           ...cellEditorStyle,
           left: cellLeft,
@@ -194,11 +205,11 @@ export function TableInlineEditor({
           color: withHash(textFont.color),
           caretColor: withHash(textFont.color),
           fontFamily: `${textFont.family}, Helvetica, sans-serif`,
-          fontSize:
-            textFont.size * PT_TO_PX * (scale / PX_PER_IN),
+          fontSize: textFontSizePx,
           fontStyle: textFont.italic ? "italic" : "normal",
           fontWeight: textFont.bold ? 700 : 400,
-          lineHeight: textFont.lineHeight ?? 1.12,
+          textDecoration: textFont.underline ? "underline" : "none",
+          lineHeight: editorLineHeight,
           textAlign: textElement.alignment?.horizontal ?? "left",
           letterSpacing:
             ((textFont.letterSpacing ?? 0) / 100) *
@@ -254,10 +265,6 @@ function normalizedTextRuns(
     text: run.text || " ",
     font: run.font ?? font ?? undefined,
   }));
-}
-
-function textRunsContent(runs: TableCell["runs"]) {
-  return runs.map((run) => run.text).join("");
 }
 
 function formatTableCell(cell: string) {

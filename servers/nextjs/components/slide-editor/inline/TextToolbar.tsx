@@ -1,4 +1,10 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -11,7 +17,18 @@ import {
 } from "lucide-react";
 import type { TextSlideElement } from "../state";
 import { withHash } from "../editorUtils";
-import { elementFont, mergeFont } from "../lib/element-model";
+import type { Font } from "../lib/slide-schema";
+import {
+  elementFont,
+  mergeFont,
+  mergeFontForTextSelection,
+} from "../lib/element-model";
+import {
+  fontForTextSelection,
+  normalizedTextSelectionRange,
+  textRunsContent,
+  type TextSelectionRange,
+} from "../lib/text-runs";
 import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 
@@ -36,9 +53,20 @@ const HORIZONTAL_ALIGNMENT_ICONS = {
 
 const MIN_FONT_SIZE = 4;
 const MAX_FONT_SIZE = 240;
+const MIN_LETTER_SPACING = -200;
+const MAX_LETTER_SPACING = 600;
+const MIN_LINE_HEIGHT = 0.8;
+const MAX_LINE_HEIGHT = 2.2;
+const DEFAULT_LINE_HEIGHT = 1.15;
+
+type TextToolbarPanel = "opacity" | "letterSpacing" | "lineHeight";
 
 function clampFontSize(size: number) {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size));
+}
+
+function clampMetric(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function formatToolbarFontSize(size: number) {
@@ -46,30 +74,75 @@ function formatToolbarFontSize(size: number) {
   return Number.isInteger(size) ? String(size) : size.toFixed(1);
 }
 
+function formatLineHeight(value: number) {
+  return value.toFixed(2).replace(/\.?0+$/, "");
+}
+
+function formatLetterSpacing(value: number) {
+  const points = value / 100;
+  return `${points.toFixed(1).replace(/\.0$/, "")} pt`;
+}
+
 export function TextToolbar({
   element,
   index,
   scale,
+  selectionRange,
   onChange,
 }: {
   element: TextSlideElement;
   index: number;
   scale: number;
+  selectionRange?: TextSelectionRange | null;
   onChange: (index: number, element: TextSlideElement) => void;
 }) {
-  const font = elementFont(element);
+  const activeSelectionRange = normalizedTextSelectionRange(
+    selectionRange,
+    textRunsContent(element.runs).length,
+  );
+  const selectedFont = fontForTextSelection(element, activeSelectionRange);
+  const font = elementFont({ font: selectedFont ?? element.font });
   const horizontalAlignment = element.alignment?.horizontal ?? "left";
-  const verticalAlignment = element.alignment?.vertical ?? "top";
+  const letterSpacing = font.letterSpacing ?? 0;
+  const lineHeight = font.lineHeight ?? DEFAULT_LINE_HEIGHT;
   const HorizontalAlignmentIcon =
     HORIZONTAL_ALIGNMENT_ICONS[horizontalAlignment];
   const fontFamilies = FONT_FAMILIES.includes(font.family)
     ? FONT_FAMILIES
     : [font.family, ...FONT_FAMILIES];
-  const [openPanel, setOpenPanel] = useState<"opacity" | null>(null);
+  const [openPanel, setOpenPanel] = useState<TextToolbarPanel | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const closePanelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const clearScheduledPanelClose = () => {
+    if (closePanelTimeoutRef.current == null) return;
+    clearTimeout(closePanelTimeoutRef.current);
+    closePanelTimeoutRef.current = null;
+  };
+  const openHoverPanel = (panel: TextToolbarPanel) => {
+    clearScheduledPanelClose();
+    setOpenPanel(panel);
+  };
+  const schedulePanelClose = () => {
+    clearScheduledPanelClose();
+    closePanelTimeoutRef.current = setTimeout(() => {
+      setOpenPanel(null);
+      closePanelTimeoutRef.current = null;
+    }, 180);
+  };
+  useEffect(() => clearScheduledPanelClose, []);
+  const updateFont = (fontPatch: Partial<Font>) => {
+    onChange(
+      index,
+      activeSelectionRange
+        ? mergeFontForTextSelection(element, activeSelectionRange, fontPatch)
+        : mergeFont(element, fontPatch),
+    );
+  };
   const commitFontSize = (nextSize: number) => {
     if (!Number.isFinite(nextSize)) return;
-    onChange(index, mergeFont(element, { size: clampFontSize(nextSize) }));
+    updateFont({ size: clampFontSize(nextSize) });
   };
   const updateFontSize = (value: string) => {
     commitFontSize(Number.parseFloat(value));
@@ -97,6 +170,26 @@ export function TextToolbar({
       opacity: nextOpacity,
     });
   };
+  const updateLetterSpacing = (nextLetterSpacing: number) => {
+    if (!Number.isFinite(nextLetterSpacing)) return;
+    updateFont({
+      letter_spacing: clampMetric(
+        nextLetterSpacing,
+        MIN_LETTER_SPACING,
+        MAX_LETTER_SPACING,
+      ),
+    });
+  };
+  const updateLineHeight = (nextLineHeight: number) => {
+    if (!Number.isFinite(nextLineHeight)) return;
+    updateFont({
+      line_height: clampMetric(
+        nextLineHeight,
+        MIN_LINE_HEIGHT,
+        MAX_LINE_HEIGHT,
+      ),
+    });
+  };
 
   return (
     <InlineToolbar element={element} scale={scale} offset={52} unstyled>
@@ -107,7 +200,7 @@ export function TextToolbar({
             title="Font family"
             value={font.family}
             onChange={(event) =>
-              onChange(index, mergeFont(element, { family: event.target.value }))
+              updateFont({ family: event.target.value })
             }
             style={textToolbarStyles.fontSelect}
           >
@@ -177,15 +270,13 @@ export function TextToolbar({
             aria-hidden="true"
             style={{
               ...textToolbarStyles.colorDot,
-              background: withHash(font.color),
+            background: withHash(font.color),
             }}
           />
           <DeferredColorInput
             aria-label="Text color"
             value={font.color}
-            onCommit={(color) =>
-              onChange(index, mergeFont(element, { color }))
-            }
+            onCommit={(color) => updateFont({ color })}
             style={textToolbarStyles.hiddenInput}
           />
         </label>
@@ -197,12 +288,7 @@ export function TextToolbar({
             hoveredControl={hoveredControl}
             pressed={font.bold ?? false}
             setHoveredControl={setHoveredControl}
-            onClick={() =>
-              onChange(
-                index,
-                mergeFont(element, { bold: !(font.bold ?? false) }),
-              )
-            }
+            onClick={() => updateFont({ bold: !(font.bold ?? false) })}
           >
             <Bold size={18} strokeWidth={2.25} aria-hidden="true" />
           </ToolbarButton>
@@ -212,12 +298,7 @@ export function TextToolbar({
             hoveredControl={hoveredControl}
             pressed={font.italic ?? false}
             setHoveredControl={setHoveredControl}
-            onClick={() =>
-              onChange(
-                index,
-                mergeFont(element, { italic: !(font.italic ?? false) }),
-              )
-            }
+            onClick={() => updateFont({ italic: !(font.italic ?? false) })}
           >
             <Italic size={18} strokeWidth={2.25} aria-hidden="true" />
           </ToolbarButton>
@@ -225,7 +306,9 @@ export function TextToolbar({
             title="Underline"
             controlId="underline"
             hoveredControl={hoveredControl}
+            pressed={font.underline ?? false}
             setHoveredControl={setHoveredControl}
+            onClick={() => updateFont({ underline: !(font.underline ?? false) })}
           >
             <Underline size={18} strokeWidth={2.25} aria-hidden="true" />
           </ToolbarButton>
@@ -251,43 +334,87 @@ export function TextToolbar({
               aria-hidden="true"
             />
           </ToolbarButton>
-          <ToolbarButton
-            title="Vertical alignment"
-            controlId="vertical-alignment"
-            hoveredControl={hoveredControl}
-            setHoveredControl={setHoveredControl}
-            onClick={() =>
-              updateAlignment({
-                vertical:
-                  verticalAlignment === "top"
-                    ? "middle"
-                    : verticalAlignment === "middle"
-                      ? "bottom"
-                      : "top",
-              })
-            }
+          <div
+            style={textToolbarStyles.metricControlWrap}
+            onMouseEnter={() => openHoverPanel("letterSpacing")}
+            onMouseLeave={schedulePanelClose}
+            onFocus={() => openHoverPanel("letterSpacing")}
+            onBlur={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget)) return;
+              schedulePanelClose();
+            }}
           >
-            <VerticalTextIcon />
-          </ToolbarButton>
-          <ToolbarButton
-            title="Text baseline"
-            controlId="text-baseline"
-            hoveredControl={hoveredControl}
-            setHoveredControl={setHoveredControl}
+            <ToolbarButton
+              title="Letter spacing"
+              controlId="letter-spacing"
+              hoveredControl={hoveredControl}
+              pressed={openPanel === "letterSpacing" || letterSpacing !== 0}
+              setHoveredControl={setHoveredControl}
+              onClick={() => setOpenPanel("letterSpacing")}
+            >
+              <LetterSpacingIcon />
+            </ToolbarButton>
+            {openPanel === "letterSpacing" ? (
+              <TextMetricPanel
+                label="Letter spacing"
+                value={letterSpacing}
+                valueLabel={formatLetterSpacing(letterSpacing)}
+                min={MIN_LETTER_SPACING}
+                max={MAX_LETTER_SPACING}
+                step={10}
+                onChange={updateLetterSpacing}
+              />
+            ) : null}
+          </div>
+          <div
+            style={textToolbarStyles.metricControlWrap}
+            onMouseEnter={() => openHoverPanel("lineHeight")}
+            onMouseLeave={schedulePanelClose}
+            onFocus={() => openHoverPanel("lineHeight")}
+            onBlur={(event) => {
+              if (event.currentTarget.contains(event.relatedTarget)) return;
+              schedulePanelClose();
+            }}
           >
-            <BaselineTextIcon />
-          </ToolbarButton>
+            <ToolbarButton
+              title="Line height"
+              controlId="line-height"
+              hoveredControl={hoveredControl}
+              pressed={
+                openPanel === "lineHeight" ||
+                lineHeight !== DEFAULT_LINE_HEIGHT
+              }
+              setHoveredControl={setHoveredControl}
+              onClick={() => setOpenPanel("lineHeight")}
+            >
+              <LineHeightIcon />
+            </ToolbarButton>
+            {openPanel === "lineHeight" ? (
+              <TextMetricPanel
+                label="Line height"
+                value={lineHeight}
+                valueLabel={formatLineHeight(lineHeight)}
+                min={MIN_LINE_HEIGHT}
+                max={MAX_LINE_HEIGHT}
+                step={0.05}
+                onChange={updateLineHeight}
+              />
+            ) : null}
+          </div>
         </div>
         <Divider />
         <div
           style={textToolbarStyles.opacityControlWrap}
-          onMouseEnter={() => setOpenPanel("opacity")}
-          onMouseLeave={() => setOpenPanel(null)}
-          onFocus={() => setOpenPanel("opacity")}
-          onBlur={() => setOpenPanel(null)}
+          onMouseEnter={() => openHoverPanel("opacity")}
+          onMouseLeave={schedulePanelClose}
+          onFocus={() => openHoverPanel("opacity")}
+          onBlur={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget)) return;
+            schedulePanelClose();
+          }}
         >
           <ToolbarButton
-            title=""
+            title="Opacity"
             controlId="opacity"
             hoveredControl={hoveredControl}
             pressed={openPanel === "opacity"}
@@ -296,7 +423,7 @@ export function TextToolbar({
               setOpenPanel((current) => (current === "opacity" ? null : "opacity"))
             }
           >
-            <CheckerSwatch />
+            <OpacityIcon />
           </ToolbarButton>
           {openPanel === "opacity" ? (
             <>
@@ -355,6 +482,7 @@ function ToolbarButton({
       aria-label={title}
       aria-pressed={pressed}
       onClick={onClick}
+      onMouseDown={(event) => event.preventDefault()}
       onMouseEnter={() => setHoveredControl(controlId)}
       onMouseLeave={() => setHoveredControl(null)}
       style={{
@@ -372,42 +500,68 @@ function Divider() {
   return <span aria-hidden="true" style={textToolbarStyles.divider} />;
 }
 
-function VerticalTextIcon() {
+function LetterSpacingIcon() {
   return (
     <span aria-hidden="true" style={textToolbarStyles.textIcon}>
-      <span style={textToolbarStyles.verticalTextBar} />
+      <span style={textToolbarStyles.letterSpacingBar} />
       A
-      <span style={textToolbarStyles.verticalTextBar} />
+      <span style={textToolbarStyles.letterSpacingBar} />
     </span>
   );
 }
 
-function BaselineTextIcon() {
+function LineHeightIcon() {
   return (
-    <span aria-hidden="true" style={textToolbarStyles.baselineIcon}>
+    <span aria-hidden="true" style={textToolbarStyles.lineHeightIcon}>
       A
-      <span style={textToolbarStyles.baselineLine} />
+      <span style={textToolbarStyles.lineHeightLineTop} />
+      <span style={textToolbarStyles.lineHeightLineBottom} />
     </span>
   );
 }
 
-function CheckerSwatch() {
+function TextMetricPanel({
+  label,
+  value,
+  valueLabel,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  valueLabel: string;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (value: number) => void;
+}) {
   return (
-    <span aria-hidden="true" style={textToolbarStyles.checkerSwatch}>
-      {Array.from({ length: 12 }).map((_, index) => (
-        <span
-          key={index}
-          style={{
-            ...textToolbarStyles.checkerPixel,
-            background:
-              index % 2 === Math.floor(index / 3) % 2
-                ? "#111827"
-                : "rgba(17, 24, 39, 0.08)",
-          }}
+    <>
+      <span aria-hidden="true" style={textToolbarStyles.metricBridge} />
+      <div style={textToolbarStyles.metricPanel}>
+        <div style={textToolbarStyles.metricPanelHeader}>
+          <span>{label}</span>
+          <span style={textToolbarStyles.metricValue}>{valueLabel}</span>
+        </div>
+        <input
+          aria-label={label}
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          onChange={(event) => onChange(Number(event.target.value))}
+          style={textToolbarStyles.metricInput}
         />
-      ))}
-    </span>
+      </div>
+    </>
   );
+}
+
+function OpacityIcon() {
+  return <span aria-hidden="true" style={textToolbarStyles.opacityIcon} />;
 }
 
 const textToolbarStyles = {
@@ -590,18 +744,16 @@ const textToolbarStyles = {
     background: "transparent",
     pointerEvents: "auto",
   },
-  checkerSwatch: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 6px)",
-    gridAutoRows: 6,
-    gap: 0,
-    width: 18,
-    height: 24,
+  opacityIcon: {
+    display: "inline-block",
+    width: 19,
+    height: 19,
+    backgroundImage: "url('/Opacity.svg')",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "contain",
+    flex: "0 0 auto",
     overflow: "hidden",
-  },
-  checkerPixel: {
-    width: 6,
-    height: 6,
   },
   opacityPanel: {
     position: "absolute",
@@ -624,6 +776,59 @@ const textToolbarStyles = {
     accentColor: "#7C51F8",
     cursor: "pointer",
   },
+  metricControlWrap: {
+    position: "relative",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flex: "0 0 auto",
+  },
+  metricBridge: {
+    position: "absolute",
+    top: 22,
+    right: -104,
+    width: 278,
+    height: 30,
+    background: "transparent",
+    pointerEvents: "auto",
+  },
+  metricPanel: {
+    position: "absolute",
+    top: 52,
+    right: -104,
+    width: 256,
+    minHeight: 76,
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+    gap: 12,
+    padding: "12px 18px",
+    borderRadius: 6,
+    border: 0,
+    background: "#FFFFFF",
+    boxShadow: "0 0 4px rgba(0, 0, 0, 0.15)",
+  },
+  metricPanelHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    color: "#0B1220",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 13,
+    fontWeight: 600,
+  },
+  metricValue: {
+    color: "#6B7280",
+    fontWeight: 500,
+  },
+  metricInput: {
+    width: "100%",
+    accentColor: "#7C51F8",
+    cursor: "pointer",
+  },
   textIcon: {
     display: "inline-flex",
     alignItems: "center",
@@ -634,13 +839,13 @@ const textToolbarStyles = {
     lineHeight: 1,
     fontFamily: "Georgia, 'Times New Roman', serif",
   },
-  verticalTextBar: {
+  letterSpacingBar: {
     display: "inline-block",
     width: 1.5,
     height: 22,
     background: "currentColor",
   },
-  baselineIcon: {
+  lineHeightIcon: {
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
@@ -651,12 +856,17 @@ const textToolbarStyles = {
     fontSize: 19,
     lineHeight: 1,
     fontFamily: "Georgia, 'Times New Roman', serif",
-    textDecoration: "underline",
-    textUnderlineOffset: 3,
   },
-  baselineLine: {
+  lineHeightLineTop: {
     position: "absolute",
     top: 2,
+    width: 18,
+    height: 1.5,
+    background: "currentColor",
+  },
+  lineHeightLineBottom: {
+    position: "absolute",
+    bottom: 1,
     width: 18,
     height: 1.5,
     background: "currentColor",

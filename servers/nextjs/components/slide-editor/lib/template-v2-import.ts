@@ -1201,6 +1201,14 @@ function adaptFont(value: UnknownRecord | null): Font | null {
     color: readColor(value.color),
     bold: readBoolean(value, "bold") ?? (fontWeight == null ? null : fontWeight >= 600),
     italic: readBoolean(value, "italic"),
+    underline:
+      readBoolean(value, "underline") ??
+      ([
+        readString(value.text_decoration),
+        readString(value.textDecoration),
+      ].includes("underline")
+        ? true
+        : null),
     line_height: clampOptional(readNumber(value, "line_height"), 0.8, 2.2),
     letter_spacing: clamp(readNumber(value, "letter_spacing") ?? 0, -200, 600),
     wrap: readEnum(value, ["word", "char", "none"], "wrap"),

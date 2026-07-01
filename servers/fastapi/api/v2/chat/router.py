@@ -1,0 +1,132 @@
+import json
+import uuid
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.chat import (
+    ChatConversationListItem,
+    ChatHistoryMessageItem,
+    ChatMessageResponse,
+    TemplateV2ChatHistoryResponse,
+    TemplateV2ChatMessageRequest,
+)
+from models.sse_response import (
+    SSECompleteResponse,
+    SSEErrorResponse,
+    SSEResponse,
+    SSEStatusResponse,
+    SSETraceResponse,
+)
+from services.chat import sql_chat_history
+from services.chat.service import ChatTurnResult
+from services.chat.v2 import TemplateV2ChatService
+from services.database import get_async_session
+
+
+CHAT_V2_ROUTER = APIRouter(prefix="/chat", tags=["Template V2 Chat"])
+
+
+@CHAT_V2_ROUTER.get("/conversations", response_model=list[ChatConversationListItem])
+async def list_template_v2_chat_conversations(
+    template_id: uuid.UUID = Query(..., description="Template V2 id"),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    raw = await sql_chat_history.list_conversations(
+        sql_session,
+        template_v2_id=template_id,
+    )
+    return [
+        ChatConversationListItem(
+            conversation_id=uuid.UUID(str(item["conversation_id"])),
+            updated_at=item.get("updated_at"),
+            last_message_preview=item.get("last_message_preview"),
+        )
+        for item in raw
+    ]
+
+
+@CHAT_V2_ROUTER.get("/history", response_model=TemplateV2ChatHistoryResponse)
+async def get_template_v2_chat_history(
+    template_id: uuid.UUID = Query(..., description="Template V2 id"),
+    conversation_id: uuid.UUID = Query(..., description="Conversation thread id"),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    rows = await sql_chat_history.load_messages_with_meta(
+        sql_session,
+        template_v2_id=template_id,
+        conversation_id=conversation_id,
+    )
+    return TemplateV2ChatHistoryResponse(
+        template_id=template_id,
+        conversation_id=conversation_id,
+        messages=[
+            ChatHistoryMessageItem(
+                role=str(message.get("role") or ""),
+                content=str(message.get("content") or ""),
+                created_at=message.get("created_at")
+                if isinstance(message.get("created_at"), str)
+                else None,
+            )
+            for message in rows
+        ],
+    )
+
+
+@CHAT_V2_ROUTER.post("/message", response_model=ChatMessageResponse)
+async def template_v2_chat_message(
+    payload: TemplateV2ChatMessageRequest,
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    service = TemplateV2ChatService(
+        sql_session=sql_session,
+        template_id=payload.template_id,
+        conversation_id=payload.conversation_id,
+    )
+    result = await service.generate_reply(payload.message)
+    return ChatMessageResponse(
+        conversation_id=result.conversation_id,
+        response=result.response_text,
+        tool_calls=result.tool_calls,
+    )
+
+
+@CHAT_V2_ROUTER.post("/message/stream")
+async def template_v2_chat_message_stream(
+    payload: TemplateV2ChatMessageRequest,
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    service = TemplateV2ChatService(
+        sql_session=sql_session,
+        template_id=payload.template_id,
+        conversation_id=payload.conversation_id,
+    )
+
+    async def inner():
+        try:
+            async for event_type, value in service.stream_reply(payload.message):
+                if event_type == "chunk" and isinstance(value, str):
+                    yield SSEResponse(
+                        event="response",
+                        data=json.dumps({"type": "chunk", "chunk": value}),
+                    ).to_string()
+                elif event_type == "status" and isinstance(value, str):
+                    yield SSEStatusResponse(status=value).to_string()
+                elif event_type == "trace" and isinstance(value, dict):
+                    yield SSETraceResponse(trace=value).to_string()
+                elif event_type == "complete" and isinstance(value, ChatTurnResult):
+                    result = value
+                    complete_payload = ChatMessageResponse(
+                        conversation_id=result.conversation_id,
+                        response=result.response_text,
+                        tool_calls=result.tool_calls,
+                    )
+                    yield SSECompleteResponse(
+                        key="chat",
+                        value=complete_payload.model_dump(mode="json"),
+                    ).to_string()
+        except HTTPException as exc:
+            yield SSEErrorResponse(detail=exc.detail).to_string()
+
+    return StreamingResponse(inner(), media_type="text/event-stream")

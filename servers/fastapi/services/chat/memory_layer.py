@@ -628,6 +628,7 @@ class PresentationChatMemoryLayer:
                 "validation_errors": [f"Unknown layout_id '{layout_id}'."],
             }
         icon_weight = await self._get_presentation_icon_weight(presentation)
+        layout_group = self._resolve_layout_group(presentation=presentation)
 
         validation_errors = self._validate_slide_content(
             content=content,
@@ -670,11 +671,13 @@ class PresentationChatMemoryLayer:
 
             existing_slide.id = uuid.uuid4()
             existing_slide.layout = layout_id
-            existing_slide.layout_group = self._resolve_layout_group(
-                presentation=presentation,
-                fallback=existing_slide.layout_group,
-            )
+            existing_slide.layout_group = layout_group
             existing_slide.content = updated_content
+            existing_slide.ui = await self._build_template_v2_slide_ui(
+                presentation=presentation,
+                layout_id=layout_id,
+                content=updated_content,
+            )
             existing_slide.speaker_note = self._extract_speaker_note(updated_content)
             self._sql_session.add(existing_slide)
             self._sql_session.add_all(new_assets)
@@ -717,7 +720,7 @@ class PresentationChatMemoryLayer:
         new_slide_content = copy.deepcopy(content)
         new_slide = SlideModel(
             presentation=self._presentation_id,
-            layout_group=self._resolve_layout_group(presentation=presentation),
+            layout_group=layout_group,
             layout=layout_id,
             index=insert_index,
             content=new_slide_content,
@@ -727,6 +730,11 @@ class PresentationChatMemoryLayer:
             image_generation_service=image_generation_service,
             slide=new_slide,
             icon_weight=icon_weight,
+        )
+        new_slide.ui = await self._build_template_v2_slide_ui(
+            presentation=presentation,
+            layout_id=layout_id,
+            content=new_slide.content,
         )
 
         self._sql_session.add(new_slide)
@@ -788,6 +796,367 @@ class PresentationChatMemoryLayer:
             "index": target_index,
             "shifted_slide_count": shifted_count,
         }
+
+    async def _get_slide_by_index(self, index: int) -> SlideModel | None:
+        return await self._sql_session.scalar(
+            select(SlideModel).where(
+                SlideModel.presentation == self._presentation_id,
+                SlideModel.index == max(0, index),
+            )
+        )
+
+    @staticmethod
+    def _slide_ui_layout(slide: SlideModel) -> dict[str, Any] | None:
+        ui = slide.ui
+        if not isinstance(ui, dict):
+            return None
+        if not isinstance(ui.get("components"), list):
+            return None
+        return ui
+
+    async def _save_slide_ui(self, slide: SlideModel, ui: dict[str, Any]) -> None:
+        # Persist the mutated raw layout dict directly. We intentionally avoid
+        # round-tripping through pydantic so richer runtime fields on the slide
+        # UI (assets, tiptap ids, etc.) are preserved untouched.
+        slide.ui = ui
+        self._sql_session.add(slide)
+        await self._sql_session.commit()
+        await self._sql_session.refresh(slide)
+
+    async def get_slide_ui_elements(
+        self, *, index: int, include_full_json: bool = False
+    ) -> dict[str, Any]:
+        # Imported lazily: the services.chat.v2 package eagerly imports the v2 chat
+        # service, which imports this module's package, so a top-level import would
+        # create a circular import during startup.
+        from services.chat.v2.tools import (
+            _collect_editable_elements,
+            _compact_components,
+        )
+
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {
+                "found": False,
+                "message": f"No slide found at index {max(0, index)}.",
+            }
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "found": True,
+                "editable": False,
+                "index": slide.index,
+                "slide_number": slide.index + 1,
+                "message": (
+                    "This slide is not a rendered template (ui) slide. Use "
+                    "getContentSchemaFromLayoutId + saveSlide to edit it instead."
+                ),
+            }
+
+        editable = _collect_editable_elements(ui)
+        response: dict[str, Any] = {
+            "found": True,
+            "editable": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "layout_id": ui.get("id"),
+            "description": ui.get("description"),
+            "component_count": len(ui.get("components", [])),
+            "components": _compact_components(ui),
+            "editable_count": len(editable),
+            "elements": editable,
+            "message": (
+                f"Slide {slide.index + 1} renders from its ui layout with "
+                f"{len(ui.get('components', []))} component(s) and "
+                f"{len(editable)} editable element(s)."
+            ),
+        }
+        if include_full_json:
+            response["ui"] = ui
+        return response
+
+    async def update_slide_ui_element(
+        self,
+        *,
+        index: int,
+        element_path: str,
+        text: str | None = None,
+        items: list[str] | None = None,
+        table_cell: dict[str, Any] | None = None,
+        chart: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        from services.chat.v2.tools import (
+            _component_id_for_path,
+            _resolve_element_path,
+            _update_chart_element,
+            _update_table_cell,
+            _update_text_element,
+            _update_text_list_element,
+        )
+
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"updated": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "updated": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+
+        ui = copy.deepcopy(ui)
+        element = _resolve_element_path(ui, element_path)
+        element_type = str(element.get("type") or "")
+
+        if element_type == "text":
+            if text is None:
+                raise ValueError("text is required for text elements.")
+            _update_text_element(element, text)
+        elif element_type == "text-list":
+            if items is None:
+                raise ValueError("items is required for text-list elements.")
+            _update_text_list_element(element, items)
+        elif element_type == "table":
+            if table_cell is None:
+                raise ValueError("tableCell is required for table elements.")
+            _update_table_cell(element, table_cell)
+        elif element_type == "chart":
+            if chart is None:
+                raise ValueError("chart is required for chart elements.")
+            _update_chart_element(element, chart)
+        elif element_type == "image":
+            if text is None:
+                raise ValueError("text must contain the replacement image/icon data.")
+            element["data"] = text
+        else:
+            raise ValueError(f"Element type '{element_type}' is not content-editable.")
+
+        await self._save_slide_ui(slide, ui)
+        component_id = _component_id_for_path(ui, element_path)
+        return {
+            "updated": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "element_path": element_path,
+            "element_type": element_type,
+            "message": (
+                f"Updated {element_type} content on slide {slide.index + 1}."
+            ),
+        }
+
+    async def delete_slide_ui_component(
+        self, *, index: int, component_id: str
+    ) -> dict[str, Any]:
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"deleted": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "deleted": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+
+        ui = copy.deepcopy(ui)
+        components = ui.get("components")
+        before = len(components)
+        ui["components"] = [
+            component
+            for component in components
+            if not (
+                isinstance(component, dict) and component.get("id") == component_id
+            )
+        ]
+        if len(ui["components"]) == before:
+            return {
+                "deleted": False,
+                "message": f"Component '{component_id}' was not found on slide {slide.index + 1}.",
+            }
+
+        await self._save_slide_ui(slide, ui)
+        return {
+            "deleted": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "message": (
+                f"Deleted component '{component_id}' from slide {slide.index + 1}."
+            ),
+        }
+
+    async def delete_slide_ui_element(
+        self, *, index: int, element_path: str
+    ) -> dict[str, Any]:
+        from services.chat.v2.tools import _component_id_for_path
+
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"deleted": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "deleted": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+
+        ui = copy.deepcopy(ui)
+        removed = self._remove_element_at_path(ui, element_path)
+        if not removed:
+            return {
+                "deleted": False,
+                "message": (
+                    f"Could not delete element at '{element_path}'. Only indexed "
+                    "elements[] / children[] entries can be removed; to remove a whole "
+                    "component use deleteSlideComponent."
+                ),
+            }
+
+        component_id = _component_id_for_path(ui, element_path)
+        await self._save_slide_ui(slide, ui)
+        return {
+            "deleted": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "element_path": element_path,
+            "message": f"Deleted element '{element_path}' on slide {slide.index + 1}.",
+        }
+
+    async def add_slide_ui_component(
+        self,
+        *,
+        index: int,
+        component: dict[str, Any],
+        insert_index: int | None = None,
+    ) -> dict[str, Any]:
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"added": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "added": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+        if not isinstance(component, dict):
+            raise ValueError("component must be a JSON object.")
+        elements = component.get("elements")
+        if not isinstance(elements, list) or not elements:
+            raise ValueError("component.elements must be a non-empty list.")
+
+        ui = copy.deepcopy(ui)
+        components = ui.get("components")
+        new_component = copy.deepcopy(component)
+        existing_ids = {
+            str(existing.get("id"))
+            for existing in components
+            if isinstance(existing, dict) and existing.get("id")
+        }
+        new_id = str(new_component.get("id") or "").strip()
+        if not new_id or new_id in existing_ids:
+            base = new_id or "component"
+            suffix = len(components) + 1
+            candidate = f"{base}_{suffix}"
+            while candidate in existing_ids:
+                suffix += 1
+                candidate = f"{base}_{suffix}"
+            new_id = candidate
+        new_component["id"] = new_id
+        new_component.setdefault(
+            "description", f"Component {new_id} added via assistant."
+        )
+        # The renderer reads the flattened top-level `text` in preference to
+        # `runs` for text elements. Keep them consistent so an added block is
+        # actually visible regardless of which field the model populated.
+        self._sync_ui_text_fields(new_component)
+
+        position = (
+            len(components)
+            if insert_index is None
+            else min(max(0, insert_index), len(components))
+        )
+        components.insert(position, new_component)
+
+        await self._save_slide_ui(slide, ui)
+        return {
+            "added": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": new_id,
+            "component_index": position,
+            "message": (
+                f"Added component '{new_id}' to slide {slide.index + 1}."
+            ),
+        }
+
+    @staticmethod
+    def _sync_ui_text_fields(node: Any) -> None:
+        """Recursively keep text elements' flattened `text` in sync with `runs`.
+
+        The Konva renderer (rawTextContent in TemplateV2KonvaSlide.tsx) reads the
+        top-level `text` in preference to `runs`, so a text element that only has
+        one of the two would render inconsistently or revert on the next edit.
+        """
+        if isinstance(node, dict):
+            if node.get("type") == "text":
+                runs = node.get("runs")
+                if isinstance(runs, list) and runs:
+                    joined = "".join(
+                        str(run.get("text") or "")
+                        for run in runs
+                        if isinstance(run, dict)
+                    )
+                    node["text"] = joined
+                elif isinstance(node.get("text"), str):
+                    node["runs"] = [{"text": node["text"]}]
+            for value in node.values():
+                PresentationChatMemoryLayer._sync_ui_text_fields(value)
+        elif isinstance(node, list):
+            for value in node:
+                PresentationChatMemoryLayer._sync_ui_text_fields(value)
+
+    @staticmethod
+    def _remove_element_at_path(ui: dict[str, Any], path: str) -> bool:
+        segments = path.split(".")
+        if not segments:
+            return False
+
+        last = segments[-1]
+        match = re.match(r"^(components|elements|children)\[(\d+)\]$", last)
+        if not match:
+            return False
+        key = match.group(1)
+        target_index = int(match.group(2))
+
+        parent: Any = ui
+        for segment in segments[:-1]:
+            if segment == "child":
+                if not isinstance(parent, dict) or not isinstance(
+                    parent.get("child"), dict
+                ):
+                    return False
+                parent = parent["child"]
+                continue
+            seg_match = re.match(r"^(components|elements|children)\[(\d+)\]$", segment)
+            if not seg_match:
+                return False
+            seg_key = seg_match.group(1)
+            seg_index = int(seg_match.group(2))
+            if not isinstance(parent, dict) or not isinstance(parent.get(seg_key), list):
+                return False
+            values = parent[seg_key]
+            if seg_index >= len(values) or not isinstance(values[seg_index], dict):
+                return False
+            parent = values[seg_index]
+
+        if not isinstance(parent, dict) or not isinstance(parent.get(key), list):
+            return False
+        values = parent[key]
+        if target_index >= len(values):
+            return False
+        values.pop(target_index)
+        return True
 
     async def set_presentation_theme(
         self,
@@ -1111,6 +1480,264 @@ class PresentationChatMemoryLayer:
             slides=slides,
         )
 
+    async def _build_template_v2_slide_ui(
+        self,
+        *,
+        presentation: PresentationModel,
+        layout_id: str,
+        content: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        source_layout = await self._get_template_v2_raw_layout_by_id(
+            presentation=presentation,
+            layout_id=layout_id,
+        )
+        if source_layout is None:
+            return None
+
+        ui = copy.deepcopy(source_layout)
+        self._apply_template_v2_content_to_ui(ui, content)
+        self._sync_ui_text_fields(ui)
+        return ui
+
+    async def _get_template_v2_raw_layout_by_id(
+        self,
+        *,
+        presentation: PresentationModel,
+        layout_id: str,
+    ) -> dict[str, Any] | None:
+        if isinstance(presentation.layout, dict):
+            source = self._raw_layout_from_payload(presentation.layout, layout_id)
+            if source is not None:
+                return source
+
+            for key in ("name", "template_id", "template_v2_id"):
+                template_id = self._extract_template_v2_id(
+                    presentation.layout.get(key)
+                )
+                if not template_id:
+                    continue
+                template = await self._sql_session.get(TemplateV2, template_id)
+                if template and isinstance(template.layouts, dict):
+                    source = self._raw_layout_from_payload(template.layouts, layout_id)
+                    if source is not None:
+                        return source
+
+        return None
+
+    @staticmethod
+    def _raw_layout_from_payload(
+        layout_payload: dict[str, Any],
+        layout_id: str,
+    ) -> dict[str, Any] | None:
+        layouts = layout_payload.get("layouts")
+        if not isinstance(layouts, list):
+            return None
+
+        for layout in layouts:
+            if isinstance(layout, dict) and str(layout.get("id")) == str(layout_id):
+                return layout
+        return None
+
+    @classmethod
+    def _apply_template_v2_content_to_ui(
+        cls,
+        ui: dict[str, Any],
+        content: dict[str, Any],
+    ) -> None:
+        components = ui.get("components")
+        if not isinstance(components, list):
+            return
+
+        component_counts: dict[str, int] = {}
+        for component in components:
+            if isinstance(component, dict):
+                component_id = str(component.get("id") or "")
+                component_counts[component_id] = (
+                    component_counts.get(component_id, 0) + 1
+                )
+
+        component_seen: dict[str, int] = {}
+        used_keys: set[str] = set()
+        for component in components:
+            if not isinstance(component, dict):
+                continue
+            component_id = str(component.get("id") or "")
+            occurrence_index = component_seen.get(component_id, 0)
+            component_seen[component_id] = occurrence_index + 1
+            candidate_keys = [component_id]
+            if component_counts.get(component_id, 0) > 1:
+                candidate_keys.insert(0, f"{component_id}_{occurrence_index}")
+
+            component_content = None
+            for key in candidate_keys:
+                if key in used_keys:
+                    continue
+                value = content.get(key)
+                if isinstance(value, dict):
+                    component_content = value
+                    used_keys.add(key)
+                    break
+            if component_content is None:
+                continue
+
+            cls._apply_template_v2_component_content(component, component_content)
+
+    @classmethod
+    def _apply_template_v2_component_content(
+        cls,
+        component: dict[str, Any],
+        content: dict[str, Any],
+    ) -> None:
+        elements = component.get("elements")
+        if not isinstance(elements, list):
+            return
+
+        for element in elements:
+            if isinstance(element, dict):
+                cls._apply_template_v2_element_content(element, content)
+
+    @classmethod
+    def _apply_template_v2_element_content(
+        cls,
+        element: dict[str, Any],
+        content: dict[str, Any],
+    ) -> None:
+        name = element.get("name")
+        if isinstance(name, str) and name in content:
+            cls._set_template_v2_element_value(element, content[name])
+
+        child = element.get("child")
+        if isinstance(child, dict):
+            cls._apply_template_v2_element_content(child, content)
+
+        children = element.get("children")
+        if isinstance(children, list):
+            for child_element in children:
+                if isinstance(child_element, dict):
+                    cls._apply_template_v2_element_content(child_element, content)
+
+    @classmethod
+    def _set_template_v2_element_value(
+        cls,
+        element: dict[str, Any],
+        value: Any,
+    ) -> None:
+        element_type = element.get("type")
+        if element_type == "text" and isinstance(value, str):
+            cls._set_template_v2_runs_text(element, value)
+            element["text"] = value
+            return
+
+        if element_type == "text-list" and isinstance(value, list):
+            source_items = (
+                element.get("items") if isinstance(element.get("items"), list) else []
+            )
+            element["items"] = [
+                cls._replacement_runs_from_existing(
+                    source_items[index] if index < len(source_items) else None,
+                    str(item),
+                    element.get("font"),
+                )
+                for index, item in enumerate(value)
+            ]
+            return
+
+        if element_type == "image":
+            asset_url = cls._template_v2_asset_url(value)
+            if asset_url:
+                element["data"] = asset_url
+            return
+
+        if element_type == "chart" and isinstance(value, dict):
+            for key in ("title", "categories", "series", "data"):
+                if key in value:
+                    element[key] = value[key]
+            return
+
+        if element_type == "table" and isinstance(value, list):
+            cls._set_template_v2_table_rows(element, value)
+
+    @classmethod
+    def _set_template_v2_runs_text(cls, element: dict[str, Any], text: str) -> None:
+        element["runs"] = cls._replacement_runs_from_existing(
+            element.get("runs"),
+            text,
+            element.get("font"),
+        )
+
+    @staticmethod
+    def _replacement_runs_from_existing(
+        existing_runs: Any,
+        text: str,
+        fallback_font: Any,
+    ) -> list[dict[str, Any]]:
+        if isinstance(existing_runs, list) and existing_runs:
+            first = existing_runs[0]
+            if isinstance(first, dict):
+                run = copy.deepcopy(first)
+                run["text"] = text
+                return [run]
+        run: dict[str, Any] = {"text": text}
+        if isinstance(fallback_font, dict):
+            run["font"] = copy.deepcopy(fallback_font)
+        return [run]
+
+    @staticmethod
+    def _template_v2_asset_url(value: Any) -> str | None:
+        if isinstance(value, str):
+            return normalize_slide_asset_url(value)
+        if not isinstance(value, dict):
+            return None
+
+        for key in (
+            "data",
+            "url",
+            "image_url",
+            "icon_url",
+            "__image_url__",
+            "__icon_url__",
+        ):
+            asset_url = value.get(key)
+            if isinstance(asset_url, str) and asset_url.strip():
+                return normalize_slide_asset_url(asset_url)
+        return None
+
+    @classmethod
+    def _set_template_v2_table_rows(
+        cls,
+        element: dict[str, Any],
+        rows: list[Any],
+    ) -> None:
+        existing_rows = (
+            element.get("rows") if isinstance(element.get("rows"), list) else []
+        )
+        next_rows: list[list[dict[str, Any]]] = []
+        for row_index, row in enumerate(rows):
+            if not isinstance(row, list):
+                continue
+            existing_row = (
+                existing_rows[row_index]
+                if row_index < len(existing_rows)
+                and isinstance(existing_rows[row_index], list)
+                else []
+            )
+            next_rows.append(
+                [
+                    {
+                        "runs": cls._replacement_runs_from_existing(
+                            existing_row[column_index].get("runs")
+                            if column_index < len(existing_row)
+                            and isinstance(existing_row[column_index], dict)
+                            else None,
+                            str(cell),
+                            element.get("font"),
+                        )
+                    }
+                    for column_index, cell in enumerate(row)
+                ]
+            )
+        element["rows"] = next_rows
+
     def _validate_slide_content(
         self,
         *,
@@ -1166,6 +1793,10 @@ class PresentationChatMemoryLayer:
             name = str(presentation.layout.get("name") or "").strip()
             if name:
                 return name
+            if PresentationChatMemoryLayer._is_template_v2_layout_payload(
+                presentation.layout
+            ):
+                return "template-v2"
         return fallback
 
     @staticmethod

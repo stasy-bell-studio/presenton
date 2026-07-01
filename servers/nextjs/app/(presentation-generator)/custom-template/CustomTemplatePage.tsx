@@ -13,7 +13,7 @@ import { useFileUpload } from "./hooks/useFileUpload";
 import { useTemplateCreation } from "./hooks/useTemplateCreation";
 import { useLayoutSaving } from "./hooks/useLayoutSaving";
 
-import { ProcessedSlide } from "./types";
+import type { ProcessedSlide } from "./types";
 import { TAILWIND_CDN_URL } from "./constants";
 import { TemplateStudioHeader } from "./components/TemplateStudioHeader";
 import { TemplateCreationProgress } from "./components/TemplateCreationProgress";
@@ -507,7 +507,6 @@ const CustomTemplatePage = ({
             )
         );
     }, [setSlides]);
-
 
     /**
      * Open schema editor for a specific slide

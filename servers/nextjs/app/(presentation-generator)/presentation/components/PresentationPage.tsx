@@ -132,10 +132,13 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     hasTemplateV2Layouts(presentationData?.layout) ||
     hasTemplateV2Slides(presentationData?.slides);
 
-  // Auto-save functionality
+  // Auto-save functionality.
+  // Pause while the chat assistant is mutating the deck: the assistant edits
+  // slide.ui directly in the database, so a debounced autosave firing with the
+  // pre-edit Redux state would overwrite (revert) the assistant's change.
   const { isSaving } = useAutoSave({
     debounceMs: 2000,
-    enabled: !!presentationData && !isStreaming,
+    enabled: !!presentationData && !isStreaming && !isChatSending,
   });
 
   // Custom hooks

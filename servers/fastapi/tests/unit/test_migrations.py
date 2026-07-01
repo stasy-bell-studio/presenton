@@ -70,7 +70,7 @@ def test_upgrade_from_baseline_stamp_skips_existing_theme_column(tmp_path):
                 for row in connection.execute(text("PRAGMA table_info(presentations)"))
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert "theme" in columns
         assert "fonts" in columns
     finally:
@@ -121,7 +121,7 @@ def test_upgrade_from_theme_stamp_skips_existing_template_create_infos_table(tmp
                 )
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert "template_create_infos" in tables
     finally:
         engine.dispose()
@@ -181,11 +181,12 @@ def test_upgrade_from_template_stamp_skips_existing_chat_history_table(tmp_path)
                 for row in connection.execute(text("PRAGMA table_info(template_v2)"))
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert {
             "ix_chat_history_messages_conversation_id",
             "ix_chat_history_messages_position",
             "ix_chat_history_messages_presentation_id",
+            "ix_chat_history_messages_template_v2_id",
         }.issubset(indexes)
         assert "template_v2" in tables
         assert "components" in template_columns
@@ -248,7 +249,7 @@ def test_consolidated_migration_adds_presentation_version(tmp_path):
                 for row in connection.execute(text("PRAGMA table_info(slides)"))
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert presentation_version == "v1-standard"
         assert version_column[3] == 1
         assert version_column[4] is None
@@ -323,7 +324,7 @@ def test_upgrade_from_template_v2_revision_adds_slide_ui(tmp_path):
                 for row in connection.execute(text("PRAGMA table_info(slides)"))
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert "ui" in slide_columns
     finally:
         engine.dispose()
@@ -466,7 +467,7 @@ def test_removed_intermediate_revision_upgrades_through_consolidated_migration(
                 for row in connection.execute(text("PRAGMA table_info(template_v2)"))
             }
 
-        assert version == migrations.REVISION_PRESENTATION_FONTS
+        assert version == migrations.REVISION_TEMPLATE_V2_CHAT_SCOPE
         assert {"description", "components", "assets"}.issubset(template_columns)
         assert "cluster_candidates" not in template_columns
         assert "clusters" not in template_columns

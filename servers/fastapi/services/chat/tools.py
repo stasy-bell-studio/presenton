@@ -8,6 +8,9 @@ from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-foun
 
 from services.chat.schemas import (
     AddOutlineInput,
+    AddSlideComponentInput,
+    DeleteSlideComponentInput,
+    DeleteSlideElementInput,
     DeleteSlideInput,
     DeleteOutlineInput,
     GenerateAssetsInput,
@@ -15,12 +18,14 @@ from services.chat.schemas import (
     GenerateImageInput,
     GetContentSchemaFromLayoutIdInput,
     GetSlideAtIndexInput,
+    GetSlideElementsInput,
     MoveOutlineInput,
     NoArgsInput,
     SaveSlideInput,
     SearchSlidesInput,
     SetPresentationThemeInput,
     UpdateOutlineInput,
+    UpdateSlideElementInput,
 )
 from services.chat.presentation_context_store import PresentationContextStore
 
@@ -63,6 +68,11 @@ class ChatTools:
             "saveSlide": self._save_slide,
             "deleteSlide": self._delete_slide,
             "setPresentationTheme": self._set_presentation_theme,
+            "getSlideElements": self._get_slide_elements,
+            "updateSlideElement": self._update_slide_element,
+            "deleteSlideComponent": self._delete_slide_component,
+            "deleteSlideElement": self._delete_slide_element,
+            "addSlideComponent": self._add_slide_component,
         }
 
     def get_tool_definitions(self) -> list[Tool]:
@@ -219,6 +229,66 @@ class ChatTools:
                     "Only use this when the user explicitly asks to change/apply/switch theme."
                 ),
                 schema=SetPresentationThemeInput,
+                strict=True,
+            ),
+            Tool(
+                name="getSlideElements",
+                description=(
+                    "Inspect the rendered UI layout of one slide by zero-based index. "
+                    "Rendered template slides display their `ui` layout (components with "
+                    "text/text-list/table/chart/image elements), NOT the schema `content`. "
+                    "Returns component ids, element types, current content, limits, and "
+                    "concrete element paths. Call this before any element edit and use its "
+                    "paths verbatim. If it returns editable:false, edit that slide with "
+                    "getContentSchemaFromLayoutId + saveSlide instead."
+                ),
+                schema=GetSlideElementsInput,
+                strict=True,
+            ),
+            Tool(
+                name="updateSlideElement",
+                description=(
+                    "Update the visible content of one element in a rendered slide's ui "
+                    "layout, using an elementPath from getSlideElements: text.runs via "
+                    "text, text-list.items via items, one table cell via tableCell, chart "
+                    "title/categories/series via chart, or image/icon data via text. This "
+                    "changes what the user sees. Respect any max/min limits reported by "
+                    "getSlideElements."
+                ),
+                schema=UpdateSlideElementInput,
+                strict=True,
+            ),
+            Tool(
+                name="deleteSlideComponent",
+                description=(
+                    "Remove one whole component (a block such as a numbered point, card, "
+                    "or callout) from a rendered slide's ui layout by zero-based slide "
+                    "index and componentId from getSlideElements. Use when the user asks "
+                    "to remove a block/content from a rendered slide."
+                ),
+                schema=DeleteSlideComponentInput,
+                strict=True,
+            ),
+            Tool(
+                name="deleteSlideElement",
+                description=(
+                    "Remove a single element (an indexed elements[] or children[] entry) "
+                    "from a rendered slide's ui layout using an elementPath from "
+                    "getSlideElements. To remove an entire block, use deleteSlideComponent."
+                ),
+                schema=DeleteSlideElementInput,
+                strict=True,
+            ),
+            Tool(
+                name="addSlideComponent",
+                description=(
+                    "Add a new component (block) to a rendered slide's ui layout. Provide "
+                    "the component as a JSON-serialized object with id, description, "
+                    "position, size and a non-empty elements array. Mirror the shape of an "
+                    "existing component from getSlideElements(includeFullJson=true) so the "
+                    "new block matches the slide's styling."
+                ),
+                schema=AddSlideComponentInput,
                 strict=True,
             ),
         ]
@@ -478,6 +548,61 @@ class ChatTools:
     async def _delete_slide(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = DeleteSlideInput(**args)
         return await self._memory.delete_slide(index=payload.index)
+
+    async def _get_slide_elements(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = GetSlideElementsInput(**args)
+        return await self._memory.get_slide_ui_elements(
+            index=payload.index,
+            include_full_json=bool(payload.include_full_json),
+        )
+
+    async def _update_slide_element(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = UpdateSlideElementInput(**args)
+        return await self._memory.update_slide_ui_element(
+            index=payload.index,
+            element_path=payload.element_path,
+            text=payload.text,
+            items=payload.items,
+            table_cell=(
+                payload.table_cell.model_dump(by_alias=False)
+                if payload.table_cell is not None
+                else None
+            ),
+            chart=(
+                payload.chart.model_dump(exclude_none=True)
+                if payload.chart is not None
+                else None
+            ),
+        )
+
+    async def _delete_slide_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = DeleteSlideComponentInput(**args)
+        return await self._memory.delete_slide_ui_component(
+            index=payload.index,
+            component_id=payload.component_id,
+        )
+
+    async def _delete_slide_element(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = DeleteSlideElementInput(**args)
+        return await self._memory.delete_slide_ui_element(
+            index=payload.index,
+            element_path=payload.element_path,
+        )
+
+    async def _add_slide_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddSlideComponentInput(**args)
+        try:
+            component_parsed: Any = dirtyjson.loads(payload.component)
+        except Exception:
+            component_parsed = json.loads(payload.component)
+        if not isinstance(component_parsed, dict):
+            raise ValueError("'component' must be a JSON object.")
+        component_payload = json.loads(json.dumps(component_parsed, ensure_ascii=False))
+        return await self._memory.add_slide_ui_component(
+            index=payload.index,
+            component=component_payload,
+            insert_index=payload.insert_index,
+        )
 
     async def _set_presentation_theme(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = SetPresentationThemeInput(**args)

@@ -23,3 +23,4 @@ export type TableCellSelection = {
 export { getComponentRun, type ComponentRun } from "./componentGroups";
 export { createDefaultElement } from "./createDefaultElement";
 export { useTableCellSelection } from "./useTableCellSelection";
+export { useTemplateV2InlineEditing } from "./useTemplateV2InlineEditing";

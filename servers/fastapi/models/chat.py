@@ -42,3 +42,19 @@ class ChatConversationListItem(BaseModel):
     last_message_preview: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class TemplateV2ChatMessageRequest(BaseModel):
+    template_id: uuid.UUID
+    message: str = Field(min_length=1, max_length=8000)
+    conversation_id: Optional[uuid.UUID] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class TemplateV2ChatHistoryResponse(BaseModel):
+    template_id: uuid.UUID
+    conversation_id: uuid.UUID
+    messages: list[ChatHistoryMessageItem]
+
+    model_config = ConfigDict(extra="forbid")

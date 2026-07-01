@@ -1,4 +1,5 @@
 import { Group, Line, Rect, Text } from "react-konva";
+import { effectiveLineHeight } from "../../lib/text-line-height";
 
 type UnknownRecord = Record<string, any>;
 type RawElement = UnknownRecord;
@@ -62,7 +63,21 @@ export function TemplateV2TableElement({
         Array.from({ length: colCount }, (_, colIndex) => {
           const cell = asRecord(row[colIndex]) ?? {};
           const firstRun = asRecord(readArray(cell.runs)[0]) ?? {};
-          const cellFont = asRecord(cell.font) ?? asRecord(firstRun.font) ?? {};
+          const cellFont = fontFromRecord(
+            asRecord(cell.font) ?? asRecord(firstRun.font),
+            font,
+          );
+          const text = rawTableCellText(cell);
+          const fontSize = cellFont.size;
+          const textWidth = Math.max(1, cellW - 12);
+          const cellLineHeight = effectiveLineHeight({
+            text,
+            width: textWidth,
+            fontSize,
+            lineHeight: cellFont.lineHeight,
+            fallback: 1.15,
+            wrap: cellFont.wrap,
+          });
           const fill =
             fillColor(cell.fill ?? cell.color) ??
             (rowIndex === 0 ? "#F2F4F7" : "#FFFFFF");
@@ -104,13 +119,16 @@ export function TemplateV2TableElement({
               <Text
                 x={6}
                 y={4}
-                width={Math.max(1, cellW - 12)}
+                width={textWidth}
                 height={Math.max(1, cellH - 8)}
-                text={rawTableCellText(cell)}
-                fill={withHash(readString(cellFont.color) ?? font.color)}
-                fontFamily={`${readString(cellFont.family) ?? font.family}, Helvetica, sans-serif`}
-                fontSize={readNumber(cellFont.size) ?? font.size}
+                text={text}
+                fill={withHash(cellFont.color)}
+                fontFamily={`${cellFont.family}, Helvetica, sans-serif`}
+                fontSize={fontSize}
                 fontStyle={rowIndex === 0 || cellFont.bold ? "bold" : "normal"}
+                textDecoration={cellFont.underline ? "underline" : ""}
+                lineHeight={cellLineHeight}
+                letterSpacing={cellFont.letterSpacing}
                 align={readString(cell.alignment) ?? "left"}
                 verticalAlign="middle"
               />
@@ -169,7 +187,18 @@ function RawDefaultTableElement({
       {Array.from({ length: colCount }, (_, colIndex) => {
         const cell = rows[0]?.[colIndex];
         const cellRecord = asRecord(cell) ?? {};
-        const cellFont = asRecord(cellRecord.font) ?? {};
+        const cellFont = fontFromRecord(asRecord(cellRecord.font), font);
+        const text = rawTableCellText(cell);
+        const fontSize = cellFont.size || headerFontSize;
+        const textWidth = Math.max(1, cellW - headerPadX * 2);
+        const cellLineHeight = effectiveLineHeight({
+          text,
+          width: textWidth,
+          fontSize,
+          lineHeight: cellFont.lineHeight,
+          fallback: 1.15,
+          wrap: "none",
+        });
         const fill = fillColor(cellRecord.color ?? cellRecord.fill) ?? headerFill;
         return (
           <Group
@@ -202,13 +231,16 @@ function RawDefaultTableElement({
             <Text
               x={headerPadX}
               y={0}
-              width={Math.max(1, cellW - headerPadX * 2)}
+              width={textWidth}
               height={headerH}
-              text={rawTableCellText(cell)}
-              fill={withHash(readString(cellFont.color) ?? font.color)}
-              fontFamily={`${readString(cellFont.family) ?? font.family}, Helvetica, sans-serif`}
-              fontSize={readNumber(cellFont.size) ?? headerFontSize}
+              text={text}
+              fill={withHash(cellFont.color)}
+              fontFamily={`${cellFont.family}, Helvetica, sans-serif`}
+              fontSize={fontSize}
               fontStyle="bold"
+              textDecoration={cellFont.underline ? "underline" : ""}
+              lineHeight={cellLineHeight}
+              letterSpacing={cellFont.letterSpacing}
               align={readString(cellRecord.alignment) ?? "left"}
               verticalAlign="middle"
               wrap="none"
@@ -231,8 +263,18 @@ function RawDefaultTableElement({
             {Array.from({ length: colCount }, (_, colIndex) => {
               const cell = rows[rowIndex + 1]?.[colIndex];
               const cellRecord = asRecord(cell) ?? {};
-              const cellFont = asRecord(cellRecord.font) ?? {};
+              const cellFont = fontFromRecord(asRecord(cellRecord.font), font);
               const text = rawTableCellText(cell);
+              const fontSize = cellFont.size || bodyFontSize;
+              const textWidth = Math.max(1, cellW - bodyPadX * 2);
+              const cellLineHeight = effectiveLineHeight({
+                text,
+                width: textWidth,
+                fontSize,
+                lineHeight: cellFont.lineHeight,
+                fallback: 1.15,
+                wrap: cellFont.wrap,
+              });
               const fill = fillColor(cellRecord.color ?? cellRecord.fill);
               return (
                 <Group
@@ -270,13 +312,16 @@ function RawDefaultTableElement({
                     <Text
                       x={bodyPadX}
                       y={0}
-                      width={Math.max(1, cellW - bodyPadX * 2)}
+                      width={textWidth}
                       height={rowH}
                       text={text}
-                      fill={withHash(readString(cellFont.color) ?? font.color)}
-                      fontFamily={`${readString(cellFont.family) ?? font.family}, Helvetica, sans-serif`}
-                      fontSize={readNumber(cellFont.size) ?? bodyFontSize}
+                      fill={withHash(cellFont.color)}
+                      fontFamily={`${cellFont.family}, Helvetica, sans-serif`}
+                      fontSize={fontSize}
                       fontStyle={cellFont.bold ? "bold" : "normal"}
+                      textDecoration={cellFont.underline ? "underline" : ""}
+                      lineHeight={cellLineHeight}
+                      letterSpacing={cellFont.letterSpacing}
                       align={readString(cellRecord.alignment) ?? "left"}
                       verticalAlign="middle"
                     />

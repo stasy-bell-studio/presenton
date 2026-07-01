@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   type ChangeEvent as ReactChangeEvent,
-  type CSSProperties,
 } from "react";
 import type Konva from "konva";
 import { useDispatch } from "react-redux";
@@ -29,19 +28,32 @@ import {
 } from "react-konva";
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
+import { renderMarkdownTextRuns } from "@/components/slide-editor/lib/markdown-text";
+import { effectiveLineHeight } from "@/components/slide-editor/lib/text-line-height";
+import { textRunsContent } from "@/components/slide-editor/lib/text-runs";
+import type {
+  TemplateV2InlineEditKind,
+  TemplateV2TextEditStyle,
+} from "@/components/slide-editor/lib/template-v2-text-editing";
 import {
   SLIDE_H,
   SLIDE_W,
   type ChartElement,
   type ChartSeries,
+  type Font,
   type SlideElement,
+  type TextRun,
 } from "@/components/slide-editor/lib/slide-schema";
 import {
   useTableCellSelection,
+  useTemplateV2InlineEditing,
   type TableCellSelection,
   type TableSlideElement,
 } from "@/components/slide-editor/state";
-import { TableInlineEditor } from "@/components/slide-editor/inline";
+import {
+  TableInlineEditor,
+  TemplateV2InlineEditor,
+} from "@/components/slide-editor/inline";
 import { ElementToolbar } from "@/components/slide-editor/workspace/ElementToolbar";
 import {
   loadKonvaImage,
@@ -63,6 +75,12 @@ import {
   type TemplateV2ClipboardPayload,
 } from "./template-v2-clipboard/clipboard";
 import { useTemplateV2Clipboard } from "./template-v2-clipboard/useTemplateV2Clipboard";
+import {
+  isTemplateV2LayoutElement,
+  TemplateV2LayoutToolbar,
+} from "./template-v2-layout-toolbar/TemplateV2LayoutToolbar";
+import { findFirstComponentLayoutElement } from "./template-v2-layout-toolbar/layoutToolbarTarget";
+import { layoutWrappedFlexChildren } from "./template-v2-layout/wrappedFlexLayout";
 import { TemplateV2SelectionTransformers } from "./template-v2-selection/TemplateV2SelectionTransformers";
 import {
   TEMPLATE_V2_CHART_EDITOR_EVENT,
@@ -128,20 +146,8 @@ type LaidOutChild = {
   box: Box | null;
   layoutManaged: boolean;
 };
-type TextEditStyle = {
-  family: string;
-  size: number;
-  color: string;
-  bold: boolean;
-  italic: boolean;
-  underline: boolean;
-  lineHeight: number;
-  letterSpacing: number;
-  wrap: string;
-  horizontal: "left" | "center" | "right";
-  vertical: "top" | "middle" | "bottom";
-};
-type RenderTextFont = Omit<TextEditStyle, "horizontal" | "vertical">;
+type TextEditStyle = TemplateV2TextEditStyle;
+type RenderTextFont = Omit<TemplateV2TextEditStyle, "horizontal" | "vertical">;
 type RenderTextRun = {
   text: string;
   font: RenderTextFont;
@@ -159,16 +165,6 @@ type ElementSelection = {
 };
 
 type Selection = ComponentSelection | ElementSelection | null;
-
-type InlineEdit =
-  | {
-    kind: "text" | "text-list" | "svg";
-    selection: ElementSelection;
-    draft: string;
-    frame?: Box | null;
-    style?: TextEditStyle;
-  }
-  | null;
 
 type TemplateV2KonvaSlideProps = {
   layout: TemplateV2Layout;
@@ -198,7 +194,17 @@ function TemplateV2KonvaSlideComponent({
     cloneJson(layout as RawUi),
   );
   const [selection, setSelection] = useState<Selection>(null);
-  const [inlineEdit, setInlineEdit] = useState<InlineEdit>(null);
+  const {
+    inlineEdit,
+    clearInlineEdit,
+    startInlineEdit,
+    updateInlineDraft,
+    updateInlineEdit,
+    updateInlineRuns,
+    updateInlineTextSelectionRange,
+  } = useTemplateV2InlineEditing<ElementSelection>({
+    keyForSelection,
+  });
   const [iconEditorSelection, setIconEditorSelection] =
     useState<ElementSelection | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
@@ -255,12 +261,36 @@ function TemplateV2KonvaSlideComponent({
   const selectedBox = selection
     ? absoluteBoxForSelection(uiDraft, selection)
     : null;
+  const layoutToolbarTarget = useMemo(() => {
+    if (selection?.kind !== "component" || !selectedComponent) return null;
+    const layoutRoot = findFirstComponentLayoutElement(
+      readArray(selectedComponent.elements),
+    );
+    if (!layoutRoot) return null;
+    const elementSelection: ElementSelection = {
+      kind: "element",
+      componentIndex: selection.componentIndex,
+      elementPath: layoutRoot.elementPath,
+    };
+    const box = absoluteBoxForSelection(uiDraft, elementSelection);
+    return box
+      ? { selection: elementSelection, element: layoutRoot.element, box }
+      : null;
+  }, [selection, selectedComponent, uiDraft]);
   const toolbarElement = useMemo(
-    () =>
-      selectedElement && selectedBox
-        ? rawElementForEditorToolbar(selectedElement, selectedBox)
-        : null,
-    [selectedBox, selectedElement],
+    () => {
+      if (!selectedElement || !selectedBox) return null;
+      const inlineTextElement =
+        inlineEdit &&
+        inlineEdit.kind === "text" &&
+        inlineEdit.runs &&
+        selection?.kind === "element" &&
+        keyForSelection(inlineEdit.selection) === keyForSelection(selection)
+          ? setRawTextRunsContent(selectedElement, inlineEdit.runs)
+          : selectedElement;
+      return rawElementForEditorToolbar(inlineTextElement, selectedBox);
+    },
+    [inlineEdit, selectedBox, selectedElement, selection],
   );
   const componentToolbarElement = useMemo(
     () =>
@@ -269,9 +299,6 @@ function TemplateV2KonvaSlideComponent({
         : null,
     [selectedComponent],
   );
-  const inlineEditElement = inlineEdit
-    ? getElementAtSelection(uiDraft, inlineEdit.selection)
-    : null;
   const inlineEditBox = inlineEdit
     ? absoluteBoxForSelection(uiDraft, inlineEdit.selection)
     : null;
@@ -289,12 +316,12 @@ function TemplateV2KonvaSlideComponent({
     setUiDraft(next);
     setSelection(null);
     clearTableCellSelection();
-    setInlineEdit(null);
+    clearInlineEdit();
     setIconEditorSelection(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
     setHistoryAvailability({ canUndo: false, canRedo: false });
-  }, [clearTableCellSelection, layout]);
+  }, [clearInlineEdit, clearTableCellSelection, layout]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -390,11 +417,11 @@ function TemplateV2KonvaSlideComponent({
     ) => {
       activateSurface();
       setSelection(elementSelection);
-      setInlineEdit(null);
+      clearInlineEdit();
       setIconEditorSelection(null);
       selectTableCellSelection(elementSelection, rowIndex, colIndex);
     },
-    [activateSurface, selectTableCellSelection],
+    [activateSurface, clearInlineEdit, selectTableCellSelection],
   );
 
   const editTableCell = useCallback(
@@ -405,11 +432,11 @@ function TemplateV2KonvaSlideComponent({
     ) => {
       activateSurface();
       setSelection(elementSelection);
-      setInlineEdit(null);
+      clearInlineEdit();
       setIconEditorSelection(null);
       editTableCellSelection(elementSelection, rowIndex, colIndex);
     },
-    [activateSurface, editTableCellSelection],
+    [activateSurface, clearInlineEdit, editTableCellSelection],
   );
 
   const updateComponent = useCallback(
@@ -439,9 +466,9 @@ function TemplateV2KonvaSlideComponent({
     commitUi(deleteSelectionFromUi(currentUiRef.current, selection));
     setSelection(null);
     clearTableCellSelection();
-    setInlineEdit(null);
+    clearInlineEdit();
     setIconEditorSelection(null);
-  }, [clearTableCellSelection, commitUi, selection]);
+  }, [clearInlineEdit, clearTableCellSelection, commitUi, selection]);
 
   const createClipboardPayload = useCallback((): TemplateV2ClipboardPayload | null => {
     if (!selection) return null;
@@ -479,11 +506,11 @@ function TemplateV2KonvaSlideComponent({
       if (!result) return;
       commitUi(result.ui);
       setSelection(result.selection);
-      setInlineEdit(null);
+      clearInlineEdit();
       setIconEditorSelection(null);
       activateSurface();
     },
-    [activateSurface, commitUi],
+    [activateSurface, clearInlineEdit, commitUi],
   );
 
   useTemplateV2Clipboard({
@@ -505,15 +532,17 @@ function TemplateV2KonvaSlideComponent({
         elementSelection,
       );
       if (type === "text") {
-        setInlineEdit({
+        const runs = rawTextRunsForEditor(element);
+        startInlineEdit({
           kind: "text",
           selection: elementSelection,
-          draft: rawTextContent(element),
+          draft: textRunsContent(runs),
+          runs,
           frame,
           style: rawTextStyle(element),
         });
       } else if (type === "text-list") {
-        setInlineEdit({
+        startInlineEdit({
           kind: "text-list",
           selection: elementSelection,
           draft: rawTextListContent(element),
@@ -521,7 +550,7 @@ function TemplateV2KonvaSlideComponent({
           style: rawTextStyle(element),
         });
       } else if (type === "svg") {
-        setInlineEdit({
+        startInlineEdit({
           kind: "svg",
           selection: elementSelection,
           draft: rawSvgContent(element),
@@ -529,7 +558,7 @@ function TemplateV2KonvaSlideComponent({
         });
       }
     },
-    [clearTableCellEditing],
+    [clearTableCellEditing, startInlineEdit],
   );
 
   const closeInlineEditor = useCallback(
@@ -544,13 +573,14 @@ function TemplateV2KonvaSlideComponent({
             current.draft,
             current.style,
             current.frame,
+            current.runs,
           ),
         );
       }
       setSelection(current.selection);
-      setInlineEdit(null);
+      clearInlineEdit();
     },
-    [inlineEdit, updateElement],
+    [clearInlineEdit, inlineEdit, updateElement],
   );
 
   const applyToolbarElementChange = useCallback(
@@ -561,15 +591,36 @@ function TemplateV2KonvaSlideComponent({
       if (!current || !box) return;
       const next = mergeEditorToolbarElement(current, editorElement, box);
       updateElement(selection, () => next);
-      setInlineEdit((active) =>
-        active &&
-          active.style &&
-          keyForSelection(active.selection) === keyForSelection(selection)
-          ? { ...active, style: rawTextStyle(next) }
-          : active,
-      );
+      updateInlineEdit(selection, (active) => {
+        if (
+          !active?.style ||
+          keyForSelection(active.selection) !== keyForSelection(selection)
+        ) {
+          return active;
+        }
+        if (active.kind === "text") {
+          return {
+            ...active,
+            draft: rawTextContent(next),
+            runs: rawTextRunsForEditor(next),
+            style: rawTextStyle(next),
+          };
+        }
+        return { ...active, style: rawTextStyle(next) };
+      });
     },
-    [selection, updateElement],
+    [selection, updateElement, updateInlineEdit],
+  );
+
+  const applyLayoutElementChange = useCallback(
+    (changes: Record<string, unknown>) => {
+      if (!layoutToolbarTarget) return;
+      updateElement(layoutToolbarTarget.selection, (current) => ({
+        ...current,
+        ...changes,
+      }));
+    },
+    [layoutToolbarTarget, updateElement],
   );
 
   const applyComponentToolbarChange = useCallback(
@@ -607,10 +658,10 @@ function TemplateV2KonvaSlideComponent({
       }
       activateSurface();
       setSelection(elementSelection);
-      setInlineEdit(null);
+      clearInlineEdit();
       setIconEditorSelection(elementSelection);
     },
-    [activateSurface],
+    [activateSurface, clearInlineEdit],
   );
 
   const handleIconChange = useCallback(
@@ -809,7 +860,7 @@ function TemplateV2KonvaSlideComponent({
       }
 
       setSelection(null);
-      setInlineEdit(null);
+      clearInlineEdit();
       clearSurface();
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
@@ -817,7 +868,7 @@ function TemplateV2KonvaSlideComponent({
       document.removeEventListener("pointerdown", handlePointerDown, true);
       clearSurface();
     };
-  }, [activateSurface, clearSurface, isEditMode]);
+  }, [activateSurface, clearInlineEdit, clearSurface, isEditMode]);
 
   useHotkey(
     "Mod+Z",
@@ -883,7 +934,7 @@ function TemplateV2KonvaSlideComponent({
           if (event.target === event.target.getStage()) {
             setSelection(null);
             clearTableCellSelection();
-            setInlineEdit(null);
+            clearInlineEdit();
           }
         }}
         onTouchStart={(event) => {
@@ -891,7 +942,7 @@ function TemplateV2KonvaSlideComponent({
           if (event.target === event.target.getStage()) {
             setSelection(null);
             clearTableCellSelection();
-            setInlineEdit(null);
+            clearInlineEdit();
           }
         }}
       >
@@ -959,11 +1010,20 @@ function TemplateV2KonvaSlideComponent({
           onEditImage={() => undefined}
         />
       ) : null}
+      {isEditMode && layoutToolbarTarget ? (
+        <TemplateV2LayoutToolbar
+          key={keyForSelection(layoutToolbarTarget.selection)}
+          box={layoutToolbarTarget.box}
+          element={layoutToolbarTarget.element}
+          onChange={applyLayoutElementChange}
+        />
+      ) : null}
       {isEditMode &&
         selection?.kind === "element" &&
         selectedElement &&
         selectedBox &&
         toolbarElement &&
+        !isTemplateV2LayoutElement(selectedElement) &&
         !isRawIconElement(selectedElement) &&
         !(editingTableCell && readString(selectedElement.type) === "table") ? (
         <ElementToolbar
@@ -972,6 +1032,13 @@ function TemplateV2KonvaSlideComponent({
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
           selectedTableCell={selectedTableCell}
+          textSelectionRange={
+            inlineEdit &&
+            inlineEdit.kind === "text" &&
+            keyForSelection(inlineEdit.selection) === keyForSelection(selection)
+              ? inlineEdit.textSelectionRange
+              : null
+          }
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onEditChart={() => openChartEditor(selection)}
           onEditImage={() => openImageUpload(selection)}
@@ -993,16 +1060,23 @@ function TemplateV2KonvaSlideComponent({
           onClose={clearTableCellEditing}
         />
       ) : null}
-      {inlineEdit && inlineEditElement && inlineEditBox ? (
-        <RawInlineEditor
+      {inlineEdit && inlineEditBox ? (
+        <TemplateV2InlineEditor
           key={keyForSelection(inlineEdit.selection)}
           draft={inlineEdit.draft}
-          element={inlineEditElement}
           kind={inlineEdit.kind}
           box={inlineEditBox}
+          runs={inlineEdit.runs}
           style={inlineEdit.style}
-          onChange={(draft) =>
-            setInlineEdit((current) => (current ? { ...current, draft } : current))
+          onChange={updateInlineDraft}
+          onRunsChange={(runs) =>
+            updateInlineRuns(inlineEdit.selection, runs)
+          }
+          onSelectionChange={(textSelectionRange) =>
+            updateInlineTextSelectionRange(
+              inlineEdit.selection,
+              textSelectionRange,
+            )
           }
           onClose={(commit) => closeInlineEditor(commit)}
         />
@@ -1567,6 +1641,157 @@ const MemoizedRawElementVisual = memo(
     previous.onTableCellEdit === next.onTableCellEdit,
 );
 
+const richMeasureCtx: { ctx: CanvasRenderingContext2D | null } = { ctx: null };
+
+function measureContext(): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (!richMeasureCtx.ctx) {
+    richMeasureCtx.ctx = document.createElement("canvas").getContext("2d");
+  }
+  return richMeasureCtx.ctx;
+}
+
+function richFontCss(font: RenderTextFont): string {
+  const italic = font.italic ? "italic " : "";
+  const weight = font.bold ? "700 " : "400 ";
+  return `${italic}${weight}${font.size}px "${font.family}", Helvetica, sans-serif`;
+}
+
+function measureRunText(text: string, font: RenderTextFont): number {
+  if (!text) return 0;
+  const ctx = measureContext();
+  if (!ctx) return text.length * font.size * TEXT_AVERAGE_CHAR_EM;
+  ctx.font = richFontCss(font);
+  const width = ctx.measureText(text).width;
+  const spacing = font.letterSpacing ? font.letterSpacing * text.length : 0;
+  return width + spacing;
+}
+
+// Convert the stored per-run array into render-ready runs, inheriting any
+// missing font properties from the element's base font.
+function editorRunsFromElement(element: RawElement): RenderTextRun[] {
+  const base = rawFont(element);
+  const built: RenderTextRun[] = [];
+  for (const value of readArray(element.runs)) {
+    const record = asRecord(value);
+    if (!record) continue;
+    const text = readString(record.text) ?? "";
+    if (!text) continue;
+    built.push({ text, font: fontFromRecord(asRecord(record.font), base) });
+  }
+  if (built.length === 0) {
+    return [{ text: rawTextContent(element), font: base }];
+  }
+  return built;
+}
+
+type LaidToken = {
+  text: string;
+  font: RenderTextFont;
+  x: number;
+  y: number;
+};
+
+// Minimal inline text-layout engine: greedily word-wraps a sequence of runs
+// (each with its own font) inside `maxWidth`, honouring explicit newlines,
+// horizontal alignment per line and vertical alignment of the whole block.
+// Konva has no native mixed-style text, so each token is later drawn as its
+// own <Text> node.
+function layoutRichText(
+  runs: RenderTextRun[],
+  maxWidth: number,
+  baseFont: RenderTextFont,
+  align: string,
+  verticalAlign: string,
+  boxHeight: number,
+): { tokens: LaidToken[]; contentHeight: number } {
+  type Tok = { text: string; font: RenderTextFont; newline: boolean; space: boolean; width: number };
+  const tokens: Tok[] = [];
+  for (const run of runs) {
+    const display = displayText(run.text);
+    if (!display) continue;
+    for (const part of display.split(/(\n|[ \t]+)/)) {
+      if (part === "") continue;
+      if (part === "\n") {
+        tokens.push({ text: "", font: run.font, newline: true, space: false, width: 0 });
+      } else {
+        const space = /^[ \t]+$/.test(part);
+        tokens.push({
+          text: part,
+          font: run.font,
+          newline: false,
+          space,
+          width: measureRunText(part, run.font),
+        });
+      }
+    }
+  }
+
+  type Line = { toks: Tok[]; height: number; width: number };
+  const lines: Line[] = [];
+  let cur: Tok[] = [];
+  let curWidth = 0;
+  const flush = () => {
+    const height = cur.length
+      ? Math.max(...cur.map((t) => t.font.size * t.font.lineHeight))
+      : baseFont.size * baseFont.lineHeight;
+    lines.push({ toks: cur, height, width: curWidth });
+    cur = [];
+    curWidth = 0;
+  };
+  for (const tok of tokens) {
+    if (tok.newline) {
+      flush();
+      continue;
+    }
+    if (tok.space && cur.length === 0) continue;
+    if (!tok.space && curWidth + tok.width > maxWidth && cur.length > 0) {
+      flush();
+    }
+    cur.push(tok);
+    curWidth += tok.width;
+  }
+  flush();
+
+  const contentHeight = lines.reduce((sum, line) => sum + line.height, 0);
+  let y =
+    verticalAlign === "middle"
+      ? (boxHeight - contentHeight) / 2
+      : verticalAlign === "bottom"
+        ? boxHeight - contentHeight
+        : 0;
+  if (y < 0) y = 0;
+
+  const laid: LaidToken[] = [];
+  for (const line of lines) {
+    let lineWidth = line.width;
+    for (let i = line.toks.length - 1; i >= 0 && line.toks[i].space; i--) {
+      lineWidth -= line.toks[i].width;
+    }
+    let x =
+      align === "center"
+        ? (maxWidth - lineWidth) / 2
+        : align === "right"
+          ? maxWidth - lineWidth
+          : 0;
+    if (x < 0) x = 0;
+    for (const tok of line.toks) {
+      if (tok.text) {
+        const tokenBoxHeight = tok.font.size * tok.font.lineHeight;
+        laid.push({
+          text: tok.text,
+          font: tok.font,
+          x,
+          y: y + (line.height - tokenBoxHeight),
+        });
+      }
+      x += tok.width;
+    }
+    y += line.height;
+  }
+  return { tokens: laid, contentHeight };
+}
+
 function RawRichTextElement({
   element,
   width,
@@ -1582,14 +1807,130 @@ function RawRichTextElement({
 }) {
   const font = rawFont(element);
   const content = text ?? rawTextContent(element);
+  const displayContent = displayText(content);
+  const renderRuns = text == null ? rawRenderTextRuns(element) : [];
+  const renderRunsDifferFromElement =
+    renderRuns.length > 0 &&
+    textRunsHaveMixedStyle([{ text: "", font }, ...renderRuns]);
   const align = readString(element.alignment?.horizontal) ?? "left";
   const verticalAlign = readString(element.alignment?.vertical) ?? "top";
+  const textLineHeight = effectiveLineHeight({
+    text: displayContent,
+    width,
+    fontSize: font.size,
+    lineHeight: font.lineHeight,
+    fallback: 1.15,
+    wrap: font.wrap,
+  });
+
+  if (renderRunsDifferFromElement) {
+    const lines = layoutRenderTextRuns(renderRuns, width);
+    const lineMetrics = lines.map((line) => ({
+      height: lineRenderHeight(line, textLineHeight),
+      width: line.reduce((sum, segment) => sum + segment.width, 0),
+    }));
+    const totalHeight = lineMetrics.reduce(
+      (sum, metric) => sum + metric.height,
+      0,
+    );
+    const startY =
+      verticalAlign === "middle"
+        ? Math.max(0, (height - totalHeight) / 2)
+        : verticalAlign === "bottom"
+          ? Math.max(0, height - totalHeight)
+          : 0;
+    let y = startY;
+
+    return (
+      <Group listening={interactive}>
+        {lines.map((line, lineIndex) => {
+          const lineMetric = lineMetrics[lineIndex] ?? {
+            height: font.size * textLineHeight,
+            width: 0,
+          };
+          const startX =
+            align === "center"
+              ? Math.max(0, (width - lineMetric.width) / 2)
+              : align === "right"
+                ? Math.max(0, width - lineMetric.width)
+                : 0;
+          let x = startX;
+          const lineY = y;
+          y += lineMetric.height;
+          return line.map((segment, segmentIndex) => {
+            const segmentX = x;
+            x += segment.width;
+            return (
+              <Text
+                key={`${lineIndex}:${segmentIndex}`}
+                x={segmentX}
+                y={lineY}
+                width={segment.width}
+                height={lineMetric.height}
+                text={segment.text}
+                fill={withHash(segment.font.color)}
+                fontFamily={`${segment.font.family}, Helvetica, sans-serif`}
+                fontSize={segment.font.size}
+                fontStyle={`${segment.font.bold ? "bold" : "normal"} ${
+                  segment.font.italic ? "italic" : ""
+                }`}
+                textDecoration={segment.font.underline ? "underline" : ""}
+                verticalAlign="middle"
+                lineHeight={segment.font.lineHeight ?? textLineHeight}
+                letterSpacing={segment.font.letterSpacing}
+                wrap="none"
+                {...shadowProps(element)}
+                listening={interactive}
+              />
+            );
+          });
+        })}
+      </Group>
+    );
+  }
+
+  // Multi-run (partially styled) text elements are laid out per-run so each
+  // segment keeps its own font. Everything else — text-list (explicit joined
+  // string) and single-run text — uses the original single-node path, so
+  // existing content renders byte-for-byte as before.
+  const runs = typeof text === "string" ? null : editorRunsFromElement(element);
+  if (runs && runs.length > 1) {
+    const { tokens } = layoutRichText(
+      runs,
+      width,
+      font,
+      align,
+      verticalAlign,
+      height,
+    );
+    return (
+      <Group listening={interactive} {...shadowProps(element)}>
+        {tokens.map((tok, index) => (
+          <Text
+            key={index}
+            x={tok.x}
+            y={tok.y}
+            text={tok.text}
+            fill={withHash(tok.font.color)}
+            fontFamily={`${tok.font.family}, Helvetica, sans-serif`}
+            fontSize={tok.font.size}
+            fontStyle={`${tok.font.bold ? "bold" : "normal"} ${tok.font.italic ? "italic" : ""}`}
+            textDecoration={tok.font.underline ? "underline" : ""}
+            lineHeight={tok.font.lineHeight}
+            letterSpacing={tok.font.letterSpacing}
+            wrap="none"
+            listening={interactive}
+          />
+        ))}
+      </Group>
+    );
+  }
 
   return (
     <Text
       width={width}
       height={height}
-      text={displayText(content)}
+      text={displayContent}
       fill={withHash(font.color)}
       fontFamily={`${font.family}, Helvetica, sans-serif`}
       fontSize={font.size}
@@ -1597,12 +1938,115 @@ function RawRichTextElement({
       textDecoration={font.underline ? "underline" : ""}
       align={align}
       verticalAlign={verticalAlign}
-      lineHeight={font.lineHeight}
+      lineHeight={textLineHeight}
       letterSpacing={font.letterSpacing}
       wrap={font.wrap === "none" ? "none" : "word"}
       {...shadowProps(element)}
       listening={interactive}
     />
+  );
+}
+
+function rawRenderTextRuns(element: RawElement): RenderTextRun[] {
+  const baseFont = rawFont(element);
+  const runs = readArray(element.runs)
+    .flatMap((run) => {
+      const record = asRecord(run);
+      const text = readString(record?.text) ?? "";
+      if (!text) return [];
+      const sourceRun = {
+        text,
+        font: fontToSource(fontFromRecord(asRecord(record?.font), baseFont)),
+      } satisfies TextRun;
+      return renderMarkdownTextRuns([sourceRun]).map((renderedRun) => ({
+        text: renderedRun.text,
+        font: fontFromRecord(asRecord(renderedRun.font), baseFont),
+      }));
+    })
+    .filter((run) => run.text) as RenderTextRun[];
+
+  return runs.length > 0
+    ? runs
+    : renderMarkdownTextRuns([
+        { text: rawTextContent(element) || " ", font: fontToSource(baseFont) },
+      ]).map((run) => ({
+        text: run.text,
+        font: fontFromRecord(asRecord(run.font), baseFont),
+      }));
+}
+
+function textRunsHaveMixedStyle(runs: RenderTextRun[]) {
+  const first = runs[0]?.font;
+  return runs.some((run) => JSON.stringify(run.font) !== JSON.stringify(first));
+}
+
+function layoutRenderTextRuns(runs: RenderTextRun[], width: number) {
+  const lines: Array<Array<RenderTextRun & { width: number }>> = [[]];
+  let lineWidth = 0;
+
+  const pushLine = () => {
+    if (lines[lines.length - 1]?.length === 0) return;
+    lines.push([]);
+    lineWidth = 0;
+  };
+
+  for (const run of runs) {
+    const parts = run.text.match(/\n|[^\S\n]+|[^\s]+/g) ?? [run.text];
+    for (const part of parts) {
+      if (part === "\n") {
+        pushLine();
+        continue;
+      }
+      const segmentWidth = measureRenderText(part, run.font);
+      const isWhitespace = part.trim().length === 0;
+      if (
+        !isWhitespace &&
+        lineWidth > 0 &&
+        lineWidth + segmentWidth > width
+      ) {
+        pushLine();
+      }
+      if (lines.length === 0) lines.push([]);
+      lines[lines.length - 1].push({
+        ...run,
+        text: part,
+        width: segmentWidth,
+      });
+      lineWidth += segmentWidth;
+    }
+  }
+
+  return lines.filter((line) => line.length > 0);
+}
+
+function lineRenderHeight(
+  line: Array<RenderTextRun & { width: number }>,
+  fallbackLineHeight: number,
+) {
+  return Math.max(
+    1,
+    ...line.map(
+      (segment) =>
+        segment.font.size * (segment.font.lineHeight ?? fallbackLineHeight),
+    ),
+  );
+}
+
+let renderTextMeasureCanvas: HTMLCanvasElement | null = null;
+
+function measureRenderText(text: string, font: RenderTextFont) {
+  const fallbackWidth =
+    text.length * font.size * (font.bold ? 0.58 : TEXT_AVERAGE_CHAR_EM);
+  if (typeof document === "undefined") return fallbackWidth;
+  renderTextMeasureCanvas ??= document.createElement("canvas");
+  const context = renderTextMeasureCanvas.getContext("2d");
+  if (!context) return fallbackWidth;
+  context.font = `${font.italic ? "italic " : ""}${
+    font.bold ? "700 " : "400 "
+  }${font.size}px ${font.family}, Helvetica, sans-serif`;
+  return (
+    context.measureText(text).width +
+    ((font.letterSpacing ?? 0) * Math.max(0, text.length - 1))
   );
 }
 
@@ -1872,97 +2316,6 @@ function RawInfographicElement({
         fill="#172033"
       />
     </Group>
-  );
-}
-
-function RawInlineEditor({
-  draft,
-  element,
-  kind,
-  box,
-  style,
-  onChange,
-  onClose,
-}: {
-  draft: string;
-  element: RawElement;
-  kind: NonNullable<InlineEdit>["kind"];
-  box: Box;
-  style?: TextEditStyle;
-  onChange: (draft: string) => void;
-  onClose: (commit: boolean) => void;
-}) {
-  const editorRef = useRef<HTMLDivElement | null>(null);
-  const font = style ?? rawTextStyle(element);
-  const isCode = kind === "svg";
-  const closeAfterBlur = useCallback(() => {
-    window.setTimeout(() => {
-      const active = document.activeElement;
-      if (active && editorRef.current?.contains(active)) return;
-      onClose(true);
-    }, 0);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={editorRef}
-      data-inline-edit-ignore="true"
-      onBlur={closeAfterBlur}
-      onPointerDown={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-      style={{
-        position: "absolute",
-        zIndex: 30,
-        inset: 0,
-        pointerEvents: "none",
-      }}
-    >
-      <textarea
-        autoFocus
-        data-inline-edit-ignore="true"
-        value={draft}
-        onMouseDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        onChange={(event) => onChange(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === "Escape") {
-            event.preventDefault();
-            onClose(false);
-          }
-          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-            event.preventDefault();
-            onClose(true);
-          }
-        }}
-        style={{
-          position: "absolute",
-          zIndex: 31,
-          left: box.x,
-          top: box.y,
-          width: box.width,
-          height: box.height,
-          pointerEvents: "auto",
-          border: "1px solid #7C51F8",
-          outline: "none",
-          resize: "none",
-          padding: 0,
-          background: isCode
-            ? "rgba(7,20,37,0.96)"
-            : "rgba(255,255,255,0.08)",
-          color: isCode ? "#E7EDF8" : withHash(font.color),
-          caretColor: isCode ? "#E7EDF8" : withHash(font.color),
-          fontFamily: isCode
-            ? "Menlo, Consolas, monospace"
-            : `${font.family}, Helvetica, sans-serif`,
-          fontSize: isCode ? 12 : font.size,
-          fontWeight: font.bold ? 700 : 400,
-          fontStyle: font.italic ? "italic" : "normal",
-          lineHeight: font.lineHeight,
-          letterSpacing: font.letterSpacing,
-          textAlign: font.horizontal as CSSProperties["textAlign"],
-        }}
-      />
-    </div>
   );
 }
 
@@ -2318,6 +2671,35 @@ function layoutFlexChildren(
   const availableH = Math.max(1, parentBox.height - padding.top - padding.bottom);
   const availableMain = isColumn ? availableH : availableW;
   const availableCross = isColumn ? availableW : availableH;
+  if (parent.wrap === true) {
+    const crossGap =
+      (isColumn
+        ? readNumber(parent.column_gap) ?? readNumber(parent.columnGap)
+        : readNumber(parent.row_gap) ?? readNumber(parent.rowGap)) ??
+      readNumber(parent.gap) ??
+      0;
+    return layoutWrappedFlexChildren({
+      align,
+      alignSelf: (child) =>
+        readString(child.layout?.align_self) ??
+        readString(child.layout?.alignSelf),
+      alignmentOffset,
+      availableCross,
+      availableMain,
+      childCrossSize,
+      children,
+      clampLayoutSize,
+      crossGap,
+      direction,
+      elementBox,
+      flexBasis,
+      isManualPositioned,
+      justify,
+      layoutNumber,
+      mainGap,
+      padding,
+    });
+  }
   const bases = children.map((child) =>
     isManualPositioned(child)
       ? isColumn
@@ -3414,13 +3796,20 @@ function isBoxVisualType(type: string | null) {
 
 function elementWithInlineDraft(
   element: RawElement,
-  kind: NonNullable<InlineEdit>["kind"],
+  kind: TemplateV2InlineEditKind,
   draft: string,
   style?: TextEditStyle,
   frame?: Box | null,
+  runs?: TextRun[],
 ) {
   if (kind === "text") {
-    return preserveInlineEditFrame(setRawTextContent(element, draft, style), frame);
+    const next =
+      runs != null
+        ? setRawTextRunsContent(element, runs)
+        : draft === rawTextContent(element)
+        ? element
+        : setRawTextContent(element, draft, style);
+    return preserveInlineEditFrame(next, frame);
   }
   if (kind === "text-list") {
     const next = setRawTextListContent(element, draft);
@@ -3460,6 +3849,30 @@ function rawTextContent(element: RawElement) {
   return "";
 }
 
+function rawTextRunsForEditor(element: RawElement): TextRun[] {
+  const fallbackFont = fontToSource(rawFont(element));
+  const runs = readArray(element.runs)
+    .map((run) => {
+      const record = asRecord(run);
+      if (!record) return null;
+      const text = readString(record.text) ?? "";
+      if (!text) return null;
+      return {
+        text,
+        font: fontToSource(
+          fontFromRecord(asRecord(record.font), rawFont(element)),
+        ),
+      } satisfies TextRun;
+    })
+    .filter(Boolean) as TextRun[];
+
+  return renderMarkdownTextRuns(
+    runs.length > 0
+      ? runs
+      : [{ text: rawTextContent(element) || " ", font: fallbackFont }],
+  );
+}
+
 function setRawTextContent(
   element: RawElement,
   text: string,
@@ -3468,12 +3881,14 @@ function setRawTextContent(
   const styled = style ? applyTextStyle(element, style) : element;
   const sourceRuns = readArray(styled.runs);
   const firstRun = asRecord(sourceRuns[0]) ?? {};
-  const runs = markdownTextRuns(text, rawFont(styled)).map((run) => ({
+  const runs = renderMarkdownTextRuns([
+    { text, font: fontToSource(rawFont(styled)) },
+  ]).map((run) => ({
     ...firstRun,
     text: run.text,
     font: {
       ...(asRecord(firstRun.font) ?? {}),
-      ...fontToSource(run.font),
+      ...(asRecord(run.font) ?? {}),
     },
   }));
   return {
@@ -3483,46 +3898,37 @@ function setRawTextContent(
   };
 }
 
-function markdownTextRuns(text: string, baseFont: RenderTextFont): RenderTextRun[] {
-  const runs: RenderTextRun[] = [];
-  let index = 0;
-  let buffer = "";
-  let bold = false;
-  let italic = false;
-
-  const flush = () => {
-    if (!buffer) return;
-    runs.push({
-      text: buffer,
-      font: {
-        ...baseFont,
-        bold: baseFont.bold || bold,
-        italic: baseFont.italic || italic,
-      },
-    });
-    buffer = "";
+function setRawTextRunsContent(
+  element: RawElement,
+  runs: TextRun[],
+): RawElement {
+  const sourceRuns = readArray(element.runs);
+  const nextRuns = (runs.length > 0 ? runs : [{ text: " " }]).map(
+    (run, index) => {
+      const sourceRun = asRecord(sourceRuns[index]) ?? {};
+      return {
+        ...sourceRun,
+        text: run.text,
+        font: rawInlineTextFontRecord(run.font, sourceRun.font),
+      };
+    },
+  );
+  return {
+    ...element,
+    text: textRunsContent(nextRuns),
+    runs: nextRuns,
   };
+}
 
-  while (index < text.length) {
-    const nextTwo = text.slice(index, index + 2);
-    const nextOne = text[index];
-    if (nextTwo === "**" || nextTwo === "__") {
-      flush();
-      bold = !bold;
-      index += 2;
-      continue;
-    }
-    if (nextOne === "*" || nextOne === "_") {
-      flush();
-      italic = !italic;
-      index += 1;
-      continue;
-    }
-    buffer += nextOne;
-    index += 1;
-  }
-  flush();
-  return runs.length > 0 ? runs : [{ text: " ", font: baseFont }];
+function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
+  const font = asRecord(value);
+  if (!font) return fallback;
+  return {
+    ...(asRecord(fallback) ?? {}),
+    ...font,
+    line_height: font.line_height ?? font.lineHeight,
+    letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  };
 }
 
 function rawTextListContent(element: RawElement) {
@@ -3759,10 +4165,14 @@ function rawElementForEditorToolbar(
   };
 
   if (type === "text") {
-    projected.runs = readArray(element.runs).map((value) => {
+    const runs = readArray(element.runs).map((value) => {
       const run = asRecord(value) ?? {};
       return { ...run, font: rawFontRecordForEditor(run.font) };
     });
+    projected.runs =
+      runs.length > 0
+        ? runs
+        : [{ text: rawTextContent(element) || " ", font: projected.font }];
   } else if (type === "text-list") {
     projected.items = readArray(element.items).map((item) => {
       if (Array.isArray(item)) {
@@ -4141,7 +4551,7 @@ function fontFromRecord(
   };
 }
 
-function fontToSource(font: RenderTextFont) {
+function fontToSource(font: RenderTextFont): Font {
   return {
     family: font.family,
     size: font.size,
@@ -4151,7 +4561,7 @@ function fontToSource(font: RenderTextFont) {
     underline: font.underline,
     line_height: font.lineHeight,
     letter_spacing: font.letterSpacing,
-    wrap: font.wrap,
+    wrap: readFontWrap(font.wrap),
   };
 }
 
@@ -4323,6 +4733,14 @@ function readVerticalAlignment(value: unknown): TextEditStyle["vertical"] {
   const normalized = readString(value);
   if (normalized === "middle" || normalized === "bottom") return normalized;
   return "top";
+}
+
+function readFontWrap(value: unknown): Font["wrap"] {
+  const normalized = readString(value);
+  if (normalized === "none" || normalized === "char" || normalized === "word") {
+    return normalized;
+  }
+  return "word";
 }
 
 function alignmentOffset(alignment: string | null, available: number, used: number) {

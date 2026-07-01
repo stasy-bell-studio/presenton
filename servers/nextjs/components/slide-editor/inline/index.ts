@@ -9,5 +9,6 @@ export { SvgInlineEditor, svgDraftFromElement } from "./SvgInlineEditor";
 export { SvgToolbar } from "./SvgToolbar";
 export { TableInlineEditor, tableDraftFromElement } from "./TableInlineEditor";
 export { TableToolbar } from "./TableToolbar";
-export { TextInlineEditor } from "./TextInlineEditor";
+export { TemplateV2InlineEditor } from "./TemplateV2InlineEditor";
+export { TiptapInlineTextEditor } from "./TiptapInlineTextEditor";
 export { TextToolbar } from "./TextToolbar";
