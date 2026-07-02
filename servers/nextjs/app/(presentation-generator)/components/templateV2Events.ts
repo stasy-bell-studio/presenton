@@ -33,6 +33,17 @@ export type TemplateV2InsertElementsDetail = {
 export type TemplateV2SurfaceSelectedDetail = {
   slideId?: string | number | null;
   slideIndex?: number | null;
+  selection?: {
+    kind: "component" | "element";
+    slideIndex?: number | null;
+    componentIndex?: number;
+    componentId?: string;
+    componentLabel?: string;
+    elementPath?: string;
+    elementType?: string;
+    elementName?: string;
+    targetLabel?: string;
+  } | null;
 };
 
 export type TemplateV2ChartEditorDetail = {

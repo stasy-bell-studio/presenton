@@ -48,10 +48,12 @@ import {
   TEMPLATE_V2_CHART_EDITOR_EVENT,
   TEMPLATE_V2_INSERT_ELEMENTS_EVENT,
   TEMPLATE_V2_CHART_UPDATE_EVENT,
+  TEMPLATE_V2_SURFACE_SELECTED_EVENT,
   type TemplateV2ChartEditorDetail,
   type TemplateV2ChartUpdateDetail,
   type TemplateV2InsertComponent,
   type TemplateV2InsertElementsDetail,
+  type TemplateV2SurfaceSelectedDetail,
 } from "../../components/templateV2Events";
 
 type PresentationActionsProps = React.ComponentProps<typeof Chat> & {
@@ -1597,12 +1599,49 @@ function ActionsPanel({
   );
 }
 
+function templateV2TargetKey(
+  slideIndex: number | null | undefined,
+  target: TemplateV2SurfaceSelectedDetail["selection"],
+) {
+  if (target?.kind === "element") {
+    return `slide:${slideIndex ?? ""}:element:${
+      target.elementPath ?? target.componentIndex ?? ""
+    }`;
+  }
+  if (target?.kind === "component") {
+    return `slide:${slideIndex ?? ""}:component:${
+      target.componentId ?? target.componentIndex ?? ""
+    }`;
+  }
+  return null;
+}
+
 const PresentationActions = (props: PresentationActionsProps) => {
   const { presentationData, ...chatProps } = props;
   const [{ activeAction, chartEditor }, dispatchUiState] = useReducer(
     presentationActionsUiReducer,
     initialPresentationActionsUiState,
   );
+  const [selectedTemplateV2Target, setSelectedTemplateV2Target] = useState<
+    TemplateV2SurfaceSelectedDetail["selection"]
+  >(null);
+  const [hiddenSlideReferenceKey, setHiddenSlideReferenceKey] = useState<
+    string | null
+  >(null);
+  const [hiddenTargetReferenceKey, setHiddenTargetReferenceKey] = useState<
+    string | null
+  >(null);
+  const slideReferenceKey =
+    typeof props.currentSlide === "number" ? `slide:${props.currentSlide}` : null;
+  const targetReferenceKey = templateV2TargetKey(
+    props.currentSlide,
+    selectedTemplateV2Target,
+  );
+  const slideReferenceHidden =
+    Boolean(slideReferenceKey) && hiddenSlideReferenceKey === slideReferenceKey;
+  const targetReferenceHidden =
+    Boolean(targetReferenceKey) &&
+    hiddenTargetReferenceKey === targetReferenceKey;
 
   useEffect(() => {
     const handleChartEditorOpen = (event: Event) => {
@@ -1652,6 +1691,39 @@ const PresentationActions = (props: PresentationActionsProps) => {
       type: "syncCurrentSlide",
       currentSlide: props.currentSlide,
     });
+    setSelectedTemplateV2Target(null);
+    setHiddenSlideReferenceKey(null);
+    setHiddenTargetReferenceKey(null);
+  }, [props.currentSlide]);
+
+  useEffect(() => {
+    const handleSurfaceSelected = (event: Event) => {
+      const detail = (event as CustomEvent<TemplateV2SurfaceSelectedDetail>).detail;
+      if (
+        detail &&
+        typeof props.currentSlide === "number" &&
+        typeof detail.slideIndex === "number" &&
+        detail.slideIndex !== props.currentSlide
+      ) {
+        return;
+      }
+      const nextSelection = detail?.selection ?? null;
+      if (nextSelection) {
+        setHiddenTargetReferenceKey(null);
+      }
+      setSelectedTemplateV2Target(nextSelection);
+    };
+
+    window.addEventListener(
+      TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+      handleSurfaceSelected,
+    );
+    return () => {
+      window.removeEventListener(
+        TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+        handleSurfaceSelected,
+      );
+    };
   }, [props.currentSlide]);
 
   const updateChartEditor = (chart: ChartElement) => {
@@ -1786,7 +1858,19 @@ const PresentationActions = (props: PresentationActionsProps) => {
       <ActionsPanel
         activeAction={activeAction}
         chartEditor={chartEditor}
-        chatProps={chatProps}
+        chatProps={{
+          ...chatProps,
+          currentSlide: slideReferenceHidden ? undefined : chatProps.currentSlide,
+          selectedTemplateV2Target: targetReferenceHidden
+            ? null
+            : selectedTemplateV2Target,
+          onClearChatSlideReference: slideReferenceKey
+            ? () => setHiddenSlideReferenceKey(slideReferenceKey)
+            : undefined,
+          onClearChatTargetReference: targetReferenceKey
+            ? () => setHiddenTargetReferenceKey(targetReferenceKey)
+            : undefined,
+        }}
         onBlockSelect={handleBlockSelect}
         onChartChange={updateChartEditor}
         onChartClose={closeChartEditor}

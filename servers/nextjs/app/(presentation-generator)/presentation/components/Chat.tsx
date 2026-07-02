@@ -9,6 +9,7 @@ import {
   RefreshCw,
   Send,
   Square,
+  X,
   UserRound,
 } from "lucide-react";
 import React, {
@@ -266,6 +267,19 @@ type ChatProps = {
   resourceLabel?: string;
   variant?: "presentation" | "outline" | "template-v2";
   currentSlide?: number;
+  selectedTemplateV2Target?: {
+    kind: "component" | "element";
+    slideIndex?: number | null;
+    componentIndex?: number;
+    componentId?: string;
+    componentLabel?: string;
+    elementPath?: string;
+    elementType?: string;
+    elementName?: string;
+    targetLabel?: string;
+  } | null;
+  onClearChatSlideReference?: () => void;
+  onClearChatTargetReference?: () => void;
   onBeforeSend?: () => Promise<void> | void;
   onPresentationChanged?: () => Promise<void> | void;
   onChatMutationStateChange?: (isMutating: boolean) => void;
@@ -366,6 +380,7 @@ const TOOL_LABELS: Record<string, string> = {
   swapComponentVariant: "Variant swapper",
   getSlideElements: "Element finder",
   updateSlideElement: "Content updater",
+  updateSlideComponent: "Block updater",
   deleteSlideComponent: "Block remover",
   deleteSlideElement: "Element remover",
   addSlideComponent: "Block adder",
@@ -383,6 +398,7 @@ const MUTATING_TOOLS = new Set([
   "deleteComponent",
   "swapComponentVariant",
   "updateSlideElement",
+  "updateSlideComponent",
   "deleteSlideComponent",
   "deleteSlideElement",
   "addSlideComponent",
@@ -396,6 +412,7 @@ const SLIDE_FOCUS_TOOLS = new Set([
   "deleteComponent",
   "swapComponentVariant",
   "updateSlideElement",
+  "updateSlideComponent",
   "deleteSlideComponent",
   "deleteSlideElement",
   "addSlideComponent",
@@ -642,6 +659,9 @@ const Chat = ({
   resourceLabel = "presentation",
   variant = "presentation",
   currentSlide,
+  selectedTemplateV2Target,
+  onClearChatSlideReference,
+  onClearChatTargetReference,
   onBeforeSend,
   onPresentationChanged,
   onChatMutationStateChange,
@@ -912,6 +932,30 @@ const Chat = ({
         `UI context: the currently selected slide is slide ${
           currentSlide + 1
         } (zero-based index ${currentSlide}).`
+      );
+    }
+
+    if (selectedTemplateV2Target) {
+      const target = selectedTemplateV2Target;
+      const targetParts = [
+        `kind=${target.kind}`,
+        typeof target.slideIndex === "number"
+          ? `slideIndex=${target.slideIndex}`
+          : "",
+        typeof target.componentIndex === "number"
+          ? `componentIndex=${target.componentIndex}`
+          : "",
+        target.componentId ? `componentId=${target.componentId}` : "",
+        target.componentLabel ? `componentLabel=${target.componentLabel}` : "",
+        target.elementPath ? `elementPath=${target.elementPath}` : "",
+        target.elementType ? `elementType=${target.elementType}` : "",
+        target.elementName ? `elementName=${target.elementName}` : "",
+        target.targetLabel ? `targetLabel=${target.targetLabel}` : "",
+      ].filter(Boolean);
+      contextLines.push(
+        `UI context: the user has selected this TemplateV2 ${target.kind}: ${targetParts.join(
+          ", "
+        )}. This selected ${target.kind} is the primary target for short edits like "this", "it", "make it smaller", "rewrite it", or "remove it"; do not apply those requests to the whole slide unless the user explicitly says slide. For visible slide edits, inspect the selected slide with getSlideElements and use matching componentId/elementPath exactly.`
       );
     }
 
@@ -1284,6 +1328,16 @@ const Chat = ({
 
   const isOutlineVariant = variant === "outline";
   const isTemplateV2Variant = variant === "template-v2";
+  const chatSlideReference =
+    typeof currentSlide === "number" ? `Slide ${currentSlide + 1}` : "";
+  const chatTargetReference = selectedTemplateV2Target
+    ? selectedTemplateV2Target.targetLabel ||
+      selectedTemplateV2Target.componentLabel ||
+      selectedTemplateV2Target.elementName ||
+      selectedTemplateV2Target.elementType ||
+      selectedTemplateV2Target.componentId ||
+      selectedTemplateV2Target.kind
+    : "";
 
   return (
     <div className={cn("flex h-full w-full flex-col bg-white", "")}>
@@ -1535,6 +1589,42 @@ const Chat = ({
           boxShadow: "0 4px 14px 0 rgba(0, 0, 0, 0.04)",
         }}
       >
+        {(chatSlideReference || chatTargetReference) && (
+          <div className="mb-2 flex max-w-full items-center gap-1.5">
+            {chatSlideReference && (
+              <span className="inline-flex shrink-0 items-center rounded-[8px] border border-[#EDE7FF] bg-[#F6F3FF] px-2 py-1 text-xs font-medium text-[#5B21B6]">
+                <span>{chatSlideReference}</span>
+                {onClearChatSlideReference && (
+                  <button
+                    type="button"
+                    onClick={onClearChatSlideReference}
+                    className="ml-1 rounded-full p-0.5 text-[#7C3AED] transition-colors hover:bg-[#E9D5FF]"
+                    aria-label="Remove slide reference"
+                    title="Remove slide reference"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )}
+            {chatTargetReference && (
+              <span className="inline-flex min-w-0 items-center rounded-[8px] border border-[#DBEAFE] bg-[#EFF6FF] px-2 py-1 text-xs font-medium text-[#1D4ED8]">
+                <span className="truncate">{chatTargetReference}</span>
+                {onClearChatTargetReference && (
+                  <button
+                    type="button"
+                    onClick={onClearChatTargetReference}
+                    className="ml-1 rounded-full p-0.5 text-[#2563EB] transition-colors hover:bg-[#DBEAFE]"
+                    aria-label="Remove selected element reference"
+                    title="Remove selected element reference"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )}
+          </div>
+        )}
         <textarea
           ref={inputRef}
           name="chat-input"

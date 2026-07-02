@@ -310,6 +310,10 @@ function TemplateV2KonvaSlideComponent({
     const index = typeof renderIndex === "number" ? renderIndex : slideIndex;
     return Number.isFinite(index) ? index : null;
   }, [renderIndex, slideIndex]);
+  const selectedSurfaceTarget = useMemo(
+    () => surfaceSelectionTarget(uiDraft, selection, surfaceSlideIndex),
+    [selection, surfaceSlideIndex, uiDraft],
+  );
   useEffect(() => {
     if (layout === currentUiRef.current) return;
     const next = cloneJson(layout as RawUi);
@@ -331,7 +335,7 @@ function TemplateV2KonvaSlideComponent({
     [surfaceId],
   );
 
-  const activateSurface = useCallback(() => {
+  const activateSurface = useCallback((nextSelection?: Selection) => {
     if (typeof document === "undefined" || typeof window === "undefined") return;
     document.documentElement.dataset.templateV2KonvaActiveSurface = surfaceId;
     if (surfaceSlideIndex != null) {
@@ -345,11 +349,35 @@ function TemplateV2KonvaSlideComponent({
           detail: {
             slideId,
             slideIndex: surfaceSlideIndex,
+            selection:
+              nextSelection === undefined
+                ? selectedSurfaceTarget
+                : surfaceSelectionTarget(
+                    currentUiRef.current,
+                    nextSelection,
+                    surfaceSlideIndex,
+                  ),
           },
         },
       ),
     );
-  }, [slideId, surfaceId, surfaceSlideIndex]);
+  }, [selectedSurfaceTarget, slideId, surfaceId, surfaceSlideIndex]);
+
+  useEffect(() => {
+    if (!isSurfaceActive() || typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent<TemplateV2SurfaceSelectedDetail>(
+        TEMPLATE_V2_SURFACE_SELECTED_EVENT,
+        {
+          detail: {
+            slideId,
+            slideIndex: surfaceSlideIndex,
+            selection: selectedSurfaceTarget,
+          },
+        },
+      ),
+    );
+  }, [isSurfaceActive, selectedSurfaceTarget, slideId, surfaceSlideIndex]);
 
   const clearSurface = useCallback(() => {
     if (typeof document === "undefined") return;
@@ -403,7 +431,7 @@ function TemplateV2KonvaSlideComponent({
 
   const select = useCallback(
     (nextSelection: Selection) => {
-      activateSurface();
+      activateSurface(nextSelection);
       setSelection(nextSelection);
       clearTableCellSelection();
     },
@@ -416,7 +444,7 @@ function TemplateV2KonvaSlideComponent({
       rowIndex: number,
       colIndex: number,
     ) => {
-      activateSurface();
+      activateSurface(elementSelection);
       setSelection(elementSelection);
       clearInlineEdit();
       setIconEditorSelection(null);
@@ -431,7 +459,7 @@ function TemplateV2KonvaSlideComponent({
       rowIndex: number,
       colIndex: number,
     ) => {
-      activateSurface();
+      activateSurface(elementSelection);
       setSelection(elementSelection);
       clearInlineEdit();
       setIconEditorSelection(null);
@@ -509,7 +537,7 @@ function TemplateV2KonvaSlideComponent({
       setSelection(result.selection);
       clearInlineEdit();
       setIconEditorSelection(null);
-      activateSurface();
+      activateSurface(result.selection);
     },
     [activateSurface, clearInlineEdit, commitUi],
   );
@@ -659,7 +687,7 @@ function TemplateV2KonvaSlideComponent({
     (elementSelection: ElementSelection) => {
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       if (readString(element?.type) !== "image") return;
-      activateSurface();
+      activateSurface(elementSelection);
       pendingImageUploadRef.current = elementSelection;
       if (imageUploadInputRef.current) {
         imageUploadInputRef.current.value = "";
@@ -678,7 +706,7 @@ function TemplateV2KonvaSlideComponent({
       if (!element || !isRawIconElement(element)) {
         return;
       }
-      activateSurface();
+      activateSurface(elementSelection);
       setSelection(elementSelection);
       clearInlineEdit();
       setIconEditorSelection(elementSelection);
@@ -702,7 +730,7 @@ function TemplateV2KonvaSlideComponent({
     (elementSelection: ElementSelection) => {
       const element = getElementAtSelection(currentUiRef.current, elementSelection);
       if (!element || readString(element.type) !== "chart") return;
-      activateSurface();
+      activateSurface(elementSelection);
       setSelection(elementSelection);
       if (typeof window === "undefined") return;
       window.dispatchEvent(
@@ -876,12 +904,16 @@ function TemplateV2KonvaSlideComponent({
     if (!isEditMode || typeof document === "undefined") return;
     const handlePointerDown = (event: PointerEvent) => {
       const root = rootRef.current;
-      if (root?.contains(event.target as Node)) {
+      const targetNode = event.target instanceof Node ? event.target : null;
+      const target = event.target instanceof Element ? event.target : null;
+      if (targetNode && root?.contains(targetNode)) {
         activateSurface();
         return;
       }
 
-      setSelection(null);
+      if (target?.closest("[data-template-v2-konva-surface]")) {
+        setSelection(null);
+      }
       clearInlineEdit();
       clearSurface();
     };
@@ -935,9 +967,10 @@ function TemplateV2KonvaSlideComponent({
   return (
     <div
       ref={rootRef}
+      data-template-v2-konva-surface={surfaceId}
       className="relative h-full w-full overflow-hidden bg-white"
       style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
-      onPointerDown={activateSurface}
+      onPointerDown={() => activateSurface()}
     >
       {isEditMode ? (
         <input
@@ -952,20 +985,24 @@ function TemplateV2KonvaSlideComponent({
         width={STAGE_WIDTH}
         height={STAGE_HEIGHT}
         onMouseDown={(event) => {
-          activateSurface();
           if (event.target === event.target.getStage()) {
+            activateSurface(null);
             setSelection(null);
             clearTableCellSelection();
             clearInlineEdit();
+            return;
           }
+          activateSurface();
         }}
         onTouchStart={(event) => {
-          activateSurface();
           if (event.target === event.target.getStage()) {
+            activateSurface(null);
             setSelection(null);
             clearTableCellSelection();
             clearInlineEdit();
+            return;
           }
+          activateSurface();
         }}
       >
         <Layer>
@@ -3640,6 +3677,89 @@ function keyForSelection(selection: Selection) {
   if (!selection) return "";
   if (selection.kind === "component") return `component:${selection.componentIndex}`;
   return `element:${selection.componentIndex}:${selection.elementPath.join(".")}`;
+}
+
+function surfaceSelectionTarget(
+  ui: RawUi,
+  selection: Selection,
+  slideIndex: number | null,
+): TemplateV2SurfaceSelectedDetail["selection"] {
+  if (!selection) return null;
+  if (selection.kind === "component") {
+    const component = asRecord(readArray(ui.components)[selection.componentIndex]);
+    const componentLabel = componentDisplayLabel(component, selection.componentIndex);
+    return {
+      kind: "component",
+      slideIndex,
+      componentIndex: selection.componentIndex,
+      componentId: readString(component?.id) || undefined,
+      componentLabel,
+      targetLabel: componentLabel,
+    };
+  }
+
+  const element = getElementAtSelection(ui, selection);
+  const component = asRecord(readArray(ui.components)[selection.componentIndex]);
+  const componentLabel =
+    selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
+      ? ""
+      : componentDisplayLabel(component, selection.componentIndex);
+  const elementType = readString(element?.type) || "Element";
+  const elementName = readString(element?.name);
+  const targetLabel =
+    elementName ||
+    (componentLabel ? `${elementType} in ${componentLabel}` : elementType);
+  return {
+    kind: "element",
+    slideIndex,
+    componentIndex:
+      selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
+        ? undefined
+        : selection.componentIndex,
+    componentId: readString(component?.id) || undefined,
+    componentLabel: componentLabel || undefined,
+    elementPath: elementPathForSelection(ui, selection) || undefined,
+    elementType,
+    elementName: elementName || undefined,
+    targetLabel,
+  };
+}
+
+function componentDisplayLabel(component: UnknownRecord | null, index: number) {
+  return (
+    readString(component?.description) ||
+    readString(component?.name) ||
+    readString(component?.id) ||
+    `Component ${index + 1}`
+  );
+}
+
+function elementPathForSelection(ui: RawUi, selection: ElementSelection) {
+  const parts: string[] =
+    selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
+      ? []
+      : [`components[${selection.componentIndex}]`];
+  let items =
+    selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
+      ? readArray(ui.elements)
+      : readArray(asRecord(readArray(ui.components)[selection.componentIndex])?.elements);
+  let current: RawElement | null = null;
+
+  for (let depth = 0; depth < selection.elementPath.length; depth += 1) {
+    const index = selection.elementPath[depth] ?? -1;
+    if (!Number.isFinite(index) || index < 0 || index >= items.length) return "";
+    if (depth === 0) {
+      parts.push(`elements[${index}]`);
+    } else if (current) {
+      const childInfo = childArrayInfo(current);
+      if (!childInfo || childInfo.key === "item") return "";
+      parts.push(childInfo.key === "child" ? "child" : `${childInfo.key}[${index}]`);
+    }
+    current = asRecord(items[index]) as RawElement | null;
+    items = current ? childArrayInfo(current)?.items ?? [] : [];
+  }
+
+  return parts.join(".");
 }
 
 function selectionFromKey(key: string): Selection {

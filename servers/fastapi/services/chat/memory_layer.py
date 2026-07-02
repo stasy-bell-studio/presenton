@@ -884,6 +884,8 @@ class PresentationChatMemoryLayer:
         items: list[str] | None = None,
         table_cell: dict[str, Any] | None = None,
         chart: dict[str, Any] | None = None,
+        position: dict[str, Any] | None = None,
+        size: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from services.chat.v2.tools import (
             _component_id_for_path,
@@ -907,29 +909,36 @@ class PresentationChatMemoryLayer:
         ui = copy.deepcopy(ui)
         element = _resolve_element_path(ui, element_path)
         element_type = str(element.get("type") or "")
+        content_update_requested = any(
+            value is not None for value in (text, items, table_cell, chart)
+        )
 
-        if element_type == "text":
+        if content_update_requested and element_type == "text":
             if text is None:
                 raise ValueError("text is required for text elements.")
             _update_text_element(element, text)
-        elif element_type == "text-list":
+        elif content_update_requested and element_type == "text-list":
             if items is None:
                 raise ValueError("items is required for text-list elements.")
             _update_text_list_element(element, items)
-        elif element_type == "table":
+        elif content_update_requested and element_type == "table":
             if table_cell is None:
                 raise ValueError("tableCell is required for table elements.")
             _update_table_cell(element, table_cell)
-        elif element_type == "chart":
+        elif content_update_requested and element_type == "chart":
             if chart is None:
                 raise ValueError("chart is required for chart elements.")
             _update_chart_element(element, chart)
-        elif element_type == "image":
+        elif content_update_requested and element_type == "image":
             if text is None:
                 raise ValueError("text must contain the replacement image/icon data.")
             element["data"] = text
-        else:
+        elif content_update_requested:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
+
+        geometry_updated = self._update_ui_box(element, position=position, size=size)
+        if not content_update_requested and not geometry_updated:
+            raise ValueError("No element content or geometry update was provided.")
 
         await self._save_slide_ui(slide, ui)
         component_id = _component_id_for_path(ui, element_path)
@@ -940,9 +949,61 @@ class PresentationChatMemoryLayer:
             "component_id": component_id,
             "element_path": element_path,
             "element_type": element_type,
+            "position": element.get("position"),
+            "size": element.get("size"),
             "message": (
                 f"Updated {element_type} content on slide {slide.index + 1}."
             ),
+        }
+
+    async def update_slide_ui_component(
+        self,
+        *,
+        index: int,
+        component_id: str,
+        position: dict[str, Any] | None = None,
+        size: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"updated": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "updated": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+
+        ui = copy.deepcopy(ui)
+        components = ui.get("components")
+        if not isinstance(components, list):
+            return {"updated": False, "message": "Slide has no components list."}
+
+        component = next(
+            (
+                candidate
+                for candidate in components
+                if isinstance(candidate, dict) and candidate.get("id") == component_id
+            ),
+            None,
+        )
+        if component is None:
+            return {
+                "updated": False,
+                "message": f"Component '{component_id}' was not found.",
+            }
+        if not self._update_ui_box(component, position=position, size=size):
+            raise ValueError("No component geometry update was provided.")
+
+        await self._save_slide_ui(slide, ui)
+        return {
+            "updated": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "position": component.get("position"),
+            "size": component.get("size"),
+            "message": f"Updated component '{component_id}' on slide {slide.index + 1}.",
         }
 
     async def delete_slide_ui_component(
@@ -1157,6 +1218,28 @@ class PresentationChatMemoryLayer:
             return False
         values.pop(target_index)
         return True
+
+    @staticmethod
+    def _update_ui_box(
+        target: dict[str, Any],
+        *,
+        position: dict[str, Any] | None = None,
+        size: dict[str, Any] | None = None,
+    ) -> bool:
+        updated = False
+        if position is not None:
+            target["position"] = {
+                "x": float(position["x"]),
+                "y": float(position["y"]),
+            }
+            updated = True
+        if size is not None:
+            target["size"] = {
+                "width": float(size["width"]),
+                "height": float(size["height"]),
+            }
+            updated = True
+        return updated
 
     async def set_presentation_theme(
         self,

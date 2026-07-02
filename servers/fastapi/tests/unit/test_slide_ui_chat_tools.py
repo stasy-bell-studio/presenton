@@ -148,6 +148,52 @@ def test_update_slide_element_edits_ui_text():
     assert session.commit_count == 1
 
 
+def test_update_slide_element_edits_ui_size():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateSlideElement",
+        {
+            "index": 0,
+            "elementPath": "components[0].elements[0]",
+            "size": {"width": 80, "height": 24},
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert slide.ui["components"][0]["elements"][0]["size"] == {
+        "width": 80.0,
+        "height": 24.0,
+    }
+    assert session.commit_count == 1
+
+
+def test_update_slide_component_edits_ui_size():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateSlideComponent",
+        {
+            "index": 0,
+            "componentId": "hero",
+            "size": {"width": 70, "height": 30},
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert slide.ui["components"][0]["size"] == {
+        "width": 70.0,
+        "height": 30.0,
+    }
+    assert session.commit_count == 1
+
+
 def test_delete_slide_component_removes_block_from_ui():
     slide = _slide()
     tools, _ = _tools(slide)

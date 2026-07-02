@@ -186,6 +186,16 @@ class SlideElementChartInput(OpenAIStrictSchemaModel):
     )
 
 
+class SlideElementPositionInput(StrictSchemaModel):
+    x: float = Field(ge=-10000, le=10000)
+    y: float = Field(ge=-10000, le=10000)
+
+
+class SlideElementSizeInput(StrictSchemaModel):
+    width: float = Field(ge=1, le=10000)
+    height: float = Field(ge=1, le=10000)
+
+
 class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     index: int = Field(..., ge=0, le=1000)
     element_path: str = Field(
@@ -218,6 +228,29 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     chart: SlideElementChartInput | None = Field(
         ...,
         description="Chart title/categories/series update.",
+    )
+    position: SlideElementPositionInput | None = Field(
+        ...,
+        description="Optional element position update for move requests.",
+    )
+    size: SlideElementSizeInput | None = Field(
+        ...,
+        description="Optional element size update for resize/shrink/grow requests.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+class UpdateSlideComponentInput(OpenAIStrictSchemaModel):
+    index: int = Field(..., ge=0, le=1000)
+    component_id: str = Field(..., alias="componentId", min_length=1, max_length=120)
+    position: SlideElementPositionInput | None = Field(
+        ...,
+        description="Optional component position update for move requests.",
+    )
+    size: SlideElementSizeInput | None = Field(
+        ...,
+        description="Optional component size update for resize/shrink/grow requests.",
     )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)

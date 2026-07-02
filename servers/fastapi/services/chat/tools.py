@@ -24,6 +24,7 @@ from services.chat.schemas import (
     SaveSlideInput,
     SearchSlidesInput,
     SetPresentationThemeInput,
+    UpdateSlideComponentInput,
     UpdateOutlineInput,
     UpdateSlideElementInput,
 )
@@ -70,6 +71,7 @@ class ChatTools:
             "setPresentationTheme": self._set_presentation_theme,
             "getSlideElements": self._get_slide_elements,
             "updateSlideElement": self._update_slide_element,
+            "updateSlideComponent": self._update_slide_component,
             "deleteSlideComponent": self._delete_slide_component,
             "deleteSlideElement": self._delete_slide_element,
             "addSlideComponent": self._add_slide_component,
@@ -251,11 +253,22 @@ class ChatTools:
                     "Update the visible content of one element in a rendered slide's ui "
                     "layout, using an elementPath from getSlideElements: text.runs via "
                     "text, text-list.items via items, one table cell via tableCell, chart "
-                    "title/categories/series via chart, or image/icon data via text. This "
-                    "changes what the user sees. Respect any max/min limits reported by "
-                    "getSlideElements."
+                    "title/categories/series via chart, image/icon data via text, or "
+                    "position/size for move/resize requests. This changes what the user "
+                    "sees. Respect any max/min limits reported by getSlideElements."
                 ),
                 schema=UpdateSlideElementInput,
+                strict=True,
+            ),
+            Tool(
+                name="updateSlideComponent",
+                description=(
+                    "Move or resize one whole rendered slide component/block by zero-based "
+                    "slide index and componentId from getSlideElements. Use this for "
+                    "selected component requests like shrink this block, make this card "
+                    "wider, or move this callout."
+                ),
+                schema=UpdateSlideComponentInput,
                 strict=True,
             ),
             Tool(
@@ -573,6 +586,25 @@ class ChatTools:
                 if payload.chart is not None
                 else None
             ),
+            position=(
+                payload.position.model_dump()
+                if payload.position is not None
+                else None
+            ),
+            size=payload.size.model_dump() if payload.size is not None else None,
+        )
+
+    async def _update_slide_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = UpdateSlideComponentInput(**args)
+        return await self._memory.update_slide_ui_component(
+            index=payload.index,
+            component_id=payload.component_id,
+            position=(
+                payload.position.model_dump()
+                if payload.position is not None
+                else None
+            ),
+            size=payload.size.model_dump() if payload.size is not None else None,
         )
 
     async def _delete_slide_component(self, args: dict[str, Any]) -> dict[str, Any]:
