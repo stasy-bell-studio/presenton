@@ -1,0 +1,802 @@
+import { renderMarkdownTextRuns } from "./markdown-text";
+import type { Font, TextRun } from "./slide-schema";
+import { textRunsContent } from "./text-runs";
+import type { TemplateV2TextEditStyle } from "./template-v2-text-editing";
+
+type UnknownRecord = Record<string, any>;
+
+export type TemplateV2RawTextElement = UnknownRecord;
+export type RenderTextFont = Omit<
+  TemplateV2TextEditStyle,
+  "horizontal" | "vertical"
+>;
+export type RenderTextRun = {
+  text: string;
+  font: RenderTextFont;
+};
+export type LaidToken = {
+  text: string;
+  font: RenderTextFont;
+  x: number;
+  y: number;
+};
+
+const TEXT_AVERAGE_CHAR_EM = 0.5;
+const DEFAULT_FONT: RenderTextFont = {
+  family: "Arial",
+  size: 18,
+  color: "#111827",
+  bold: false,
+  italic: false,
+  underline: false,
+  lineHeight: 1.15,
+  letterSpacing: 0,
+  wrap: "word",
+};
+
+const richMeasureCtx: { ctx: CanvasRenderingContext2D | null } = { ctx: null };
+let renderTextMeasureCanvas: HTMLCanvasElement | null = null;
+
+export function displayText(text: string) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/\*(.*?)\*/g, "$1")
+    .replace(/_(.*?)_/g, "$1");
+}
+
+export function rawFont(element: TemplateV2RawTextElement) {
+  const font = asRecord(element.font) ?? {};
+  return fontFromRecord(font, DEFAULT_FONT);
+}
+
+export function fontFromRecord(
+  font: UnknownRecord | null,
+  fallback: RenderTextFont,
+): RenderTextFont {
+  return {
+    family: readString(font?.family) ?? fallback.family,
+    size: readNumber(font?.size) ?? fallback.size,
+    color: readString(font?.color) ?? fallback.color,
+    bold: readBoolean(font?.bold) ?? fallback.bold,
+    italic: readBoolean(font?.italic) ?? fallback.italic,
+    underline:
+      readBoolean(font?.underline) ??
+      (readString(font?.text_decoration) === "underline" ||
+      readString(font?.textDecoration) === "underline"
+        ? true
+        : fallback.underline),
+    lineHeight:
+      readNumber(font?.line_height) ??
+      readNumber(font?.lineHeight) ??
+      fallback.lineHeight,
+    letterSpacing:
+      readNumber(font?.letter_spacing) ??
+      readNumber(font?.letterSpacing) ??
+      fallback.letterSpacing,
+    wrap: readString(font?.wrap) ?? fallback.wrap,
+  };
+}
+
+export function fontToSource(font: RenderTextFont): Font {
+  return {
+    family: font.family,
+    size: font.size,
+    color: font.color,
+    bold: font.bold,
+    italic: font.italic,
+    underline: font.underline,
+    line_height: font.lineHeight,
+    letter_spacing: font.letterSpacing,
+    wrap: readFontWrap(font.wrap),
+  };
+}
+
+export function rawTextStyle(
+  element: TemplateV2RawTextElement,
+): TemplateV2TextEditStyle {
+  const font = rawFont(element);
+  return {
+    ...font,
+    color: withHash(font.color) ?? "#111827",
+    horizontal: readHorizontalAlignment(
+      asRecord(element.alignment)?.horizontal,
+    ),
+    vertical: readVerticalAlignment(asRecord(element.alignment)?.vertical),
+  };
+}
+
+export function applyTextStyle(
+  element: TemplateV2RawTextElement,
+  style: TemplateV2TextEditStyle,
+): TemplateV2RawTextElement {
+  const sourceFont = asRecord(element.font) ?? {};
+  const nextFont = {
+    ...sourceFont,
+    family: style.family,
+    size: style.size,
+    color: withHash(style.color) ?? "#111827",
+    bold: style.bold,
+    italic: style.italic,
+    underline: style.underline,
+    line_height: style.lineHeight,
+    letter_spacing: style.letterSpacing,
+    wrap: style.wrap,
+  };
+  const runs = readArray(element.runs);
+  return {
+    ...element,
+    font: nextFont,
+    alignment: {
+      ...(asRecord(element.alignment) ?? {}),
+      horizontal: style.horizontal,
+      vertical: style.vertical,
+    },
+    ...(runs.length > 0
+      ? {
+          runs: runs.map((run) => {
+            const record = asRecord(run) ?? {};
+            return {
+              ...record,
+              font: {
+                ...(asRecord(record.font) ?? {}),
+                ...nextFont,
+              },
+            };
+          }),
+        }
+      : {}),
+  };
+}
+
+export function normalizeRawTextMarkdownElement(
+  element: TemplateV2RawTextElement,
+): {
+  element: TemplateV2RawTextElement;
+  runs: TextRun[];
+  changed: boolean;
+} {
+  const originalSourceRuns = rawSourceTextRuns(element);
+  const rawText = rawStoredTextContent(element);
+  const hasSourceRuns = rawTextHasRuns(element);
+  const sourceRuns = reconcileTextRunsWithStoredText(
+    originalSourceRuns,
+    rawText,
+  );
+  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
+  const renderedText = textRunsContent(renderedRuns);
+  const sourceHasMarkdown = sourceRuns.some((run) =>
+    containsMarkdownSyntax(run.text),
+  );
+  const runsChanged = !sameTextRuns(originalSourceRuns, sourceRuns);
+  const changed =
+    runsChanged ||
+    sourceHasMarkdown ||
+    (!hasSourceRuns && !sameTextRuns(sourceRuns, renderedRuns)) ||
+    ((!hasSourceRuns || containsMarkdownSyntax(rawText)) &&
+      rawText !== renderedText);
+
+  return {
+    element: changed ? setRawTextRunsContent(element, renderedRuns) : element,
+    runs: renderedRuns,
+    changed,
+  };
+}
+
+export function rawTextContent(element: TemplateV2RawTextElement) {
+  const runs = readArray(element.runs);
+  if (runs.length > 0) {
+    const content = runs
+      .map((run) => readString(asRecord(run)?.text) ?? "")
+      .join("");
+    if (content) return content;
+  }
+  return rawStoredTextContent(element);
+}
+
+export function rawStoredTextContent(element: TemplateV2RawTextElement) {
+  const text = readString(element.text);
+  if (text != null) return text;
+  return "";
+}
+
+export function rawSourceTextRuns(
+  element: TemplateV2RawTextElement,
+): TextRun[] {
+  const fallbackFont = fontToSource(rawFont(element));
+  const runs = readArray(element.runs)
+    .map((run) => {
+      const record = asRecord(run);
+      if (!record) return null;
+      const text = readString(record.text) ?? "";
+      if (!text) return null;
+      return {
+        text,
+        font: fontToSource(
+          fontFromRecord(asRecord(record.font), rawFont(element)),
+        ),
+      } satisfies TextRun;
+    })
+    .filter(Boolean) as TextRun[];
+
+  return runs.length > 0
+    ? runs
+    : [{ text: rawTextContent(element) || " ", font: fallbackFont }];
+}
+
+export function rawTextRunsForEditor(
+  element: TemplateV2RawTextElement,
+): TextRun[] {
+  return normalizeRawTextMarkdownElement(element).runs;
+}
+
+export function rawTextHasRuns(element: TemplateV2RawTextElement) {
+  return readArray(element.runs).some((run) => {
+    const record = asRecord(run);
+    return Boolean(readString(record?.text));
+  });
+}
+
+export function setRawTextContent(
+  element: TemplateV2RawTextElement,
+  text: string,
+  style?: TemplateV2TextEditStyle,
+): TemplateV2RawTextElement {
+  const styled = style ? applyTextStyle(element, style) : element;
+  const sourceRuns = readArray(styled.runs);
+  const firstRun = asRecord(sourceRuns[0]) ?? {};
+  const runs = renderMarkdownTextRuns([
+    { text, font: fontToSource(rawFont(styled)) },
+  ]).map((run) => ({
+    ...firstRun,
+    text: run.text,
+    font: {
+      ...(asRecord(firstRun.font) ?? {}),
+      ...(asRecord(run.font) ?? {}),
+    },
+  }));
+  return {
+    ...styled,
+    text,
+    runs,
+  };
+}
+
+export function setRawTextRunsContent(
+  element: TemplateV2RawTextElement,
+  runs: TextRun[],
+): TemplateV2RawTextElement {
+  const sourceRuns = readArray(element.runs);
+  const nextRuns = (runs.length > 0 ? runs : [{ text: " " }]).map(
+    (run, index) => {
+      const sourceRun = asRecord(sourceRuns[index]) ?? {};
+      return {
+        ...sourceRun,
+        text: run.text,
+        font: rawInlineTextFontRecord(run.font, sourceRun.font),
+      };
+    },
+  );
+  return {
+    ...element,
+    text: textRunsContent(nextRuns),
+    runs: nextRuns,
+  };
+}
+
+export function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
+  const font = asRecord(value);
+  if (!font) return fallback;
+  return {
+    ...(asRecord(fallback) ?? {}),
+    ...font,
+    line_height: font.line_height ?? font.lineHeight,
+    letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  };
+}
+
+export function rawTextListContent(element: TemplateV2RawTextElement) {
+  const items = readArray(element.items);
+  if (items.length === 0) return "";
+  return items.map(rawTextListItemText).join("\n");
+}
+
+export function rawTextListItemText(item: unknown) {
+  if (typeof item === "string") return item;
+  if (Array.isArray(item)) {
+    return item
+      .map((run) => readString(asRecord(run)?.text) ?? "")
+      .join("");
+  }
+  const record = asRecord(item);
+  if (!record) return "";
+  const directText = readString(record.text);
+  if (directText != null) return directText;
+  return readArray(record.runs)
+    .map((run) => readString(asRecord(run)?.text) ?? "")
+    .join("");
+}
+
+export function rawTextListItemWithText(
+  source: unknown,
+  text: string,
+): unknown {
+  if (Array.isArray(source)) {
+    const firstRun = asRecord(source[0]) ?? {};
+    return [{ ...firstRun, text }];
+  }
+  if (typeof source === "string") return text;
+  const record = asRecord(source);
+  if (!record) return { type: "text", text };
+  const runs = readArray(record.runs);
+  if (runs.length > 0 || Object.hasOwn(record, "runs")) {
+    const firstRun = asRecord(runs[0]) ?? {};
+    return { ...record, runs: text ? [{ ...firstRun, text }] : [] };
+  }
+  return { ...record, type: record.type ?? "text", text };
+}
+
+export function setRawTextListContent(
+  element: TemplateV2RawTextElement,
+  draft: string,
+): TemplateV2RawTextElement {
+  const sourceItems = readArray(element.items);
+  const texts = draft
+    .split(/\r?\n/)
+    .map((item) => item.replace(/^\s*[•*-]\s?/, "").trimEnd())
+    .filter((item) => item.trim().length > 0);
+  const items = (texts.length > 0 ? texts : [" "]).map((text, index) =>
+    rawTextListItemWithText(
+      sourceItems[index] ?? sourceItems[sourceItems.length - 1],
+      text,
+    ),
+  );
+  return { ...element, items };
+}
+
+export function rawTableCellText(cell: unknown) {
+  if (typeof cell === "string" || typeof cell === "number") {
+    return String(cell);
+  }
+  const record = asRecord(cell);
+  if (!record) return "";
+  const runs = readArray(record.runs);
+  if (runs.length > 0) {
+    return runs
+      .map((run) => readString(asRecord(run)?.text) ?? "")
+      .join("");
+  }
+  const textRecord = asRecord(record.text);
+  return readString(textRecord?.text) ?? readString(record.text) ?? "";
+}
+
+export function rawSvgContent(element: TemplateV2RawTextElement) {
+  return readString(element.svg) ?? readString(element.data) ?? "";
+}
+
+export function setRawSvgContent(
+  element: TemplateV2RawTextElement,
+  draft: string,
+): TemplateV2RawTextElement {
+  return { ...element, svg: draft };
+}
+
+export function rawRenderTextRuns(
+  element: TemplateV2RawTextElement,
+): RenderTextRun[] {
+  const baseFont = rawFont(element);
+  const runs = normalizeRawTextMarkdownElement(element).runs;
+
+  return runs
+    .filter((run) => run.text)
+    .map((run) => ({
+      text: run.text,
+      font: fontFromRecord(asRecord(run.font), baseFont),
+    }));
+}
+
+export function textRunsHaveMixedStyle(runs: RenderTextRun[]) {
+  const first = runs[0]?.font;
+  return runs.some((run) => JSON.stringify(run.font) !== JSON.stringify(first));
+}
+
+export function layoutRichText(
+  runs: RenderTextRun[],
+  maxWidth: number,
+  baseFont: RenderTextFont,
+  align: string,
+  verticalAlign: string,
+  boxHeight: number,
+  wrap: string | null | undefined,
+): { tokens: LaidToken[]; contentHeight: number } {
+  type Tok = {
+    text: string;
+    font: RenderTextFont;
+    newline: boolean;
+    space: boolean;
+    width: number;
+  };
+  const tokens: Tok[] = [];
+  for (const run of runs) {
+    const display = displayText(run.text);
+    if (!display) continue;
+    for (const part of display.split(/(\n|[ \t]+)/)) {
+      if (part === "") continue;
+      if (part === "\n") {
+        tokens.push({
+          text: "",
+          font: run.font,
+          newline: true,
+          space: false,
+          width: 0,
+        });
+      } else {
+        const space = /^[ \t]+$/.test(part);
+        tokens.push({
+          text: part,
+          font: run.font,
+          newline: false,
+          space,
+          width: measureRunText(part, run.font),
+        });
+      }
+    }
+  }
+
+  type Line = { toks: Tok[]; height: number; width: number };
+  const lines: Line[] = [];
+  let cur: Tok[] = [];
+  let curWidth = 0;
+  const flush = () => {
+    const height = cur.length
+      ? Math.max(...cur.map((t) => t.font.size * t.font.lineHeight))
+      : baseFont.size * baseFont.lineHeight;
+    lines.push({ toks: cur, height, width: curWidth });
+    cur = [];
+    curWidth = 0;
+  };
+  for (const tok of tokens) {
+    if (tok.newline) {
+      flush();
+      continue;
+    }
+    if (tok.space && cur.length === 0) continue;
+    if (
+      wrap !== "none" &&
+      !tok.space &&
+      curWidth + tok.width > maxWidth &&
+      cur.length > 0
+    ) {
+      flush();
+    }
+    cur.push(tok);
+    curWidth += tok.width;
+  }
+  flush();
+
+  const contentHeight = lines.reduce((sum, line) => sum + line.height, 0);
+  let y =
+    verticalAlign === "middle"
+      ? (boxHeight - contentHeight) / 2
+      : verticalAlign === "bottom"
+        ? boxHeight - contentHeight
+        : 0;
+  if (y < 0) y = 0;
+
+  const laid: LaidToken[] = [];
+  for (const line of lines) {
+    let lineWidth = line.width;
+    for (let i = line.toks.length - 1; i >= 0 && line.toks[i].space; i--) {
+      lineWidth -= line.toks[i].width;
+    }
+    let x = lineStartX(align, maxWidth, lineWidth, wrap === "none");
+    for (const tok of line.toks) {
+      if (tok.text) {
+        const tokenBoxHeight = tok.font.size * tok.font.lineHeight;
+        laid.push({
+          text: tok.text,
+          font: tok.font,
+          x,
+          y: y + (line.height - tokenBoxHeight),
+        });
+      }
+      x += tok.width;
+    }
+    y += line.height;
+  }
+  return { tokens: laid, contentHeight };
+}
+
+export function layoutRenderTextRuns(
+  runs: RenderTextRun[],
+  width: number,
+  wrap: string | null | undefined,
+) {
+  const lines: Array<Array<RenderTextRun & { width: number }>> = [[]];
+  let lineWidth = 0;
+
+  const pushLine = () => {
+    if (lines[lines.length - 1]?.length === 0) return;
+    lines.push([]);
+    lineWidth = 0;
+  };
+
+  for (const run of runs) {
+    const parts = run.text.match(/\n|[^\S\n]+|[^\s]+/g) ?? [run.text];
+    for (const part of parts) {
+      if (part === "\n") {
+        pushLine();
+        continue;
+      }
+      const segmentWidth = measureRenderText(part, run.font);
+      const isWhitespace = part.trim().length === 0;
+      if (
+        wrap !== "none" &&
+        !isWhitespace &&
+        lineWidth > 0 &&
+        lineWidth + segmentWidth > width
+      ) {
+        pushLine();
+      }
+      if (lines.length === 0) lines.push([]);
+      lines[lines.length - 1].push({
+        ...run,
+        text: part,
+        width: segmentWidth,
+      });
+      lineWidth += segmentWidth;
+    }
+  }
+
+  return lines.filter((line) => line.length > 0);
+}
+
+export function lineRenderHeight(
+  line: Array<RenderTextRun & { width: number }>,
+  fallbackLineHeight: number,
+) {
+  return Math.max(
+    1,
+    ...line.map(
+      (segment) =>
+        segment.font.size * (segment.font.lineHeight ?? fallbackLineHeight),
+    ),
+  );
+}
+
+export function measureNoWrapTextWidth(text: string, font: RenderTextFont) {
+  const lines = text.split(/\r?\n/);
+  return Math.max(1, ...lines.map((line) => measureRenderText(line, font)));
+}
+
+export function measureNoWrapTextHeight(
+  text: string,
+  font: RenderTextFont,
+  lineHeight: number,
+) {
+  const lineCount = Math.max(1, text.split(/\r?\n/).length);
+  return lineCount * font.size * lineHeight;
+}
+
+export function lineStartX(
+  align: string,
+  boxWidth: number,
+  lineWidth: number,
+  allowOverflow: boolean,
+) {
+  const x =
+    align === "center"
+      ? (boxWidth - lineWidth) / 2
+      : align === "right"
+        ? boxWidth - lineWidth
+        : 0;
+  return allowOverflow ? x : Math.max(0, x);
+}
+
+export function verticalTextStartY(
+  align: string,
+  boxHeight: number,
+  textHeight: number,
+  allowOverflow: boolean,
+) {
+  const y =
+    align === "middle"
+      ? (boxHeight - textHeight) / 2
+      : align === "bottom"
+        ? boxHeight - textHeight
+        : 0;
+  return allowOverflow ? y : Math.max(0, y);
+}
+
+export function rawFontRecordForEditor(value: unknown) {
+  const font = asRecord(value);
+  if (!font) return value;
+  return {
+    ...font,
+    line_height: font.line_height ?? font.lineHeight,
+    letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  };
+}
+
+export function editorFontRecordToRaw(value: unknown, fallback: unknown) {
+  const font = asRecord(value);
+  if (!font) return fallback;
+  return {
+    ...(asRecord(fallback) ?? {}),
+    ...font,
+    line_height: font.line_height ?? font.lineHeight,
+    letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  };
+}
+
+export function rawFontToSource(value: unknown) {
+  const font = asRecord(value) ?? {};
+  return stripUndefined({
+    ...font,
+    line_height: font.line_height ?? font.lineHeight,
+    letter_spacing: font.letter_spacing ?? font.letterSpacing,
+  });
+}
+
+function reconcileTextRunsWithStoredText(
+  runs: TextRun[],
+  storedText: string,
+): TextRun[] {
+  if (!storedText || runs.length === 0) return runs;
+  if (containsMarkdownSyntax(storedText)) return runs;
+  if (textRunsContent(runs) === storedText) return runs;
+
+  const reconciled: TextRun[] = [];
+  let cursor = 0;
+
+  for (const run of runs) {
+    const runText = run.text ?? "";
+    if (!runText) continue;
+    const index = storedText.indexOf(runText, cursor);
+    if (index < 0) return runs;
+
+    const gap = storedText.slice(cursor, index);
+    appendRunText(reconciled, gap, run.font);
+    reconciled.push(cloneTextRun(run));
+    cursor = index + runText.length;
+  }
+
+  appendRunText(
+    reconciled,
+    storedText.slice(cursor),
+    runs[runs.length - 1]?.font,
+  );
+  return textRunsContent(reconciled) === storedText ? reconciled : runs;
+}
+
+function appendRunText(
+  runs: TextRun[],
+  text: string,
+  font: TextRun["font"],
+) {
+  if (!text) return;
+  const previous = runs[runs.length - 1];
+  if (previous) {
+    previous.text += text;
+    return;
+  }
+  runs.push(font ? { text, font: { ...font } } : { text });
+}
+
+function cloneTextRun(run: TextRun): TextRun {
+  return {
+    ...run,
+    font: run.font ? { ...run.font } : undefined,
+  };
+}
+
+function containsMarkdownSyntax(text: string) {
+  return /(\*\*|__|\*|_).+(\*\*|__|\*|_)/.test(text);
+}
+
+function sameTextRuns(left: TextRun[], right: TextRun[]) {
+  if (left.length !== right.length) return false;
+  return left.every(
+    (run, index) =>
+      run.text === right[index]?.text &&
+      JSON.stringify(run.font ?? null) ===
+        JSON.stringify(right[index]?.font ?? null),
+  );
+}
+
+function measureContext(): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
+  if (!richMeasureCtx.ctx) {
+    richMeasureCtx.ctx = document.createElement("canvas").getContext("2d");
+  }
+  return richMeasureCtx.ctx;
+}
+
+function richFontCss(font: RenderTextFont): string {
+  const italic = font.italic ? "italic " : "";
+  const weight = font.bold ? "700 " : "400 ";
+  return `${italic}${weight}${font.size}px "${font.family}", Helvetica, sans-serif`;
+}
+
+function measureRunText(text: string, font: RenderTextFont): number {
+  if (!text) return 0;
+  const ctx = measureContext();
+  if (!ctx) return text.length * font.size * TEXT_AVERAGE_CHAR_EM;
+  ctx.font = richFontCss(font);
+  const width = ctx.measureText(text).width;
+  const spacing = font.letterSpacing ? font.letterSpacing * text.length : 0;
+  return width + spacing;
+}
+
+function measureRenderText(text: string, font: RenderTextFont) {
+  const fallbackWidth =
+    text.length * font.size * (font.bold ? 0.58 : TEXT_AVERAGE_CHAR_EM);
+  if (typeof document === "undefined") return fallbackWidth;
+  renderTextMeasureCanvas ??= document.createElement("canvas");
+  const context = renderTextMeasureCanvas.getContext("2d");
+  if (!context) return fallbackWidth;
+  context.font = `${font.italic ? "italic " : ""}${
+    font.bold ? "700 " : "400 "
+  }${font.size}px ${font.family}, Helvetica, sans-serif`;
+  return (
+    context.measureText(text).width +
+    (font.letterSpacing ?? 0) * Math.max(0, text.length - 1)
+  );
+}
+
+function readHorizontalAlignment(
+  value: unknown,
+): TemplateV2TextEditStyle["horizontal"] {
+  const normalized = readString(value);
+  if (normalized === "center" || normalized === "right") return normalized;
+  return "left";
+}
+
+function readVerticalAlignment(
+  value: unknown,
+): TemplateV2TextEditStyle["vertical"] {
+  const normalized = readString(value);
+  if (normalized === "middle" || normalized === "bottom") return normalized;
+  return "top";
+}
+
+function readFontWrap(value: unknown): Font["wrap"] {
+  const normalized = readString(value);
+  if (normalized === "none" || normalized === "char" || normalized === "word") {
+    return normalized;
+  }
+  return "word";
+}
+
+function readArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function stripUndefined<T extends UnknownRecord>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined),
+  ) as T;
+}
+
+function asRecord(value: unknown): UnknownRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as UnknownRecord)
+    : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function withHash(value: string | null | undefined) {
+  if (!value) return undefined;
+  return value.startsWith("#") || value.startsWith("rgb") ? value : `#${value}`;
+}

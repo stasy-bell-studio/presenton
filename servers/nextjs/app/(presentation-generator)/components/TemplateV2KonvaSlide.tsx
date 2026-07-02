@@ -29,7 +29,6 @@ import {
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
 import { disintegrateTemplateV2ComponentInUi } from "@/components/slide-editor/lib/template-v2-disintegration";
-import { renderMarkdownTextRuns } from "@/components/slide-editor/lib/markdown-text";
 import { effectiveLineHeight } from "@/components/slide-editor/lib/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/lib/text-runs";
 import type {
@@ -37,11 +36,39 @@ import type {
   TemplateV2TextEditStyle,
 } from "@/components/slide-editor/lib/template-v2-text-editing";
 import {
+  applyTextStyle,
+  displayText,
+  editorFontRecordToRaw,
+  layoutRenderTextRuns,
+  layoutRichText,
+  lineRenderHeight,
+  lineStartX,
+  measureNoWrapTextHeight,
+  measureNoWrapTextWidth,
+  normalizeRawTextMarkdownElement,
+  rawFont,
+  rawFontRecordForEditor,
+  rawFontToSource,
+  rawRenderTextRuns,
+  rawSvgContent,
+  rawTableCellText,
+  rawTextContent,
+  rawTextListContent,
+  rawTextListItemText,
+  rawTextRunsForEditor,
+  rawTextStyle,
+  setRawSvgContent,
+  setRawTextContent,
+  setRawTextListContent,
+  setRawTextRunsContent,
+  textRunsHaveMixedStyle,
+  verticalTextStartY,
+} from "@/components/slide-editor/lib/template-v2-text";
+import {
   SLIDE_H,
   SLIDE_W,
   type ChartElement,
   type ChartSeries,
-  type Font,
   type SlideElement,
   type TextRun,
 } from "@/components/slide-editor/lib/slide-schema";
@@ -122,7 +149,6 @@ const STAGE_BOX: Box = {
 };
 const EDITOR_SCALE = STAGE_WIDTH / SLIDE_W;
 const EDITOR_SCALE_Y = STAGE_HEIGHT / SLIDE_H;
-const SOURCE_PX_TO_PT = (72 * SLIDE_W) / STAGE_WIDTH;
 const TEXT_AVERAGE_CHAR_EM = 0.5;
 const DECORATIVE_LINE_LENGTH = 80;
 const DECORATIVE_LINE_THICKNESS = 4;
@@ -150,12 +176,6 @@ type LaidOutChild = {
   index: number;
   box: Box | null;
   layoutManaged: boolean;
-};
-type TextEditStyle = TemplateV2TextEditStyle;
-type RenderTextFont = Omit<TemplateV2TextEditStyle, "horizontal" | "vertical">;
-type RenderTextRun = {
-  text: string;
-  font: RenderTextFont;
 };
 
 type ComponentSelection = {
@@ -1774,145 +1794,6 @@ const MemoizedRawElementVisual = memo(
     previous.onTableCellEdit === next.onTableCellEdit,
 );
 
-const richMeasureCtx: { ctx: CanvasRenderingContext2D | null } = { ctx: null };
-
-function measureContext(): CanvasRenderingContext2D | null {
-  if (typeof document === "undefined") return null;
-  if (!richMeasureCtx.ctx) {
-    richMeasureCtx.ctx = document.createElement("canvas").getContext("2d");
-  }
-  return richMeasureCtx.ctx;
-}
-
-function richFontCss(font: RenderTextFont): string {
-  const italic = font.italic ? "italic " : "";
-  const weight = font.bold ? "700 " : "400 ";
-  return `${italic}${weight}${font.size}px "${font.family}", Helvetica, sans-serif`;
-}
-
-function measureRunText(text: string, font: RenderTextFont): number {
-  if (!text) return 0;
-  const ctx = measureContext();
-  if (!ctx) return text.length * font.size * TEXT_AVERAGE_CHAR_EM;
-  ctx.font = richFontCss(font);
-  const width = ctx.measureText(text).width;
-  const spacing = font.letterSpacing ? font.letterSpacing * text.length : 0;
-  return width + spacing;
-}
-
-// Convert the stored per-run array into render-ready runs, inheriting any
-// missing font properties from the element's base font.
-function editorRunsFromElement(element: RawElement): RenderTextRun[] {
-  return rawRenderTextRuns(element);
-}
-
-type LaidToken = {
-  text: string;
-  font: RenderTextFont;
-  x: number;
-  y: number;
-};
-
-// Minimal inline text-layout engine: greedily word-wraps a sequence of runs
-// (each with its own font) inside `maxWidth`, honouring explicit newlines,
-// horizontal alignment per line and vertical alignment of the whole block.
-// Konva has no native mixed-style text, so each token is later drawn as its
-// own <Text> node.
-function layoutRichText(
-  runs: RenderTextRun[],
-  maxWidth: number,
-  baseFont: RenderTextFont,
-  align: string,
-  verticalAlign: string,
-  boxHeight: number,
-): { tokens: LaidToken[]; contentHeight: number } {
-  type Tok = { text: string; font: RenderTextFont; newline: boolean; space: boolean; width: number };
-  const tokens: Tok[] = [];
-  for (const run of runs) {
-    const display = displayText(run.text);
-    if (!display) continue;
-    for (const part of display.split(/(\n|[ \t]+)/)) {
-      if (part === "") continue;
-      if (part === "\n") {
-        tokens.push({ text: "", font: run.font, newline: true, space: false, width: 0 });
-      } else {
-        const space = /^[ \t]+$/.test(part);
-        tokens.push({
-          text: part,
-          font: run.font,
-          newline: false,
-          space,
-          width: measureRunText(part, run.font),
-        });
-      }
-    }
-  }
-
-  type Line = { toks: Tok[]; height: number; width: number };
-  const lines: Line[] = [];
-  let cur: Tok[] = [];
-  let curWidth = 0;
-  const flush = () => {
-    const height = cur.length
-      ? Math.max(...cur.map((t) => t.font.size * t.font.lineHeight))
-      : baseFont.size * baseFont.lineHeight;
-    lines.push({ toks: cur, height, width: curWidth });
-    cur = [];
-    curWidth = 0;
-  };
-  for (const tok of tokens) {
-    if (tok.newline) {
-      flush();
-      continue;
-    }
-    if (tok.space && cur.length === 0) continue;
-    if (!tok.space && curWidth + tok.width > maxWidth && cur.length > 0) {
-      flush();
-    }
-    cur.push(tok);
-    curWidth += tok.width;
-  }
-  flush();
-
-  const contentHeight = lines.reduce((sum, line) => sum + line.height, 0);
-  let y =
-    verticalAlign === "middle"
-      ? (boxHeight - contentHeight) / 2
-      : verticalAlign === "bottom"
-        ? boxHeight - contentHeight
-        : 0;
-  if (y < 0) y = 0;
-
-  const laid: LaidToken[] = [];
-  for (const line of lines) {
-    let lineWidth = line.width;
-    for (let i = line.toks.length - 1; i >= 0 && line.toks[i].space; i--) {
-      lineWidth -= line.toks[i].width;
-    }
-    let x =
-      align === "center"
-        ? (maxWidth - lineWidth) / 2
-        : align === "right"
-          ? maxWidth - lineWidth
-          : 0;
-    if (x < 0) x = 0;
-    for (const tok of line.toks) {
-      if (tok.text) {
-        const tokenBoxHeight = tok.font.size * tok.font.lineHeight;
-        laid.push({
-          text: tok.text,
-          font: tok.font,
-          x,
-          y: y + (line.height - tokenBoxHeight),
-        });
-      }
-      x += tok.width;
-    }
-    y += line.height;
-  }
-  return { tokens: laid, contentHeight };
-}
-
 function RawRichTextElement({
   element,
   width,
@@ -1945,7 +1826,7 @@ function RawRichTextElement({
   });
 
   if (renderRunsDifferFromElement) {
-    const lines = layoutRenderTextRuns(renderRuns, width);
+    const lines = layoutRenderTextRuns(renderRuns, width, font.wrap);
     const lineMetrics = lines.map((line) => ({
       height: lineRenderHeight(line, textLineHeight),
       width: line.reduce((sum, segment) => sum + segment.width, 0),
@@ -1969,12 +1850,12 @@ function RawRichTextElement({
             height: font.size * textLineHeight,
             width: 0,
           };
-          const startX =
-            align === "center"
-              ? Math.max(0, (width - lineMetric.width) / 2)
-              : align === "right"
-                ? Math.max(0, width - lineMetric.width)
-                : 0;
+          const startX = lineStartX(
+            align,
+            width,
+            lineMetric.width,
+            font.wrap === "none",
+          );
           let x = startX;
           const lineY = y;
           y += lineMetric.height;
@@ -2014,7 +1895,7 @@ function RawRichTextElement({
   // segment keeps its own font. Everything else — text-list (explicit joined
   // string) and single-run text — uses the original single-node path, so
   // existing content renders byte-for-byte as before.
-  const runs = typeof text === "string" ? null : editorRunsFromElement(element);
+  const runs = typeof text === "string" ? null : rawRenderTextRuns(element);
   if (runs && runs.length > 1) {
     const { tokens } = layoutRichText(
       runs,
@@ -2023,6 +1904,7 @@ function RawRichTextElement({
       align,
       verticalAlign,
       height,
+      font.wrap,
     );
     return (
       <Group listening={interactive} {...shadowProps(element)}>
@@ -2047,10 +1929,27 @@ function RawRichTextElement({
     );
   }
 
+  const noWrap = font.wrap === "none";
+  const textNodeWidth = noWrap
+    ? Math.max(width, measureNoWrapTextWidth(displayContent, font))
+    : width;
+  const textNodeHeight = noWrap
+    ? Math.max(
+        height,
+        measureNoWrapTextHeight(displayContent, font, textLineHeight),
+      )
+    : height;
+
   return (
     <Text
-      width={width}
-      height={height}
+      x={noWrap ? lineStartX(align, width, textNodeWidth, true) : 0}
+      y={
+        noWrap
+          ? verticalTextStartY(verticalAlign, height, textNodeHeight, true)
+          : 0
+      }
+      width={textNodeWidth}
+      height={textNodeHeight}
       text={displayContent}
       fill={withHash(font.color)}
       fontFamily={`${font.family}, Helvetica, sans-serif`}
@@ -2065,93 +1964,6 @@ function RawRichTextElement({
       {...shadowProps(element)}
       listening={interactive}
     />
-  );
-}
-
-function rawRenderTextRuns(element: RawElement): RenderTextRun[] {
-  const baseFont = rawFont(element);
-  const runs = normalizeRawTextMarkdownElement(element).runs;
-
-  return runs
-    .filter((run) => run.text)
-    .map((run) => ({
-      text: run.text,
-      font: fontFromRecord(asRecord(run.font), baseFont),
-    }));
-}
-
-function textRunsHaveMixedStyle(runs: RenderTextRun[]) {
-  const first = runs[0]?.font;
-  return runs.some((run) => JSON.stringify(run.font) !== JSON.stringify(first));
-}
-
-function layoutRenderTextRuns(runs: RenderTextRun[], width: number) {
-  const lines: Array<Array<RenderTextRun & { width: number }>> = [[]];
-  let lineWidth = 0;
-
-  const pushLine = () => {
-    if (lines[lines.length - 1]?.length === 0) return;
-    lines.push([]);
-    lineWidth = 0;
-  };
-
-  for (const run of runs) {
-    const parts = run.text.match(/\n|[^\S\n]+|[^\s]+/g) ?? [run.text];
-    for (const part of parts) {
-      if (part === "\n") {
-        pushLine();
-        continue;
-      }
-      const segmentWidth = measureRenderText(part, run.font);
-      const isWhitespace = part.trim().length === 0;
-      if (
-        !isWhitespace &&
-        lineWidth > 0 &&
-        lineWidth + segmentWidth > width
-      ) {
-        pushLine();
-      }
-      if (lines.length === 0) lines.push([]);
-      lines[lines.length - 1].push({
-        ...run,
-        text: part,
-        width: segmentWidth,
-      });
-      lineWidth += segmentWidth;
-    }
-  }
-
-  return lines.filter((line) => line.length > 0);
-}
-
-function lineRenderHeight(
-  line: Array<RenderTextRun & { width: number }>,
-  fallbackLineHeight: number,
-) {
-  return Math.max(
-    1,
-    ...line.map(
-      (segment) =>
-        segment.font.size * (segment.font.lineHeight ?? fallbackLineHeight),
-    ),
-  );
-}
-
-let renderTextMeasureCanvas: HTMLCanvasElement | null = null;
-
-function measureRenderText(text: string, font: RenderTextFont) {
-  const fallbackWidth =
-    text.length * font.size * (font.bold ? 0.58 : TEXT_AVERAGE_CHAR_EM);
-  if (typeof document === "undefined") return fallbackWidth;
-  renderTextMeasureCanvas ??= document.createElement("canvas");
-  const context = renderTextMeasureCanvas.getContext("2d");
-  if (!context) return fallbackWidth;
-  context.font = `${font.italic ? "italic " : ""}${
-    font.bold ? "700 " : "400 "
-  }${font.size}px ${font.family}, Helvetica, sans-serif`;
-  return (
-    context.measureText(text).width +
-    ((font.letterSpacing ?? 0) * Math.max(0, text.length - 1))
   );
 }
 
@@ -3413,7 +3225,7 @@ function rawElementFromInsertedElement(
   const rawElement = scaleInsertedElementGeometry(element, conversion);
   const normalizedElement = {
     ...rawElement,
-    font: rawFontToSource(rawElement.font, conversion.scaleTemplateText),
+    font: rawFontToSource(rawElement.font),
     border_radius: scaleInsertedBorderRadius(
       rawElement.border_radius ?? rawElement.borderRadius,
       conversion,
@@ -3628,53 +3440,50 @@ function scaleInsertedTextCollections(
   if (!scaleTemplateText) return element;
   return stripUndefined({
     ...element,
-    runs: scaleInsertedTextRuns(element.runs, scaleTemplateText),
-    items: scaleInsertedTextListItems(element.items, scaleTemplateText),
-    columns: scaleInsertedTableCells(element.columns, scaleTemplateText),
-    rows: scaleInsertedTableRows(element.rows, scaleTemplateText),
+    runs: scaleInsertedTextRuns(element.runs),
+    items: scaleInsertedTextListItems(element.items),
+    columns: scaleInsertedTableCells(element.columns),
+    rows: scaleInsertedTableRows(element.rows),
   });
 }
 
-function scaleInsertedTextRuns(value: unknown, scaleTemplateText: boolean) {
+function scaleInsertedTextRuns(value: unknown) {
   if (!Array.isArray(value)) return value;
   return value.map((run) => {
     if (!isRecord(run)) return run;
     return {
       ...run,
-      font: rawFontToSource(run.font, scaleTemplateText),
+      font: rawFontToSource(run.font),
     };
   });
 }
 
-function scaleInsertedTextListItems(
-  value: unknown,
-  scaleTemplateText: boolean,
-) {
+function scaleInsertedTextListItems(value: unknown) {
   if (!Array.isArray(value)) return value;
   return value.map((item) =>
     Array.isArray(item)
-      ? scaleInsertedTextRuns(item, scaleTemplateText)
+      ? scaleInsertedTextRuns(item)
       : item,
   );
 }
 
-function scaleInsertedTableRows(value: unknown, scaleTemplateText: boolean) {
+function scaleInsertedTableRows(value: unknown) {
   if (!Array.isArray(value)) return value;
   return value.map((row) =>
     Array.isArray(row)
-      ? scaleInsertedTableCells(row, scaleTemplateText)
+      ? scaleInsertedTableCells(row)
       : row,
   );
 }
 
-function scaleInsertedTableCells(value: unknown, scaleTemplateText: boolean) {
+function scaleInsertedTableCells(value: unknown) {
   if (!Array.isArray(value)) return value;
   return value.map((cell) => {
     if (!isRecord(cell)) return cell;
     return {
       ...cell,
-      font: rawFontToSource(cell.font, scaleTemplateText),
-      runs: scaleInsertedTextRuns(cell.runs, scaleTemplateText),
+      font: rawFontToSource(cell.font),
+      runs: scaleInsertedTextRuns(cell.runs),
     };
   });
 }
@@ -4030,7 +3839,7 @@ function elementWithInlineDraft(
   element: RawElement,
   kind: TemplateV2InlineEditKind,
   draft: string,
-  style?: TextEditStyle,
+  style?: TemplateV2TextEditStyle,
   frame?: Box | null,
   runs?: TextRun[],
 ) {
@@ -4132,289 +3941,6 @@ function normalizeMarkdownTextElementTree(value: unknown): unknown {
   return normalizedChildren === childInfo.items
     ? next
     : withUpdatedChildItems(next, childInfo, normalizedChildren);
-}
-
-function normalizeRawTextMarkdownElement(element: RawElement): {
-  element: RawElement;
-  runs: TextRun[];
-  changed: boolean;
-} {
-  const originalSourceRuns = rawSourceTextRuns(element);
-  const rawText = rawStoredTextContent(element);
-  const hasSourceRuns = rawTextHasRuns(element);
-  const sourceRuns = reconcileTextRunsWithStoredText(
-    originalSourceRuns,
-    rawText,
-  );
-  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
-  const renderedText = textRunsContent(renderedRuns);
-  const sourceHasMarkdown = sourceRuns.some((run) =>
-    containsMarkdownSyntax(run.text),
-  );
-  const runsChanged = !sameTextRuns(originalSourceRuns, sourceRuns);
-  const changed =
-    runsChanged ||
-    sourceHasMarkdown ||
-    (!hasSourceRuns && !sameTextRuns(sourceRuns, renderedRuns)) ||
-    ((!hasSourceRuns || containsMarkdownSyntax(rawText)) &&
-      rawText !== renderedText);
-
-  return {
-    element: changed ? setRawTextRunsContent(element, renderedRuns) : element,
-    runs: renderedRuns,
-    changed,
-  };
-}
-
-function reconcileTextRunsWithStoredText(
-  runs: TextRun[],
-  storedText: string,
-): TextRun[] {
-  if (!storedText || runs.length === 0) return runs;
-  if (containsMarkdownSyntax(storedText)) return runs;
-  if (textRunsContent(runs) === storedText) return runs;
-
-  const reconciled: TextRun[] = [];
-  let cursor = 0;
-
-  for (const run of runs) {
-    const runText = run.text ?? "";
-    if (!runText) continue;
-    const index = storedText.indexOf(runText, cursor);
-    if (index < 0) return runs;
-
-    const gap = storedText.slice(cursor, index);
-    appendRunText(reconciled, gap, run.font);
-    reconciled.push(cloneTextRun(run));
-    cursor = index + runText.length;
-  }
-
-  appendRunText(
-    reconciled,
-    storedText.slice(cursor),
-    runs[runs.length - 1]?.font,
-  );
-  return textRunsContent(reconciled) === storedText ? reconciled : runs;
-}
-
-function appendRunText(
-  runs: TextRun[],
-  text: string,
-  font: TextRun["font"],
-) {
-  if (!text) return;
-  const previous = runs[runs.length - 1];
-  if (previous) {
-    previous.text += text;
-    return;
-  }
-  runs.push(font ? { text, font: { ...font } } : { text });
-}
-
-function cloneTextRun(run: TextRun): TextRun {
-  return {
-    ...run,
-    font: run.font ? { ...run.font } : undefined,
-  };
-}
-
-function rawTextContent(element: RawElement) {
-  const runs = readArray(element.runs);
-  if (runs.length > 0) {
-    const content = runs
-      .map((run) => readString(asRecord(run)?.text) ?? "")
-      .join("");
-    if (content) return content;
-  }
-  return rawStoredTextContent(element);
-}
-
-function rawStoredTextContent(element: RawElement) {
-  const text = readString(element.text);
-  if (text != null) return text;
-  return "";
-}
-
-function rawSourceTextRuns(element: RawElement): TextRun[] {
-  const fallbackFont = fontToSource(rawFont(element));
-  const runs = readArray(element.runs)
-    .map((run) => {
-      const record = asRecord(run);
-      if (!record) return null;
-      const text = readString(record.text) ?? "";
-      if (!text) return null;
-      return {
-        text,
-        font: fontToSource(
-          fontFromRecord(asRecord(record.font), rawFont(element)),
-        ),
-      } satisfies TextRun;
-    })
-    .filter(Boolean) as TextRun[];
-
-  return runs.length > 0
-    ? runs
-    : [{ text: rawTextContent(element) || " ", font: fallbackFont }];
-}
-
-function rawTextRunsForEditor(element: RawElement): TextRun[] {
-  return normalizeRawTextMarkdownElement(element).runs;
-}
-
-function rawTextHasRuns(element: RawElement) {
-  return readArray(element.runs).some((run) => {
-    const record = asRecord(run);
-    return Boolean(readString(record?.text));
-  });
-}
-
-function containsMarkdownSyntax(text: string) {
-  return /(\*\*|__|\*|_).+(\*\*|__|\*|_)/.test(text);
-}
-
-function sameTextRuns(left: TextRun[], right: TextRun[]) {
-  if (left.length !== right.length) return false;
-  return left.every(
-    (run, index) =>
-      run.text === right[index]?.text &&
-      JSON.stringify(run.font ?? null) ===
-        JSON.stringify(right[index]?.font ?? null),
-  );
-}
-
-function setRawTextContent(
-  element: RawElement,
-  text: string,
-  style?: TextEditStyle,
-): RawElement {
-  const styled = style ? applyTextStyle(element, style) : element;
-  const sourceRuns = readArray(styled.runs);
-  const firstRun = asRecord(sourceRuns[0]) ?? {};
-  const runs = renderMarkdownTextRuns([
-    { text, font: fontToSource(rawFont(styled)) },
-  ]).map((run) => ({
-    ...firstRun,
-    text: run.text,
-    font: {
-      ...(asRecord(firstRun.font) ?? {}),
-      ...(asRecord(run.font) ?? {}),
-    },
-  }));
-  return {
-    ...styled,
-    text,
-    runs,
-  };
-}
-
-function setRawTextRunsContent(
-  element: RawElement,
-  runs: TextRun[],
-): RawElement {
-  const sourceRuns = readArray(element.runs);
-  const nextRuns = (runs.length > 0 ? runs : [{ text: " " }]).map(
-    (run, index) => {
-      const sourceRun = asRecord(sourceRuns[index]) ?? {};
-      return {
-        ...sourceRun,
-        text: run.text,
-        font: rawInlineTextFontRecord(run.font, sourceRun.font),
-      };
-    },
-  );
-  return {
-    ...element,
-    text: textRunsContent(nextRuns),
-    runs: nextRuns,
-  };
-}
-
-function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
-  const font = asRecord(value);
-  if (!font) return fallback;
-  return {
-    ...(asRecord(fallback) ?? {}),
-    ...font,
-    line_height: font.line_height ?? font.lineHeight,
-    letter_spacing: font.letter_spacing ?? font.letterSpacing,
-  };
-}
-
-function rawTextListContent(element: RawElement) {
-  const items = readArray(element.items);
-  if (items.length === 0) return "";
-  return items.map(rawTextListItemText).join("\n");
-}
-
-function rawTextListItemText(item: unknown) {
-  if (typeof item === "string") return item;
-  if (Array.isArray(item)) {
-    return item
-      .map((run) => readString(asRecord(run)?.text) ?? "")
-      .join("");
-  }
-  const record = asRecord(item);
-  if (!record) return "";
-  const directText = readString(record.text);
-  if (directText != null) return directText;
-  return readArray(record.runs)
-    .map((run) => readString(asRecord(run)?.text) ?? "")
-    .join("");
-}
-
-function rawTextListItemWithText(source: unknown, text: string): unknown {
-  if (Array.isArray(source)) {
-    const firstRun = asRecord(source[0]) ?? {};
-    return [{ ...firstRun, text }];
-  }
-  if (typeof source === "string") return text;
-  const record = asRecord(source);
-  if (!record) return { type: "text", text };
-  const runs = readArray(record.runs);
-  if (runs.length > 0 || Object.hasOwn(record, "runs")) {
-    const firstRun = asRecord(runs[0]) ?? {};
-    return { ...record, runs: text ? [{ ...firstRun, text }] : [] };
-  }
-  return { ...record, type: record.type ?? "text", text };
-}
-
-function setRawTextListContent(element: RawElement, draft: string): RawElement {
-  const sourceItems = readArray(element.items);
-  const texts = draft
-    .split(/\r?\n/)
-    .map((item) => item.replace(/^\s*[•*-]\s?/, "").trimEnd())
-    .filter((item) => item.trim().length > 0);
-  const items = (texts.length > 0 ? texts : [" "]).map((text, index) =>
-    rawTextListItemWithText(
-      sourceItems[index] ?? sourceItems[sourceItems.length - 1],
-      text,
-    ),
-  );
-  return { ...element, items };
-}
-
-function rawTableCellText(cell: unknown) {
-  if (typeof cell === "string" || typeof cell === "number") {
-    return String(cell);
-  }
-  const record = asRecord(cell);
-  if (!record) return "";
-  const runs = readArray(record.runs);
-  if (runs.length > 0) {
-    return runs
-      .map((run) => readString(asRecord(run)?.text) ?? "")
-      .join("");
-  }
-  const textRecord = asRecord(record.text);
-  return readString(textRecord?.text) ?? readString(record.text) ?? "";
-}
-
-function rawSvgContent(element: RawElement) {
-  return readString(element.svg) ?? readString(element.data) ?? "";
-}
-
-function setRawSvgContent(element: RawElement, draft: string): RawElement {
-  return { ...element, svg: draft };
 }
 
 function rawComponentForEditorToolbar(
@@ -4690,49 +4216,18 @@ function mergeEditorToolbarElement(
   return merged;
 }
 
-function rawFontRecordForEditor(value: unknown) {
-  const font = asRecord(value);
-  if (!font) return value;
-  const size = readNumber(font.size);
-  return {
-    ...font,
-    size: size == null ? size : size * SOURCE_PX_TO_PT,
-    line_height: font.line_height ?? font.lineHeight,
-    letter_spacing: font.letter_spacing ?? font.letterSpacing,
-  };
-}
-
-function editorFontRecordToRaw(value: unknown, fallback: unknown) {
-  const font = asRecord(value);
-  if (!font) return fallback;
-  const size = readNumber(font.size);
-  return {
-    ...(asRecord(fallback) ?? {}),
-    ...font,
-    size: size == null ? size : size / SOURCE_PX_TO_PT,
-    line_height: font.line_height ?? font.lineHeight,
-    letter_spacing: font.letter_spacing ?? font.letterSpacing,
-  };
-}
-
 function rawStrokeForEditor(value: unknown) {
   const stroke = asRecord(value);
   if (!stroke) return value;
-  const width = readNumber(stroke.width);
-  return {
-    ...stroke,
-    width: width == null ? width : width * SOURCE_PX_TO_PT,
-  };
+  return { ...stroke };
 }
 
 function editorStrokeToRaw(value: unknown, fallback: unknown) {
   const stroke = asRecord(value);
   if (!stroke) return fallback;
-  const width = readNumber(stroke.width);
   return {
     ...(asRecord(fallback) ?? {}),
     ...stroke,
-    width: width == null ? width : width / SOURCE_PX_TO_PT,
   };
 }
 
@@ -4874,14 +4369,6 @@ function editorChartToRawChart(source: RawElement, chart: UnknownRecord) {
   };
 }
 
-function displayText(text: string) {
-  return text
-    .replace(/\*\*(.*?)\*\*/g, "$1")
-    .replace(/__(.*?)__/g, "$1")
-    .replace(/\*(.*?)\*/g, "$1")
-    .replace(/_(.*?)_/g, "$1");
-}
-
 function linePoints(width: number, height: number, strokeWidthValue: number) {
   if (height <= Math.max(2, strokeWidthValue * 2)) {
     return [0, height / 2, width, height / 2];
@@ -4911,127 +4398,6 @@ function pointOnCircle(x: number, y: number, radius: number, degrees: number) {
 
 function backgroundColor(ui: RawUi) {
   return withHash(readString(ui.background) ?? "#FFFFFF");
-}
-
-function rawFont(element: RawElement) {
-  const font = asRecord(element.font) ?? {};
-  return fontFromRecord(font, {
-    family: "Arial",
-    size: 18,
-    color: "#111827",
-    bold: false,
-    italic: false,
-    underline: false,
-    lineHeight: 1.15,
-    letterSpacing: 0,
-    wrap: "word",
-  });
-}
-
-function fontFromRecord(
-  font: UnknownRecord | null,
-  fallback: RenderTextFont,
-): RenderTextFont {
-  return {
-    family: readString(font?.family) ?? fallback.family,
-    size: readNumber(font?.size) ?? fallback.size,
-    color: readString(font?.color) ?? fallback.color,
-    bold: readBoolean(font?.bold) ?? fallback.bold,
-    italic: readBoolean(font?.italic) ?? fallback.italic,
-    underline:
-      readBoolean(font?.underline) ??
-      (readString(font?.text_decoration) === "underline" ||
-        readString(font?.textDecoration) === "underline"
-        ? true
-        : fallback.underline),
-    lineHeight:
-      readNumber(font?.line_height) ??
-      readNumber(font?.lineHeight) ??
-      fallback.lineHeight,
-    letterSpacing:
-      readNumber(font?.letter_spacing) ??
-      readNumber(font?.letterSpacing) ??
-      fallback.letterSpacing,
-    wrap: readString(font?.wrap) ?? fallback.wrap,
-  };
-}
-
-function fontToSource(font: RenderTextFont): Font {
-  return {
-    family: font.family,
-    size: font.size,
-    color: font.color,
-    bold: font.bold,
-    italic: font.italic,
-    underline: font.underline,
-    line_height: font.lineHeight,
-    letter_spacing: font.letterSpacing,
-    wrap: readFontWrap(font.wrap),
-  };
-}
-
-function rawTextStyle(element: RawElement): TextEditStyle {
-  const font = rawFont(element);
-  return {
-    ...font,
-    color: withHash(font.color) ?? "#111827",
-    horizontal: readHorizontalAlignment(element.alignment?.horizontal),
-    vertical: readVerticalAlignment(element.alignment?.vertical),
-  };
-}
-
-function applyTextStyle(element: RawElement, style: TextEditStyle): RawElement {
-  const sourceFont = asRecord(element.font) ?? {};
-  const nextFont = {
-    ...sourceFont,
-    family: style.family,
-    size: style.size,
-    color: withHash(style.color) ?? "#111827",
-    bold: style.bold,
-    italic: style.italic,
-    underline: style.underline,
-    line_height: style.lineHeight,
-    letter_spacing: style.letterSpacing,
-    wrap: style.wrap,
-  };
-  const runs = readArray(element.runs);
-  return {
-    ...element,
-    font: nextFont,
-    alignment: {
-      ...(asRecord(element.alignment) ?? {}),
-      horizontal: style.horizontal,
-      vertical: style.vertical,
-    },
-    ...(runs.length > 0
-      ? {
-        runs: runs.map((run) => {
-          const record = asRecord(run) ?? {};
-          return {
-            ...record,
-            font: {
-              ...(asRecord(record.font) ?? {}),
-              ...nextFont,
-            },
-          };
-        }),
-      }
-      : {}),
-  };
-}
-
-function rawFontToSource(value: unknown, scaleTemplateText = false) {
-  const font = asRecord(value) ?? {};
-  const size = readNumber(font.size);
-  return stripUndefined({
-    ...font,
-    size:
-      scaleTemplateText && size != null
-        ? size / SOURCE_PX_TO_PT
-        : font.size,
-    line_height: font.line_height ?? font.lineHeight,
-    letter_spacing: font.letter_spacing ?? font.letterSpacing,
-  });
 }
 
 function fillColor(fill: unknown) {
@@ -5126,26 +4492,6 @@ function readPadding(value: unknown) {
     bottom: readNumber(record?.bottom) ?? y ?? 0,
     left: readNumber(record?.left) ?? x ?? 0,
   };
-}
-
-function readHorizontalAlignment(value: unknown): TextEditStyle["horizontal"] {
-  const normalized = readString(value);
-  if (normalized === "center" || normalized === "right") return normalized;
-  return "left";
-}
-
-function readVerticalAlignment(value: unknown): TextEditStyle["vertical"] {
-  const normalized = readString(value);
-  if (normalized === "middle" || normalized === "bottom") return normalized;
-  return "top";
-}
-
-function readFontWrap(value: unknown): Font["wrap"] {
-  const normalized = readString(value);
-  if (normalized === "none" || normalized === "char" || normalized === "word") {
-    return normalized;
-  }
-  return "word";
 }
 
 function alignmentOffset(alignment: string | null, available: number, used: number) {

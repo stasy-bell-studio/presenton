@@ -110,7 +110,7 @@ export function TemplateV2InlineEditor({
     lineHeight: editorLineHeight,
     letterSpacing: font.letterSpacing,
     textAlign: font.horizontal as CSSProperties["textAlign"],
-    overflow: "auto",
+    overflow: isCode ? "auto" : "visible",
   };
   const baseTextFont = useMemo(() => textEditStyleToFont(font), [font]);
   const [initialTextEditorRuns] = useState<TextRun[]>(() =>
