@@ -243,7 +243,7 @@ const SlideContent = ({
             </div>
           )}
 
-          {!isStreaming && (
+          {/* {!isStreaming && (
             <div
               className={`absolute right-3 top-3 z-30 hidden md:flex flex-row items-center gap-2 rounded-[28px] border border-gray-200/80 bg-white/95 px-2.5 py-2 ${isEditPopoverOpen || isSpeakerPopoverOpen
                   ? "opacity-100 pointer-events-auto"
@@ -401,7 +401,7 @@ const SlideContent = ({
                 </ToolTip>
               </button>
             </div>
-          )}
+          )} */}
         </div>
       </div>
     </>

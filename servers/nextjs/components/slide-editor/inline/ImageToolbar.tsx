@@ -114,7 +114,7 @@ export function ImageToolbar({
           top: Math.max(8, box.y * scale - 64),
         }}
         onMouseDown={(event) => event.stopPropagation()}
-        className="fixed z-[7] flex h-[39px] items-center rounded-[6px] bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]">
+        className="fixed z-[10000] flex h-[39px] items-center rounded-[6px] bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]">
         <div className="relative">
           <button
             type="button"
@@ -344,7 +344,7 @@ export function ImageToolbar({
             <div className="pointer-events-none absolute top-2/3 h-px w-full bg-white/25" />
           </div>
           <div
-            className="pointer-events-none absolute z-[8] rounded-full bg-black/75 px-4 py-2 text-sm text-white"
+            className="pointer-events-none absolute z-[10000] rounded-full bg-black/75 px-4 py-2 text-sm text-white"
             style={{
               left: (box.x + box.w / 2) * scale,
               top: Math.max(8, box.y * scale - 42),
@@ -357,7 +357,7 @@ export function ImageToolbar({
             </span>
           </div>
           <div
-            className="absolute z-[8] flex items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
+            className="absolute z-[10000] flex items-center gap-3 rounded-xl bg-white px-4 py-2 shadow-[0_4px_14px_rgba(0,0,0,0.16)]"
             style={{
               left: (box.x + box.w / 2) * scale,
               top: (box.y + box.h) * scale + 10,

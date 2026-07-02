@@ -220,6 +220,7 @@ function TemplateV2KonvaSlideComponent({
   const dispatch = useDispatch();
   const surfaceId = useId();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const [rootElement, setRootElement] = useState<HTMLDivElement | null>(null);
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
@@ -260,6 +261,10 @@ function TemplateV2KonvaSlideComponent({
     keyForSelection,
     selection,
   });
+  const setRootNode = useCallback((node: HTMLDivElement | null) => {
+    rootRef.current = node;
+    setRootElement(node);
+  }, []);
 
   const components = useMemo(
     () => readArray(uiDraft.components).filter(isRecord) as RawComponent[],
@@ -342,30 +347,30 @@ function TemplateV2KonvaSlideComponent({
       componentChildCount(selectedComponent) > 1,
     [selectedComponent, selection],
   );
-  const componentToolbarPosition = useMemo(
-    () =>
-      selectedBox
-        ? stackedToolbarPosition({
-            anchorBox: selectedBox,
-            index: 0,
-            total: layoutToolbarTarget ? 2 : 1,
-            toolbarWidth: COMPONENT_TOOLBAR_WIDTH,
-          })
-        : null,
-    [layoutToolbarTarget, selectedBox],
+  const [, setToolbarViewportVersion] = useState(0);
+  const hasFloatingToolbars = Boolean(
+    isEditMode &&
+      selection?.kind === "component" &&
+      (selectedBox || layoutToolbarTarget),
   );
-  const layoutToolbarPosition = useMemo(
-    () =>
-      layoutToolbarTarget
-        ? stackedToolbarPosition({
-            anchorBox: selectedBox ?? layoutToolbarTarget.box,
-            index: selectedBox ? 1 : 0,
-            total: selectedBox ? 2 : 1,
-            toolbarWidth: LAYOUT_TOOLBAR_WIDTH,
-          })
-        : null,
-    [layoutToolbarTarget, selectedBox],
-  );
+  const componentToolbarPosition = selectedBox
+    ? stackedViewportToolbarPosition({
+        root: rootElement,
+        anchorBox: selectedBox,
+        index: 0,
+        total: layoutToolbarTarget ? 2 : 1,
+        toolbarWidth: COMPONENT_TOOLBAR_WIDTH,
+      })
+    : null;
+  const layoutToolbarPosition = layoutToolbarTarget
+    ? stackedViewportToolbarPosition({
+        root: rootElement,
+        anchorBox: selectedBox ?? layoutToolbarTarget.box,
+        index: selectedBox ? 1 : 0,
+        total: selectedBox ? 2 : 1,
+        toolbarWidth: LAYOUT_TOOLBAR_WIDTH,
+      })
+    : null;
   const inlineEditBox = inlineEdit
     ? absoluteInlineEditBox(uiDraft, inlineEdit.selection, inlineEdit.frame)
     : null;
@@ -393,6 +398,25 @@ function TemplateV2KonvaSlideComponent({
     redoStackRef.current = [];
     setHistoryAvailability({ canUndo: false, canRedo: false });
   }, [clearInlineEdit, clearTableCellSelection, layout]);
+
+  useEffect(() => {
+    if (!hasFloatingToolbars || typeof window === "undefined") return;
+    let frame = 0;
+    const refreshToolbarPosition = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setToolbarViewportVersion((version) => version + 1);
+      });
+    };
+    window.addEventListener("resize", refreshToolbarPosition);
+    window.addEventListener("scroll", refreshToolbarPosition, true);
+    refreshToolbarPosition();
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", refreshToolbarPosition);
+      window.removeEventListener("scroll", refreshToolbarPosition, true);
+    };
+  }, [hasFloatingToolbars]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -749,10 +773,15 @@ function TemplateV2KonvaSlideComponent({
   const applyLayoutElementChange = useCallback(
     (changes: Record<string, unknown>) => {
       if (!layoutToolbarTarget) return;
-      updateElement(layoutToolbarTarget.selection, (current) => ({
-        ...current,
-        ...changes,
-      }));
+      updateElement(layoutToolbarTarget.selection, (current) =>
+        elementWithNormalizedLayoutChildren(
+          {
+            ...current,
+            ...changes,
+          },
+          layoutToolbarTarget.box,
+        ),
+      );
     },
     [layoutToolbarTarget, updateElement],
   );
@@ -1049,6 +1078,10 @@ function TemplateV2KonvaSlideComponent({
       const root = rootRef.current;
       const targetNode = event.target instanceof Node ? event.target : null;
       const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-template-v2-floating-toolbar='true']")) {
+        activateSurface();
+        return;
+      }
       if (targetNode && root?.contains(targetNode)) {
         activateSurface();
         return;
@@ -1109,7 +1142,7 @@ function TemplateV2KonvaSlideComponent({
 
   return (
     <div
-      ref={rootRef}
+      ref={setRootNode}
       data-template-v2-konva-surface={surfaceId}
       className="relative h-full w-full overflow-hidden bg-white"
       style={{ width: STAGE_WIDTH, height: STAGE_HEIGHT }}
@@ -1232,6 +1265,13 @@ function TemplateV2KonvaSlideComponent({
           box={layoutToolbarTarget.box}
           element={layoutToolbarTarget.element}
           position={layoutToolbarPosition ?? undefined}
+          onUngroup={
+            canUngroupSelectedComponent &&
+            (readString(layoutToolbarTarget.element.type) === "flex" ||
+              readString(layoutToolbarTarget.element.type) === "grid")
+              ? ungroupSelectedComponent
+              : undefined
+          }
           onChange={applyLayoutElementChange}
         />
       ) : null}
@@ -2616,6 +2656,38 @@ function layoutChildren(
   }));
 }
 
+function elementWithNormalizedLayoutChildren(
+  element: RawElement,
+  parentBox: Box,
+): RawElement {
+  const childInfo = childArrayInfo(element);
+  if (!childInfo || childInfo.items.length === 0) {
+    return element;
+  }
+
+  const laidOutChildren = layoutChildren(element, childInfo.items, parentBox);
+  const nextChildren = childInfo.items.map((child, index) => {
+    const record = asRecord(child);
+    const laidOut = laidOutChildren.find((item) => item.index === index);
+    if (!record || !laidOut?.box || !laidOut.layoutManaged) {
+      return child;
+    }
+    return {
+      ...record,
+      position: {
+        x: laidOut.box.x,
+        y: laidOut.box.y,
+      },
+      size: {
+        width: laidOut.box.width,
+        height: laidOut.box.height,
+      },
+    };
+  });
+
+  return withUpdatedChildItems(element, childInfo, nextChildren);
+}
+
 function shouldUseCenterOrigin(element: RawElement) {
   const type = readString(element.type);
   return type === "image" || type === "svg";
@@ -3899,33 +3971,78 @@ function nullableBoxEqual(
 
 function stackedToolbarPosition({
   anchorBox,
+  bounds,
   index,
   total,
   toolbarWidth,
 }: {
   anchorBox: Box;
+  bounds?: Size;
   index: number;
   total: number;
   toolbarWidth: number;
 }) {
+  const boundary = bounds ?? { width: STAGE_WIDTH, height: STAGE_HEIGHT };
   const stackHeight = total * TOOLBAR_HEIGHT + (total - 1) * TOOLBAR_GAP;
   const canFitAbove = anchorBox.y >= stackHeight + TOOLBAR_MARGIN;
   const startTop = canFitAbove
     ? anchorBox.y - stackHeight - TOOLBAR_GAP
     : Math.min(
-        STAGE_HEIGHT - stackHeight - TOOLBAR_MARGIN,
+        boundary.height - stackHeight - TOOLBAR_MARGIN,
         anchorBox.y + anchorBox.height + TOOLBAR_GAP,
       );
   return {
     left: Math.max(
       TOOLBAR_MARGIN,
-      Math.min(anchorBox.x, STAGE_WIDTH - toolbarWidth - TOOLBAR_MARGIN),
+      Math.min(anchorBox.x, boundary.width - toolbarWidth - TOOLBAR_MARGIN),
     ),
     top: Math.max(
       TOOLBAR_MARGIN,
       startTop + index * (TOOLBAR_HEIGHT + TOOLBAR_GAP),
     ),
   };
+}
+
+function stackedViewportToolbarPosition({
+  anchorBox,
+  index,
+  root,
+  total,
+  toolbarWidth,
+}: {
+  anchorBox: Box;
+  index: number;
+  root: HTMLElement | null;
+  total: number;
+  toolbarWidth: number;
+}) {
+  if (typeof window === "undefined" || !root) {
+    return stackedToolbarPosition({
+      anchorBox,
+      index,
+      total,
+      toolbarWidth,
+    });
+  }
+
+  const rect = root.getBoundingClientRect();
+  const scaleX = rect.width > 0 ? rect.width / STAGE_WIDTH : 1;
+  const scaleY = rect.height > 0 ? rect.height / STAGE_HEIGHT : 1;
+  return stackedToolbarPosition({
+    anchorBox: {
+      x: rect.left + anchorBox.x * scaleX,
+      y: rect.top + anchorBox.y * scaleY,
+      width: anchorBox.width * scaleX,
+      height: anchorBox.height * scaleY,
+    },
+    bounds: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    },
+    index,
+    total,
+    toolbarWidth,
+  });
 }
 
 function componentKey(component: RawComponent, index: number) {

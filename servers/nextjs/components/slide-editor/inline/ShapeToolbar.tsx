@@ -94,7 +94,7 @@ export function ShapeToolbar({
       }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[8] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      className="fixed z-[10000] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <div className="relative">
         <button

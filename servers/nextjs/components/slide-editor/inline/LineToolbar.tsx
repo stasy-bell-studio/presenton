@@ -70,7 +70,7 @@ export function LineToolbar({
       }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[8] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      className="fixed z-[10000] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <span className="flex min-w-[64px] items-center gap-2 px-1 text-sm font-medium">
         <Minus size={18} aria-hidden="true" />

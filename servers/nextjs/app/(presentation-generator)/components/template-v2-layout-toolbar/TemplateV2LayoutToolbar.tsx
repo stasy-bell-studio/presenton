@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   AlignCenter,
   Box,
@@ -22,6 +23,11 @@ import {
   NumberField,
   Panel,
 } from "@/components/slide-editor/inline/ShapeToolbar";
+import {
+  addLayoutItemChanges,
+  layoutItemStats,
+  removeLastLayoutItemChanges,
+} from "./layoutItems";
 
 type RawRecord = Record<string, unknown>;
 type LayoutElementType = "container" | "flex" | "grid";
@@ -86,10 +92,6 @@ function readString(value: unknown, fallback: string) {
   return typeof value === "string" && value ? value : fallback;
 }
 
-function readArray(value: unknown): unknown[] {
-  return Array.isArray(value) ? value : [];
-}
-
 function readColor(value: unknown, fallback: string) {
   const color = readString(value, fallback);
   return color.startsWith("#") ? color : `#${color}`;
@@ -99,35 +101,6 @@ function capitalize(value: string) {
   return value
     .replace("flex-", "")
     .replace(/(^|[-_])\w/g, (part) => part.replace(/[-_]/, "").toUpperCase());
-}
-
-function cloneChildForAppend(child: unknown, index: number) {
-  const cloned =
-    child && typeof child === "object"
-      ? JSON.parse(JSON.stringify(child))
-      : child;
-  if (!cloned || typeof cloned !== "object" || Array.isArray(cloned)) {
-    return cloned;
-  }
-  const next = { ...(cloned as RawRecord) };
-  delete next.id;
-  if (typeof next.name === "string") {
-    next.name = `${next.name}_copy_${index + 1}`;
-  }
-  return next;
-}
-
-function childrenBounds(element: RawRecord) {
-  const children = readArray(element.children);
-  const min = Math.max(0, readNumber(element.min_children));
-  const max = readNumber(element.max_children, Number.POSITIVE_INFINITY);
-  return {
-    canAdd: children.length > 0 && children.length < max,
-    canRemove: children.length > min,
-    children,
-    max,
-    min,
-  };
 }
 
 function ControlButton({
@@ -245,20 +218,15 @@ function ItemsControl({
   onToggle: (panel: Exclude<PanelId, null>) => void;
   openPanel: PanelId;
 }) {
-  const { canAdd, canRemove, children, max, min } = childrenBounds(element);
+  const { canAdd, canRemove, children } = layoutItemStats(element);
   const addItem = () => {
     if (!canAdd) return;
-    const source = children[children.length - 1];
-    onChange({
-      children: [
-        ...children,
-        cloneChildForAppend(source, children.length),
-      ],
-    });
+    onChange(addLayoutItemChanges(element));
   };
   const removeItem = () => {
     if (!canRemove) return;
-    onChange({ children: children.slice(0, -1) });
+    const changes = removeLastLayoutItemChanges(element);
+    if (changes) onChange(changes);
   };
 
   return (
@@ -272,10 +240,7 @@ function ItemsControl({
     >
       <div className="flex items-center justify-between text-xs text-[#4B5563]">
         <span>Count</span>
-        <span>
-          {children.length}
-          {Number.isFinite(max) ? ` / ${max}` : ""}
-        </span>
+        <span>{children.length}</span>
       </div>
       <button
         type="button"
@@ -305,11 +270,6 @@ function ItemsControl({
         <Trash2 size={14} aria-hidden />
         Remove last
       </button>
-      {min > 0 ? (
-        <p className="text-[11px] leading-4 text-[#6B7280]">
-          Minimum items: {min}
-        </p>
-      ) : null}
     </PanelControl>
   );
 }
@@ -733,12 +693,13 @@ export function TemplateV2LayoutToolbar({
   const TypeIcon =
     element.type === "grid" ? Grid3X3 : element.type === "container" ? Box : AlignCenter;
 
-  return (
+  const toolbar = (
     <div
+      data-template-v2-floating-toolbar="true"
       style={{ left, top }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[9] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      className="fixed z-[10000] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <span className="flex items-center gap-1.5 px-1 text-xs font-semibold">
         <TypeIcon size={15} aria-hidden />
@@ -780,6 +741,10 @@ export function TemplateV2LayoutToolbar({
       )}
     </div>
   );
+
+  return position && typeof document !== "undefined"
+    ? createPortal(toolbar, document.body)
+    : toolbar;
 }
 
 export function isTemplateV2LayoutElement(

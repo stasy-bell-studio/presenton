@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -74,12 +75,13 @@ export function TemplateV2ComponentToolbar({
     Math.max(8, Math.min(box.x, Math.max(8, slideWidth - TOOLBAR_WIDTH)));
   const top = position?.top ?? Math.max(8, box.y - 48);
 
-  return (
+  const toolbar = (
     <div
+      data-template-v2-floating-toolbar="true"
       style={{ left, top }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[9] flex h-10 items-center gap-1 rounded-md bg-white px-2 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      className="fixed z-[10000] flex h-10 items-center gap-1 rounded-md bg-white px-2 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <span className="mr-1 border-r border-[#E7E8EC] pr-2 text-xs font-semibold text-[#5B5D66]">
         Component
@@ -126,6 +128,10 @@ export function TemplateV2ComponentToolbar({
       ) : null}
     </div>
   );
+
+  return position && typeof document !== "undefined"
+    ? createPortal(toolbar, document.body)
+    : toolbar;
 }
 
 function toolbarButtonClassName(disabled: boolean) {
