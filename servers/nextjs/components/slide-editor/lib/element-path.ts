@@ -9,11 +9,7 @@ type ParentRef =
       parent: Extract<SlideElement, { children: SlideElement[] }>;
       index: number;
     }
-  | { kind: "child"; parent: Extract<SlideElement, { type: "container" }> }
-  | {
-      kind: "item";
-      parent: Extract<SlideElement, { type: "list-view" | "grid-view" }>;
-    };
+  | { kind: "child"; parent: Extract<SlideElement, { type: "container" }> };
 
 export function rootIndexFromPath(path: ElementPath | null | undefined) {
   if (!path) return -1;
@@ -38,8 +34,7 @@ export function getElementAtPath(
   if (!ref) return null;
   if (ref.kind === "root") return ref.elements[ref.index] ?? null;
   if (ref.kind === "children") return ref.parent.children[ref.index] ?? null;
-  if (ref.kind === "child") return ref.parent.child ?? null;
-  return ref.parent.item ?? null;
+  return ref.parent.child ?? null;
 }
 
 export function setElementAtPath(
@@ -59,9 +54,7 @@ export function setElementAtPath(
   }
   if (ref.kind === "child") {
     ref.parent.child = element;
-    return true;
   }
-  ref.parent.item = element;
   return true;
 }
 
@@ -119,7 +112,7 @@ export function duplicateElementAtPath(
 export function parentPath(path: ElementPath): ElementPath {
   const parts = path.split(".");
   if (parts.length <= 1) return path;
-  if (parts.at(-2) === "children" || parts.at(-2) === "item") {
+  if (parts.at(-2) === "children") {
     return parts.slice(0, -2).join(".");
   }
   return parts.slice(0, -1).join(".");
@@ -165,16 +158,6 @@ function getElementRef(
       continue;
     }
 
-    if (part === "item") {
-      if (current.type !== "list-view" && current.type !== "grid-view") {
-        return null;
-      }
-      if (isLeaf || Number.isInteger(Number(parts[i + 1]))) {
-        return { kind: "item", parent: current };
-      }
-      current = current.item;
-      continue;
-    }
   }
 
   return null;

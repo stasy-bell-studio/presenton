@@ -189,7 +189,7 @@ The active Template V2 presentation runtime has no calls to:
 - `serializeTemplateV2LayoutFromSlide`;
 - `serializeTemplateV2ContentFromSlide`;
 - `applyGeneratedSlideContentToLayout`;
-- `resolveSlideLayout`.
+- the old normalized slide layout resolver.
 
 `TemplateV2KonvaSlide` was preserved and changed in place. Its old whole-slide
 adapter, Jotai deck hydration, `SlideSurface` route, reverse serializers, and
@@ -199,8 +199,8 @@ Some similarly named utilities remain for separate consumers:
 
 - `TemplateV2LayoutPreview` still uses `adaptTemplateV2LayoutToSlide` to feed
   the shared preview surface.
-- The reusable slide editor still uses `normalizeTemplateV2Slide` and
-  `resolveSlideLayout` for its canonical `Slide` model.
+- The reusable slide editor still uses `normalizeTemplateV2Slide` for canonical
+  `Slide` model conversion where needed.
 - The Blocks/palette boundary can still convert a selected library component
   into an insertion payload. This conversion occurs only on insertion, not on
   every render or edit.

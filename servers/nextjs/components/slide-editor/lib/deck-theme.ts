@@ -244,11 +244,6 @@ function applyElementTheme(
     element.type === "group"
   ) {
     element.children.forEach((child) => applyElementTheme(child, colorMap));
-    return;
-  }
-
-  if (element.type === "list-view" || element.type === "grid-view") {
-    applyElementTheme(element.item, colorMap);
   }
 }
 

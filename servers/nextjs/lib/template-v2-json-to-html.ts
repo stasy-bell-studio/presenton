@@ -63,8 +63,6 @@ const ELEMENT_TYPES = new Set([
   "flex",
   "grid",
   "group",
-  "list-view",
-  "grid-view",
 ]);
 
 const DEFAULT_CHART_JS_URL =
@@ -415,10 +413,8 @@ function renderItem(item: JsonRecord, mode: RenderMode): string {
     case "container":
       return renderContainer(item, mode);
     case "flex":
-    case "list-view":
       return renderFlex(item, mode);
     case "grid":
-    case "grid-view":
       return renderGrid(item, mode);
     case "group":
       return renderGroup(item, mode);

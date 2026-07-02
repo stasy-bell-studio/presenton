@@ -9,11 +9,9 @@ const SOURCE_W = 1280;
 const SOURCE_H = 720;
 const X_SCALE = SLIDE_W / SOURCE_W;
 const Y_SCALE = SLIDE_H / SOURCE_H;
-const SOURCE_PX_TO_PT = (72 * SLIDE_W) / SOURCE_W;
 
 type ElementWithChildren = Extract<SlideElement, { children: SlideElement[] }>;
 type ElementWithChild = Extract<SlideElement, { child?: SlideElement | null }>;
-type ElementWithItem = Extract<SlideElement, { item: SlideElement }>;
 type UnknownRecord = Record<string, unknown>;
 
 export function applyDesignVariableOption<T extends SlideElement>(
@@ -140,13 +138,6 @@ function setElementTargetValue(
     } as SlideElement;
   }
 
-  if (head === "item" && hasItem(element)) {
-    return {
-      ...element,
-      item: setElementTargetValue(element.item, rest, value),
-    } as SlideElement;
-  }
-
   if (hasChildren(element)) {
     const childIndex = element.children.findIndex((child) =>
       matchesElementSelector(child, head),
@@ -178,10 +169,6 @@ function getElementTargetValue(element: SlideElement, parts: string[]): unknown 
 
   if (head === "child" && hasChild(element) && element.child) {
     return getElementTargetValue(element.child, rest);
-  }
-
-  if (head === "item" && hasItem(element)) {
-    return getElementTargetValue(element.item, rest);
   }
 
   if (hasChildren(element)) {
@@ -240,7 +227,7 @@ function scaleValueForTarget(targetPath: string, value: unknown) {
   const leaf = parts.at(-1);
   const parent = parts.at(-2);
 
-  if (parent === "font" && leaf === "size") return round(value * SOURCE_PX_TO_PT);
+  if (parent === "font" && leaf === "size") return round(value);
   if (parent === "size" && leaf === "width") return round(value * X_SCALE);
   if (parent === "size" && leaf === "height") return round(value * Y_SCALE);
   if (parent === "position" && leaf === "x") return round(value * X_SCALE);
@@ -268,10 +255,6 @@ function hasChildren(element: SlideElement): element is ElementWithChildren {
 
 function hasChild(element: SlideElement): element is ElementWithChild {
   return "child" in element;
-}
-
-function hasItem(element: SlideElement): element is ElementWithItem {
-  return "item" in element;
 }
 
 function isRecord(value: unknown): value is UnknownRecord {

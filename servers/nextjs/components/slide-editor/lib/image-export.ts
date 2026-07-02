@@ -16,11 +16,6 @@ export function walkSlideElements(
       element.type === "group"
     ) {
       walkSlideElements(element.children, visitor);
-    } else if (
-      element.type === "list-view" ||
-      element.type === "grid-view"
-    ) {
-      walkSlideElements([element.item], visitor);
     }
   }
 }

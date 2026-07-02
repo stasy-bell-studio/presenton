@@ -2,7 +2,6 @@ import { SLIDE_H } from "./lib/slide-schema";
 import { getElementLabel } from "./registry";
 
 export const PX_PER_IN = 96;
-export const PT_TO_PX = 96 / 72;
 export const STAGE_W = 960;
 export const EXPORT_W = 1600;
 export const EXPORT_H = EXPORT_W * (SLIDE_H / 10);

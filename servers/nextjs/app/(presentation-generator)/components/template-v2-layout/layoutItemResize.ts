@@ -35,7 +35,7 @@ type Padding = {
 };
 
 type ChildArrayInfo = {
-  key: "children" | "elements" | "child" | "item";
+  key: "children" | "elements" | "child";
   items: unknown[];
 };
 
@@ -114,39 +114,20 @@ export function deleteLayoutChildFromArray(elements: unknown[], path: number[]) 
   const childInfo = current ? childArrayInfo(current) : null;
   if (!current || !childInfo) return elements;
   if (rest.length >= 1 && isFlowLayoutElement(current)) {
-    if (childInfo.key === "item") {
-      const count = Math.max(
-        0,
-        readNumber(current.count) ?? childInfo.items.length,
-      );
-      const minCount = Math.max(0, readNumber(current.min_count) ?? 0);
-      if (count <= minCount) return elements;
-      const next = [...elements];
-      next[index] = {
-        ...current,
-        count: Math.max(0, count - 1),
-      };
-      return next;
-    }
     if (childInfo.key === "children") {
       const minChildren = Math.max(0, readNumber(current.min_children) ?? 0);
       if (childInfo.items.length <= minChildren) return elements;
       const updatedChildren = [...childInfo.items];
       updatedChildren.splice(rest[0], 1);
       const next = [...elements];
-      next[index] = withUpdatedChildItems(
-        current,
-        childInfo,
-        updatedChildren,
-        rest[0],
-      );
+      next[index] = withUpdatedChildItems(current, childInfo, updatedChildren);
       return next;
     }
   }
   const updatedChildren = deleteLayoutChildFromArray(childInfo.items, rest);
   if (updatedChildren === childInfo.items) return elements;
   const next = [...elements];
-  next[index] = withUpdatedChildItems(current, childInfo, updatedChildren, rest[0]);
+  next[index] = withUpdatedChildItems(current, childInfo, updatedChildren);
   return next;
 }
 
@@ -482,7 +463,7 @@ function updateElementArray(
   const updatedChildren = updateElementArray(childInfo.items, rest, updater);
   if (updatedChildren === childInfo.items) return elements;
   const next = [...elements];
-  next[index] = withUpdatedChildItems(current, childInfo, updatedChildren, rest[0]);
+  next[index] = withUpdatedChildItems(current, childInfo, updatedChildren);
   return next;
 }
 
@@ -490,13 +471,6 @@ function childArrayInfo(element: RawRecord): ChildArrayInfo | null {
   if (Array.isArray(element.children)) return { key: "children", items: element.children };
   if (Array.isArray(element.elements)) return { key: "elements", items: element.elements };
   if (isRecord(element.child)) return { key: "child", items: [element.child] };
-  if (isRecord(element.item)) {
-    const count = Math.max(0, Math.floor(readNumber(element.count) ?? 1));
-    return {
-      key: "item",
-      items: Array.from({ length: count }, () => element.item),
-    };
-  }
   return null;
 }
 
@@ -504,21 +478,9 @@ function withUpdatedChildItems(
   element: RawRecord,
   childInfo: ChildArrayInfo,
   updatedChildren: unknown[],
-  selectedChildIndex = 0,
 ) {
   if (childInfo.key === "child") {
     return { ...element, child: updatedChildren[0] ?? null };
-  }
-  if (childInfo.key === "item") {
-    const selected = Math.max(0, selectedChildIndex);
-    return {
-      ...element,
-      item:
-        updatedChildren[selected] ??
-        updatedChildren[0] ??
-        element.item ??
-        null,
-    };
   }
   return { ...element, [childInfo.key]: updatedChildren };
 }

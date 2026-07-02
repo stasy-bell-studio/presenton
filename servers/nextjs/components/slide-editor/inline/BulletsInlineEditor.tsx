@@ -1,11 +1,13 @@
 import type { BulletsSlideElement } from "../state";
-import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
+import { withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
   setTextListStrings,
 } from "../lib/element-model";
 import { inlineStyles } from "./inlineStyles";
+
+const TEMPLATE_V2_PX_PER_IN = 128;
 
 export function BulletsInlineEditor({
   element,
@@ -52,7 +54,7 @@ export function BulletsInlineEditor({
         height: box.h * scale,
         color: withHash(font.color),
         fontFamily: `${font.family}, Helvetica, sans-serif`,
-        fontSize: font.size * PT_TO_PX * (scale / PX_PER_IN),
+        fontSize: font.size * (scale / TEMPLATE_V2_PX_PER_IN),
         lineHeight: font.lineHeight ?? 1.3,
       }}
     />

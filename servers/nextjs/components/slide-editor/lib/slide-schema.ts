@@ -174,7 +174,7 @@ export const FontSchema = z
     italic: z.boolean().nullish(),
     underline: z.boolean().nullish(),
     line_height: z.number().min(0.8).max(2.2).nullish(),
-    // Hundredths of a point, matching OOXML character spacing.
+    // Pixels, matching the Template V2 editor text model.
     letter_spacing: z.number().min(-200).max(600).nullish(),
     wrap: TextWrapSchema.nullish(),
     ellipsis: z.boolean().nullish(),
@@ -362,37 +362,6 @@ type GridElementOutput = RequiredElementBaseOutput & {
   children: SlideElementOutput[];
   max_children?: number | null | undefined;
   min_children?: number | null | undefined;
-};
-
-type ListViewElementOutput = ElementBaseOutput & {
-  type: "list-view";
-  direction?: z.infer<typeof FlexDirectionSchema> | null | undefined;
-  gap?: number | null | undefined;
-  column_gap?: number | null | undefined;
-  row_gap?: number | null | undefined;
-  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justify_content?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  padding?: z.infer<typeof PaddingSchema> | null | undefined;
-  count: number;
-  item: SlideElementOutput;
-  max_count?: number | null | undefined;
-  min_count?: number | null | undefined;
-};
-
-type GridViewElementOutput = ElementBaseOutput & {
-  type: "grid-view";
-  columns: number;
-  rows?: number | null | undefined;
-  gap?: number | null | undefined;
-  column_gap?: number | null | undefined;
-  row_gap?: number | null | undefined;
-  align_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  justify_items?: z.infer<typeof LayoutAlignmentSchema> | null | undefined;
-  padding?: z.infer<typeof PaddingSchema> | null | undefined;
-  count: number;
-  item: SlideElementOutput;
-  max_count?: number | null | undefined;
-  min_count?: number | null | undefined;
 };
 
 type GroupElementOutput = RequiredElementBaseOutput & {
@@ -634,43 +603,6 @@ export const GridElementSchema: z.ZodType<GridElementOutput> = z
   })
   .strict();
 
-export const ListViewElementSchema: z.ZodType<ListViewElementOutput> = z
-  .object({
-    type: z.literal("list-view"),
-    ...elementBaseShape,
-    direction: FlexDirectionSchema.nullish(),
-    gap: z.number().nullish(),
-    column_gap: z.number().nullish(),
-    row_gap: z.number().nullish(),
-    align_items: LayoutAlignmentSchema.nullish(),
-    justify_content: LayoutAlignmentSchema.nullish(),
-    padding: PaddingSchema.nullish(),
-    count: z.number().min(0),
-    item: z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
-    max_count: z.number().nullish(),
-    min_count: z.number().nullish(),
-  })
-  .strict();
-
-export const GridViewElementSchema: z.ZodType<GridViewElementOutput> = z
-  .object({
-    type: z.literal("grid-view"),
-    ...elementBaseShape,
-    columns: z.number().min(1),
-    rows: z.number().min(1).nullish(),
-    gap: z.number().nullish(),
-    column_gap: z.number().nullish(),
-    row_gap: z.number().nullish(),
-    align_items: LayoutAlignmentSchema.nullish(),
-    justify_items: LayoutAlignmentSchema.nullish(),
-    padding: PaddingSchema.nullish(),
-    count: z.number().min(0),
-    item: z.lazy((): z.ZodType<SlideElementOutput> => SlideElementSchema),
-    max_count: z.number().nullish(),
-    min_count: z.number().nullish(),
-  })
-  .strict();
-
 export const GroupElementSchema: z.ZodType<GroupElementOutput> = z
   .object({
     type: z.literal("group"),
@@ -697,8 +629,6 @@ type SlideElementOutput =
   | z.infer<typeof InfographicElementSchema>
   | FlexElementOutput
   | GridElementOutput
-  | ListViewElementOutput
-  | GridViewElementOutput
   | GroupElementOutput;
 
 export const SlideElementSchema: z.ZodType<SlideElementOutput> = z.union([
@@ -715,8 +645,6 @@ export const SlideElementSchema: z.ZodType<SlideElementOutput> = z.union([
   InfographicElementSchema,
   FlexElementSchema,
   GridElementSchema,
-  ListViewElementSchema,
-  GridViewElementSchema,
   GroupElementSchema,
 ]);
 
@@ -844,8 +772,6 @@ export type ChartElement = z.infer<typeof ChartElementSchema>;
 export type InfographicElement = z.infer<typeof InfographicElementSchema>;
 export type FlexElement = z.infer<typeof FlexElementSchema>;
 export type GridElement = z.infer<typeof GridElementSchema>;
-export type ListViewElement = z.infer<typeof ListViewElementSchema>;
-export type GridViewElement = z.infer<typeof GridViewElementSchema>;
 export type GroupElement = z.infer<typeof GroupElementSchema>;
 export type SlideElement = z.infer<typeof SlideElementSchema>;
 export type SlideBackgroundImage = z.infer<typeof SlideBackgroundImageSchema>;
@@ -892,8 +818,6 @@ export const LayoutChartElementSchema = ChartElementSchema;
 export const LayoutInfographicElementSchema = InfographicElementSchema;
 export const LayoutFlexElementSchema = FlexElementSchema;
 export const LayoutGridElementSchema = GridElementSchema;
-export const LayoutListViewElementSchema = ListViewElementSchema;
-export const LayoutGridViewElementSchema = GridViewElementSchema;
 export const LayoutGroupElementSchema = GroupElementSchema;
 export const LayoutSlideElementSchema = SlideElementSchema;
 export const LayoutSlideComponentSchema = SlideComponentSchema;
@@ -936,8 +860,6 @@ export type LayoutChartElement = ChartElement;
 export type LayoutInfographicElement = InfographicElement;
 export type LayoutFlexElement = FlexElement;
 export type LayoutGridElement = GridElement;
-export type LayoutListViewElement = ListViewElement;
-export type LayoutGridViewElement = GridViewElement;
 export type LayoutGroupElement = GroupElement;
 export type LayoutSlideElement = SlideElement;
 export type LayoutSlideComponent = SlideComponent;

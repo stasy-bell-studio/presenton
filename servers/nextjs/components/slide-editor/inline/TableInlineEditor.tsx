@@ -4,7 +4,7 @@ import type {
   TableSlideElement,
   TextSlideElement,
 } from "../state";
-import { PT_TO_PX, PX_PER_IN, withHash } from "../editorUtils";
+import { withHash } from "../editorUtils";
 import {
   elementBox,
   elementFont,
@@ -24,6 +24,7 @@ import { TiptapInlineTextEditor } from "./TiptapInlineTextEditor";
 const DEFAULT_TABLE_NAME = "Default Table";
 const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
+const TEMPLATE_V2_PX_PER_IN = 128;
 
 export function TableInlineEditor({
   element,
@@ -102,7 +103,7 @@ export function TableInlineEditor({
   };
   const textFont = elementFont(textElement);
   const cellText = textRunsContent(textElement.runs);
-  const textFontSizePx = textFont.size * PT_TO_PX * (scale / PX_PER_IN);
+  const textFontSizePx = textFont.size * (scale / TEMPLATE_V2_PX_PER_IN);
   const editorLineHeight = effectiveLineHeight({
     text: cellText,
     width: Math.max(1, cellWidth - paddingX * 2),
@@ -217,9 +218,7 @@ export function TableInlineEditor({
           lineHeight: editorLineHeight,
           textAlign: textElement.alignment?.horizontal ?? "left",
           letterSpacing:
-            ((textFont.letterSpacing ?? 0) / 100) *
-            PT_TO_PX *
-            (scale / PX_PER_IN),
+            (textFont.letterSpacing ?? 0) * (scale / TEMPLATE_V2_PX_PER_IN),
         }}
       />
     </div>

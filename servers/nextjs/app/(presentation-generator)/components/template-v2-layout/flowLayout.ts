@@ -56,8 +56,8 @@ export function flowLayoutKind(
   element: FlowLayoutElement,
 ): FlowLayoutKind | null {
   const type = readString(element.type);
-  if (type === "flex" || type === "list-view") return "flex";
-  if (type === "grid" || type === "grid-view") return "grid";
+  if (type === "flex") return "flex";
+  if (type === "grid") return "grid";
   return null;
 }
 

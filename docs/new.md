@@ -7,6 +7,6 @@ From the Template V2 presentation flow, remove calls to:
 - serializeTemplateV2LayoutFromSlide
 - serializeTemplateV2ContentFromSlide
 - applyGeneratedSlideContentToLayout
-- resolveSlideLayout
+- old normalized slide layout resolver
 
 Changes in editor, to adpot the slide.ui /components/elements.

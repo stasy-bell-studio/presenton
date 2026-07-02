@@ -29,7 +29,6 @@ const SOURCE_W = 1280;
 const SOURCE_H = 720;
 const X_SCALE = SLIDE_W / SOURCE_W;
 const Y_SCALE = SLIDE_H / SOURCE_H;
-const SOURCE_PX_TO_PT = (72 * SLIDE_W) / SOURCE_W;
 type UnknownRecord = Record<string, unknown>;
 type AdaptedPosition = { x: number; y: number };
 type AdaptedSize = { width: number; height: number };
@@ -1196,8 +1195,7 @@ function adaptFont(value: UnknownRecord | null): Font | null {
     family:
       truncateString(readString(value.family) ?? readString(value.name) ?? "", 80) ||
       null,
-    size:
-      size == null ? null : clamp(round(size * SOURCE_PX_TO_PT), 6, 360),
+    size: size == null ? null : clamp(round(size), 6, 360),
     color: readColor(value.color),
     bold: readBoolean(value, "bold") ?? (fontWeight == null ? null : fontWeight >= 600),
     italic: readBoolean(value, "italic"),
@@ -1231,7 +1229,7 @@ function adaptStroke(value: UnknownRecord | null): Stroke | null {
   return stripNullish({
     color,
     opacity: clamp(readNumber(value ?? {}, "opacity") ?? 1, 0, 1),
-    width: clamp(round((readNumber(value ?? {}, "width") ?? 1) * SOURCE_PX_TO_PT), 0, 8),
+    width: clamp(round(readNumber(value ?? {}, "width") ?? 1), 0, 8),
     dash: readArray(value ?? {}, "dash")
       .map((item) => readRawNumber(item))
       .filter((item): item is number => item != null && item >= 0),
@@ -1317,7 +1315,7 @@ function widenSingleLineTextElement(element: TextElement): TextElement {
 
   const fontSize = element.font?.size ?? 18;
   const averageGlyphWidth = element.font?.bold ? 0.6 : 0.54;
-  const estimatedWidth = (fontSize / 72) * averageGlyphWidth * displayText.length;
+  const estimatedWidth = fontSize * X_SCALE * averageGlyphWidth * displayText.length;
   const requiredWidth = round(Math.min(SLIDE_W - element.position.x, estimatedWidth + 0.12));
   if (requiredWidth <= element.size.width + 0.01) return element;
 
