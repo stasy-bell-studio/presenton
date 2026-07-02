@@ -391,9 +391,9 @@ const conversationStorageKey = (scope: string, resourceId: string) =>
   `presenton:chat:${scope}:conversationId:${resourceId}`;
 
 const AssistantMarker = () => (
-  <div className="mb-3 flex items-center gap-1.5 text-[#A4A7AE]">
+  <div className="mb-2 flex items-center gap-1.5 text-[#8A8F98]">
     <MessageCircleMore className="h-4 w-4" />
-    <ChevronRight className="h-3 w-3" />
+    <span className="text-[11px] font-medium leading-4">Assistant</span>
   </div>
 );
 
@@ -555,10 +555,9 @@ const humanizeTraceMessage = (message: string, tool?: string) => {
       .map((entry) => entry.trim())
       .filter(Boolean)
       .map((entry) => getToolLabel(entry));
-    if (toolNames.length === 0) {
-      return "Planning tool steps.";
-    }
-    return `Planning tools: ${toolNames.join(", ")}.`;
+    return toolNames.length === 0
+      ? "Planning the next step."
+      : "Choosing the best way to help.";
   }
   if (lower.includes("found requested data")) {
     if (tool === "getSlideAtIndex") {
@@ -640,7 +639,7 @@ const formatTraceActivity = (
 
   if (trace.tool && trace.status === "start") {
     return {
-      label: `Running ${getToolLabel(trace.tool)}...`,
+      label: humanActivityForTool(trace.tool, "start"),
       kind: trace.kind,
       round: trace.round,
       tool: trace.tool,
@@ -650,7 +649,7 @@ const formatTraceActivity = (
 
   if (trace.tool && trace.status === "success") {
     return {
-      label: `${getToolLabel(trace.tool)} completed.`,
+      label: humanActivityForTool(trace.tool, "success"),
       kind: trace.kind,
       round: trace.round,
       tool: trace.tool,
@@ -660,7 +659,7 @@ const formatTraceActivity = (
 
   if (trace.tool && trace.status === "error") {
     return {
-      label: `${getToolLabel(trace.tool)} failed.`,
+      label: "I could not finish that step.",
       kind: trace.kind,
       round: trace.round,
       tool: trace.tool,
@@ -674,9 +673,7 @@ const formatTraceActivity = (
     trace.tools.length
   ) {
     return {
-      label: `Planning tools: ${trace.tools
-        .map((tool) => getToolLabel(tool))
-        .join(", ")}.`,
+      label: "Planning the next step.",
       kind: trace.kind,
       round: trace.round,
       state: "info",
@@ -684,6 +681,46 @@ const formatTraceActivity = (
   }
 
   return null;
+};
+
+const humanActivityForTool = (
+  tool: string | undefined,
+  state: "start" | "success"
+) => {
+  const isDone = state === "success";
+  switch (tool) {
+    case "searchSlides":
+    case "searchTemplateContent":
+      return isDone ? "Found the relevant content." : "Looking through the content.";
+    case "getSlideAtIndex":
+    case "getSlideLayout":
+      return isDone ? "Checked the slide." : "Checking the slide.";
+    case "getEditableElements":
+    case "getSlideElements":
+      return isDone ? "Found what can be edited." : "Finding editable parts.";
+    case "updateElementContent":
+    case "updateSlideElement":
+    case "updateSlideComponent":
+    case "saveSlide":
+      return isDone ? "Applied the change." : "Applying the change.";
+    case "deleteComponent":
+    case "deleteSlideComponent":
+    case "deleteSlideElement":
+    case "deleteSlide":
+      return isDone ? "Removed the selected item." : "Removing the selected item.";
+    case "ungroupComponent":
+      return isDone ? "Separated the selected items." : "Separating the selected items.";
+    case "swapComponentVariant":
+      return isDone ? "Updated the component style." : "Trying a better component style.";
+    case "addSlideComponent":
+      return isDone ? "Added the new block." : "Adding the new block.";
+    case "generateAssets":
+      return isDone ? "Prepared the visual assets." : "Preparing visual assets.";
+    case "setPresentationTheme":
+      return isDone ? "Updated the theme." : "Updating the theme.";
+    default:
+      return isDone ? "Finished that step." : "Working on it.";
+  }
 };
 
 const readTraceSlideIndex = (trace: ChatStreamTrace) => {
@@ -1643,14 +1680,14 @@ const Chat = ({
             )}
           </>
         ) : (
-          <div className="flex flex-col gap-9">
+          <div className="flex flex-col gap-7">
             {messages.map((message) =>
               message.role === "user" ? (
                 <div
                   key={message.id}
-                  className="flex items-start justify-end gap-2"
+                  className="flex items-start justify-end gap-2.5"
                 >
-                  <div className="max-w-[78%] rounded-[20px] bg-[#A100FF] px-4 py-3 text-sm font-medium leading-5 text-white">
+                  <div className="max-w-[80%] rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm">
                     <p className="whitespace-pre-wrap">
                       {stripBackendContextFromUserMessage(message.content)}
                     </p>
@@ -1664,14 +1701,14 @@ const Chat = ({
                   <AssistantMarker />
                   {message.content ? (
                     message.role === "error" ? (
-                      <div className="whitespace-pre-wrap text-sm font-normal leading-5 text-red-600">
+                      <div className="whitespace-pre-wrap rounded-[12px] bg-red-50 px-3 py-2 text-[13px] font-normal leading-5 text-red-700">
                         {message.content}
                       </div>
                     ) : (
-                      <div className="chat-markdown mb-0 text-sm font-normal leading-5 text-[#535862]">
+                      <div className="chat-markdown mb-0 text-[13px] font-normal leading-6 text-[#3F4652]">
                         <MarkdownRenderer
                           content={message.content}
-                          className="chat-markdown mb-0 text-sm font-normal leading-5 text-[#535862]"
+                          className="chat-markdown mb-0 text-[13px] font-normal leading-6 text-[#3F4652]"
                         />
                         {isSending &&
                           message.id === activeAssistantMessageId && (
@@ -1683,7 +1720,7 @@ const Chat = ({
                       </div>
                     )
                   ) : (
-                    <div className="text-sm font-normal leading-5 text-[#535862]">
+                    <div className="text-[13px] font-normal leading-6 text-[#667085]">
                       {isSending && message.role === "assistant"
                         ? message.activity?.[message.activity.length - 1]
                             ?.label || "Working on it..."
@@ -1691,11 +1728,11 @@ const Chat = ({
                     </div>
                   )}
                   {message.activity && message.activity.length > 0 && (
-                    <div className="mt-2">
+                    <div className="mt-3">
                       <button
                         type="button"
                         onClick={() => toggleActivityExpanded(message.id)}
-                        className="inline-flex items-center gap-1 text-left text-xs font-medium text-[#667085] hover:text-[#475467]"
+                        className="inline-flex items-center gap-1.5 rounded-full bg-[#F8FAFC] px-2.5 py-1 text-left text-[11px] font-medium text-[#667085] transition-colors hover:bg-[#F1F5F9] hover:text-[#475467]"
                       >
                         {expandedActivityByMessage[message.id] ? (
                           <ChevronDown className="h-3 w-3" />
@@ -1711,26 +1748,16 @@ const Chat = ({
                       </button>
 
                       {expandedActivityByMessage[message.id] && (
-                        <div className="mt-2 space-y-1.5 pl-4">
+                        <div className="mt-2 space-y-1 rounded-[12px] bg-[#F8FAFC] px-3 py-2">
                           {message.activity.map((activityItem) => (
                             <div
                               key={activityItem.id}
-                              className="text-xs leading-4 text-[#667085]"
+                              className="flex items-start gap-2 text-[12px] leading-5 text-[#667085]"
                             >
-                              {activityItem.tool && (
-                                <span className="mr-1 text-[#475467]">
-                                  {getToolLabel(activityItem.tool)}:
-                                </span>
-                              )}
+                              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-[#CBD5E1]" />
                               <span>{activityItem.label}</span>
                             </div>
                           ))}
-                          {message.toolCalls &&
-                            message.toolCalls.length > 0 && (
-                              <div className="pt-0.5 text-[11px] text-[#98A2B3]">
-                                Tools called: {message.toolCalls.join(", ")}
-                              </div>
-                            )}
                         </div>
                       )}
                     </div>

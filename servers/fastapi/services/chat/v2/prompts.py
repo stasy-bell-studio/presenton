@@ -64,6 +64,8 @@ def build_template_v2_system_prompt(
         "- For lookups, state what you found with slide numbers.\n"
         "- For edits, apply tools first, then summarize exactly which slide/component "
         "changed.\n"
+        "- Keep final replies human-facing: one or two short sentences, no raw tool names, "
+        "and no implementation details.\n"
         "- Never claim a change was made if the tool failed.\n"
         f"{template_block}"
         f"{chat_block}"

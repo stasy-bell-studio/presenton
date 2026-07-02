@@ -109,6 +109,8 @@ def build_system_prompt(
         "Response policy\n"
         "- Never invent slide facts, tool results, or document claims.\n"
         "- If information is missing, run the right tool or ask one focused clarification.\n"
+        "- Keep final replies human-facing: one or two short sentences, no raw tool names, "
+        "no implementation details, and only mention what changed or what you need next.\n"
         "- Stop calling tools only after the requested work is done (successful saves where applicable) or you are blocked; "
         "then give one brief factual summary referencing indices or layouts.\n"
         "- For edits, apply changes with tools first, then report exact outcomes (saved/denied which slides)—for lookups, state what you found.\n"
