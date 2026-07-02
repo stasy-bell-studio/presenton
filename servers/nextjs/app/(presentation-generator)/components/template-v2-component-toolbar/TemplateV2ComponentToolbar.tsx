@@ -24,6 +24,7 @@ type TemplateV2ComponentToolbarProps = {
   canUngroup: boolean;
   componentIndex: number;
   componentCount: number;
+  position?: { left: number; top: number };
   slideWidth: number;
   onLayerAction: (action: ComponentLayerAction) => void;
   onUngroup: () => void;
@@ -63,15 +64,15 @@ export function TemplateV2ComponentToolbar({
   canUngroup,
   componentIndex,
   componentCount,
+  position,
   slideWidth,
   onLayerAction,
   onUngroup,
 }: TemplateV2ComponentToolbarProps) {
-  const left = Math.max(
-    8,
-    Math.min(box.x, Math.max(8, slideWidth - TOOLBAR_WIDTH)),
-  );
-  const top = Math.max(8, box.y - 48);
+  const left =
+    position?.left ??
+    Math.max(8, Math.min(box.x, Math.max(8, slideWidth - TOOLBAR_WIDTH)));
+  const top = position?.top ?? Math.max(8, box.y - 48);
 
   return (
     <div

@@ -159,6 +159,11 @@ const TEXT_AVERAGE_CHAR_EM = 0.5;
 const DECORATIVE_LINE_LENGTH = 80;
 const DECORATIVE_LINE_THICKNESS = 4;
 const MAX_HISTORY_ENTRIES = 50;
+const COMPONENT_TOOLBAR_WIDTH = 270;
+const LAYOUT_TOOLBAR_WIDTH = 700;
+const TOOLBAR_HEIGHT = 40;
+const TOOLBAR_GAP = 8;
+const TOOLBAR_MARGIN = 8;
 
 type UnknownRecord = Record<string, any>;
 type RawUi = TemplateV2Layout & UnknownRecord;
@@ -336,6 +341,30 @@ function TemplateV2KonvaSlideComponent({
       selectedComponent != null &&
       componentChildCount(selectedComponent) > 1,
     [selectedComponent, selection],
+  );
+  const componentToolbarPosition = useMemo(
+    () =>
+      selectedBox
+        ? stackedToolbarPosition({
+            anchorBox: selectedBox,
+            index: 0,
+            total: layoutToolbarTarget ? 2 : 1,
+            toolbarWidth: COMPONENT_TOOLBAR_WIDTH,
+          })
+        : null,
+    [layoutToolbarTarget, selectedBox],
+  );
+  const layoutToolbarPosition = useMemo(
+    () =>
+      layoutToolbarTarget
+        ? stackedToolbarPosition({
+            anchorBox: selectedBox ?? layoutToolbarTarget.box,
+            index: selectedBox ? 1 : 0,
+            total: selectedBox ? 2 : 1,
+            toolbarWidth: LAYOUT_TOOLBAR_WIDTH,
+          })
+        : null,
+    [layoutToolbarTarget, selectedBox],
   );
   const inlineEditBox = inlineEdit
     ? absoluteInlineEditBox(uiDraft, inlineEdit.selection, inlineEdit.frame)
@@ -1176,6 +1205,7 @@ function TemplateV2KonvaSlideComponent({
           canUngroup={canUngroupSelectedComponent}
           componentIndex={selection.componentIndex}
           componentCount={components.length}
+          position={componentToolbarPosition ?? undefined}
           slideWidth={STAGE_WIDTH}
           onLayerAction={reorderSelectedComponentLayer}
           onUngroup={ungroupSelectedComponent}
@@ -1201,6 +1231,7 @@ function TemplateV2KonvaSlideComponent({
           key={keyForSelection(layoutToolbarTarget.selection)}
           box={layoutToolbarTarget.box}
           element={layoutToolbarTarget.element}
+          position={layoutToolbarPosition ?? undefined}
           onChange={applyLayoutElementChange}
         />
       ) : null}
@@ -3864,6 +3895,37 @@ function nullableBoxEqual(
 ) {
   if (previous == null || next == null) return previous == null && next == null;
   return boxEqual(previous, next);
+}
+
+function stackedToolbarPosition({
+  anchorBox,
+  index,
+  total,
+  toolbarWidth,
+}: {
+  anchorBox: Box;
+  index: number;
+  total: number;
+  toolbarWidth: number;
+}) {
+  const stackHeight = total * TOOLBAR_HEIGHT + (total - 1) * TOOLBAR_GAP;
+  const canFitAbove = anchorBox.y >= stackHeight + TOOLBAR_MARGIN;
+  const startTop = canFitAbove
+    ? anchorBox.y - stackHeight - TOOLBAR_GAP
+    : Math.min(
+        STAGE_HEIGHT - stackHeight - TOOLBAR_MARGIN,
+        anchorBox.y + anchorBox.height + TOOLBAR_GAP,
+      );
+  return {
+    left: Math.max(
+      TOOLBAR_MARGIN,
+      Math.min(anchorBox.x, STAGE_WIDTH - toolbarWidth - TOOLBAR_MARGIN),
+    ),
+    top: Math.max(
+      TOOLBAR_MARGIN,
+      startTop + index * (TOOLBAR_HEIGHT + TOOLBAR_GAP),
+    ),
+  };
 }
 
 function componentKey(component: RawComponent, index: number) {

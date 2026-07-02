@@ -53,6 +53,7 @@ type TemplateV2LayoutToolbarProps = {
   box: TemplateV2LayoutToolbarBox;
   element: TemplateV2LayoutElement;
   onChange: (changes: RawRecord) => void;
+  position?: { left: number; top: number };
   onUngroup?: () => void;
 };
 
@@ -712,16 +713,20 @@ export function TemplateV2LayoutToolbar({
   box,
   element,
   onChange,
+  position,
   onUngroup,
 }: TemplateV2LayoutToolbarProps) {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
   const estimatedWidth = (element.type === "container" ? 700 : 440) +
     (onUngroup ? 90 : 0);
-  const left = Math.max(8, Math.min(box.x, STAGE_WIDTH - estimatedWidth - 8));
+  const left =
+    position?.left ??
+    Math.max(8, Math.min(box.x, STAGE_WIDTH - estimatedWidth - 8));
   const top =
-    box.y >= 58
+    position?.top ??
+    (box.y >= 58
       ? box.y - 50
-      : Math.min(STAGE_HEIGHT - 50, box.y + box.height + 10);
+      : Math.min(STAGE_HEIGHT - 50, box.y + box.height + 10));
   const togglePanel = (panel: Exclude<PanelId, null>) => {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
