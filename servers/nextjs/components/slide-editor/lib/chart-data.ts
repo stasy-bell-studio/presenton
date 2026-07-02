@@ -120,13 +120,6 @@ export function chartSeriesColor(element: ChartElement, index: number) {
   );
 }
 
-export function chartPointColor(element: ChartElement, index: number) {
-  return (
-    element.series_colors?.[index] ??
-    DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
-  );
-}
-
 export function normalizeChartColor(
   color: string | null | undefined,
   fallback = DEFAULT_CHART_COLORS[0],

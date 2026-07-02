@@ -1,9 +1,6 @@
-import type { Deck } from "../../lib/slide-schema";
 import {
-  collectDeckImageSources,
   isRemoteImageSource,
   resolveImageSourceForExport,
-  walkSlideElements,
 } from "../../lib/image-export";
 import { sanitizeSvgMarkup } from "../../lib/svg-sanitize";
 
@@ -38,20 +35,4 @@ export function loadKonvaImage(src: string): Promise<HTMLImageElement | null> {
   });
   imageCache.set(src, promise);
   return promise;
-}
-
-export async function waitForDeckExportAssets(deck: Deck): Promise<void> {
-  const sources = collectDeckAssetSources(deck);
-  if (sources.length === 0) return;
-  await Promise.all(sources.map((source) => loadKonvaImage(source)));
-}
-
-function collectDeckAssetSources(deck: Deck): string[] {
-  const sources = new Set<string>(collectDeckImageSources(deck));
-  for (const slide of deck.slides) {
-    walkSlideElements(slide.elements, (element) => {
-      if (element.type === "svg") sources.add(svgToDataUri(element.svg));
-    });
-  }
-  return [...sources];
 }

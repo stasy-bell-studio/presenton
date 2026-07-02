@@ -1,35 +1,4 @@
-import type { Deck, SlideElement } from "./slide-schema";
-
 const resolvedImageCache = new Map<string, Promise<string | null>>();
-
-export function walkSlideElements(
-  elements: SlideElement[],
-  visitor: (element: SlideElement) => void,
-): void {
-  for (const element of elements) {
-    visitor(element);
-    if (element.type === "container") {
-      if (element.child) walkSlideElements([element.child], visitor);
-    } else if (
-      element.type === "flex" ||
-      element.type === "grid" ||
-      element.type === "group"
-    ) {
-      walkSlideElements(element.children, visitor);
-    }
-  }
-}
-
-export function collectDeckImageSources(deck: Deck): string[] {
-  const sources = new Set<string>();
-  for (const slide of deck.slides) {
-    if (slide.background_image?.data) sources.add(slide.background_image.data);
-    walkSlideElements(slide.elements, (element) => {
-      if (element.type === "image" && element.data) sources.add(element.data);
-    });
-  }
-  return [...sources];
-}
 
 export function isRemoteImageSource(src: string): boolean {
   try {
@@ -60,38 +29,6 @@ export async function resolveImageSourceForExport(
   const promise = fetchImageAsDataUri(src);
   resolvedImageCache.set(src, promise);
   return promise;
-}
-
-export async function embedDeckImageData(deck: Deck): Promise<Deck> {
-  const next = cloneDeck(deck);
-  const updates: Array<Promise<void>> = [];
-
-  for (const slide of next.slides) {
-    if (slide.background_image?.data) {
-      updates.push(
-        resolveImageSourceForExport(slide.background_image.data).then((data) => {
-          if (data && slide.background_image) slide.background_image.data = data;
-        }),
-      );
-    }
-
-    walkSlideElements(slide.elements, (element) => {
-      if (element.type !== "image" || !element.data) return;
-      updates.push(
-        resolveImageSourceForExport(element.data).then((data) => {
-          if (data) element.data = data;
-        }),
-      );
-    });
-  }
-
-  await Promise.all(updates);
-  return next;
-}
-
-function cloneDeck(deck: Deck): Deck {
-  if (typeof structuredClone === "function") return structuredClone(deck);
-  return JSON.parse(JSON.stringify(deck)) as Deck;
 }
 
 async function fetchImageAsDataUri(src: string): Promise<string | null> {
