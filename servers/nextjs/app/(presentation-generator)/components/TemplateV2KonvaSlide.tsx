@@ -35,6 +35,7 @@ import type {
   TemplateV2InlineEditKind,
   TemplateV2TextEditStyle,
 } from "@/components/slide-editor/lib/template-v2-text-editing";
+import { measureWrappedRenderTextHeight } from "@/components/slide-editor/lib/template-v2-text-editing";
 import {
   applyTextStyle,
   displayText,
@@ -2243,21 +2244,25 @@ function RawRichTextElement({
   const textNodeWidth = noWrap
     ? Math.max(width, measureNoWrapTextWidth(displayContent, font))
     : width;
+  const textNodeRuns =
+    renderRuns.length > 0 ? renderRuns : [{ text: displayContent, font }];
+  const wrappedTextHeight = measureWrappedRenderTextHeight(
+    textNodeRuns,
+    width,
+    font.wrap,
+    textLineHeight,
+  );
   const textNodeHeight = noWrap
     ? Math.max(
         height,
         measureNoWrapTextHeight(displayContent, font, textLineHeight),
       )
-    : height;
+    : Math.max(height, wrappedTextHeight);
 
   return (
     <Text
       x={noWrap ? lineStartX(align, width, textNodeWidth, true) : 0}
-      y={
-        noWrap
-          ? verticalTextStartY(verticalAlign, height, textNodeHeight, true)
-          : 0
-      }
+      y={verticalTextStartY(verticalAlign, height, textNodeHeight, true)}
       width={textNodeWidth}
       height={textNodeHeight}
       text={displayContent}
