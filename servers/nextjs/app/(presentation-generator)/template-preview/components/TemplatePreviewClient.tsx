@@ -204,10 +204,12 @@ function TemplateV2LayoutList({
   layouts,
   templateV2Id,
   useKonvaTemplateV2Preview,
+  fonts,
 }: {
   layouts: any[];
   templateV2Id: string;
   useKonvaTemplateV2Preview: boolean;
+  fonts?: Record<string, string>;
 }) {
   return (
     <div className="flex flex-col items-center justify-center w-full gap-10 aspect-video mx-auto">
@@ -242,6 +244,7 @@ function TemplateV2LayoutList({
               <TemplateV2LayoutPreview
                 layout={layout}
                 useKonvaRenderer={useKonvaTemplateV2Preview}
+                fonts={fonts}
               />
             </div>
           </Card>
@@ -329,6 +332,12 @@ const GroupLayoutPreview = ({
     loading: templateV2Loading,
     error: templateV2Error,
   } = useTemplateV2Details(templateV2Id);
+  const templateV2Fonts = React.useMemo(() => {
+    if (!isTemplateV2 || !templateV2) return undefined;
+    return normalizeTemplateV2Fonts(
+      templateV2 as Parameters<typeof normalizeTemplateV2Fonts>[0],
+    );
+  }, [isTemplateV2, templateV2]);
 
   useEffect(() => {
     const existingScript = document.querySelector('script[src*="tailwindcss.com"]');
@@ -341,13 +350,9 @@ const GroupLayoutPreview = ({
   }, [templateParams]);
 
   useEffect(() => {
-    if (!isTemplateV2 || !templateV2) return;
-
-    const fonts = normalizeTemplateV2Fonts(
-      templateV2 as Parameters<typeof normalizeTemplateV2Fonts>[0],
-    );
-    loadFontAssets(fonts);
-  }, [isTemplateV2, templateV2]);
+    if (!templateV2Fonts) return;
+    loadFontAssets(templateV2Fonts);
+  }, [templateV2Fonts]);
 
   // Keep backend-served assets on the active origin in Docker/nginx preview mode.
   useEffect(() => {
@@ -450,6 +455,7 @@ const GroupLayoutPreview = ({
             layouts={templateV2Layouts}
             templateV2Id={templateV2Id}
             useKonvaTemplateV2Preview={useKonvaTemplateV2Preview}
+            fonts={templateV2Fonts}
           />
         )}
 

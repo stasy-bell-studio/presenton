@@ -54,12 +54,14 @@ interface TemplateV2LayoutPreviewProps {
   layout: TemplateV2Layout;
   slideDisplayRef?: React.RefObject<HTMLDivElement | null>;
   useKonvaRenderer?: boolean;
+  fonts?: Record<string, string>;
 }
 
 export const TemplateV2LayoutPreview: React.FC<TemplateV2LayoutPreviewProps> = ({
   layout,
   slideDisplayRef,
   useKonvaRenderer = true,
+  fonts,
 }) => {
   if (useKonvaRenderer) {
     return (
@@ -72,6 +74,7 @@ export const TemplateV2LayoutPreview: React.FC<TemplateV2LayoutPreviewProps> = (
           isEditMode={false}
           slideId={null}
           slideIndex={0}
+          fonts={fonts}
         />
       </div>
     );

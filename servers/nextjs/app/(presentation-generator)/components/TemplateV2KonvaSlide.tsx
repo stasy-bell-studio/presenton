@@ -1657,6 +1657,8 @@ function useFontLoadState(
 
     let cancelled = false;
     let animationFrame: number | null = null;
+    let readyFallbackTimeout: number | null = null;
+    let headMutationObserver: MutationObserver | null = null;
     const markReady = () => {
       if (cancelled) return;
       setState((current) => ({
@@ -1664,14 +1666,16 @@ function useFontLoadState(
         ready: true,
       }));
     };
-    const scheduleReady = () => {
+    const scheduleReadyProbe = () => {
       if (cancelled) return;
       if (animationFrame != null) {
         window.cancelAnimationFrame(animationFrame);
       }
       animationFrame = window.requestAnimationFrame(() => {
         animationFrame = null;
-        markReady();
+        if (areFontDescriptorsLoaded(fontSignature)) {
+          markReady();
+        }
       });
     };
 
@@ -1689,23 +1693,48 @@ function useFontLoadState(
         : { ...current, ready: false },
     );
 
+    // Keep canvas hidden while we expect fonts, but never indefinitely.
+    readyFallbackTimeout = window.setTimeout(markReady, 4000);
     void Promise.all(stylesheetLoads)
       .then(() =>
         Promise.all(descriptors.map((descriptor) => fonts.load(descriptor))),
       )
       .then(() => fonts.ready)
-      .then(scheduleReady)
-      .catch(scheduleReady);
-    fonts.addEventListener?.("loadingdone", scheduleReady);
-    fonts.addEventListener?.("loadingerror", scheduleReady);
+      .then(scheduleReadyProbe)
+      .catch(scheduleReadyProbe);
+    fonts.addEventListener?.("loadingdone", scheduleReadyProbe);
+    fonts.addEventListener?.("loadingerror", scheduleReadyProbe);
+
+    // Some font injections happen outside this hook; observe head changes and re-probe.
+    if (typeof MutationObserver !== "undefined") {
+      headMutationObserver = new MutationObserver((mutations) => {
+        const changedFontNode = mutations.some((mutation) =>
+          Array.from(mutation.addedNodes).some((node) => {
+            if (!(node instanceof HTMLElement)) return false;
+            if (node.tagName === "STYLE" || node.tagName === "LINK") return true;
+            return false;
+          }),
+        );
+        if (!changedFontNode) return;
+        void fonts.ready.then(scheduleReadyProbe);
+      });
+      headMutationObserver.observe(document.head, {
+        childList: true,
+        subtree: true,
+      });
+    }
 
     return () => {
       cancelled = true;
       if (animationFrame != null) {
         window.cancelAnimationFrame(animationFrame);
       }
-      fonts.removeEventListener?.("loadingdone", scheduleReady);
-      fonts.removeEventListener?.("loadingerror", scheduleReady);
+      if (readyFallbackTimeout != null) {
+        window.clearTimeout(readyFallbackTimeout);
+      }
+      headMutationObserver?.disconnect();
+      fonts.removeEventListener?.("loadingdone", scheduleReadyProbe);
+      fonts.removeEventListener?.("loadingerror", scheduleReadyProbe);
     };
   }, [fontSignature, templateFonts]);
 
