@@ -13,12 +13,13 @@ const ROTATION_ICON_PATH =
 const SHADOW_EVENT_NAMESPACE = ".presentonSelectionShadows";
 let rotationIconPath: Path2D | null = null;
 
-type SelectionKind = "component" | "element" | null;
+type SelectionKind = "component" | "multi-component" | "element" | null;
 
 type TemplateV2SelectionTransformersProps = {
   nodeRefs: RefObject<Map<string, Konva.Node>>;
   parentComponentKey: string | null;
   selectedKey: string | null;
+  selectedKeys?: string[];
   selectionKind: SelectionKind;
   suppressSelectedOutline?: boolean;
 };
@@ -140,6 +141,7 @@ export function TemplateV2SelectionTransformers({
   nodeRefs,
   parentComponentKey,
   selectedKey,
+  selectedKeys,
   selectionKind,
   suppressSelectedOutline = false,
 }: TemplateV2SelectionTransformersProps) {
@@ -147,17 +149,24 @@ export function TemplateV2SelectionTransformers({
   const contextTransformerRef = useRef<Konva.Transformer | null>(null);
 
   useEffect(() => {
-    const selectedNode =
-      selectedKey && !suppressSelectedOutline
-        ? nodeRefs.current?.get(selectedKey)
-        : null;
+    const keys = selectedKeys?.length
+      ? selectedKeys
+      : selectedKey
+        ? [selectedKey]
+        : [];
+    const selectedNodes = suppressSelectedOutline
+      ? []
+      : keys.flatMap((key) => {
+          const node = nodeRefs.current?.get(key);
+          return node ? [node] : [];
+        });
     const parentComponentNode = parentComponentKey
       ? nodeRefs.current?.get(parentComponentKey)
       : null;
 
     const selectedTransformer = selectedTransformerRef.current;
     if (selectedTransformer) {
-      selectedTransformer.nodes(selectedNode ? [selectedNode] : []);
+      selectedTransformer.nodes(selectedNodes);
     }
 
     const contextTransformer = contextTransformerRef.current;
@@ -170,7 +179,7 @@ export function TemplateV2SelectionTransformers({
 
     const transformers = [selectedTransformer, contextTransformer];
     const dragNodes = Array.from(
-      new Set([selectedNode, parentComponentNode].filter(Boolean)),
+      new Set([...selectedNodes, parentComponentNode].filter(Boolean)),
     ) as Konva.Node[];
     const disableShadows = () =>
       setTransformerShadowsEnabled(transformers, false);
@@ -190,6 +199,7 @@ export function TemplateV2SelectionTransformers({
     nodeRefs,
     parentComponentKey,
     selectedKey,
+    selectedKeys,
     suppressSelectedOutline,
   ]);
 

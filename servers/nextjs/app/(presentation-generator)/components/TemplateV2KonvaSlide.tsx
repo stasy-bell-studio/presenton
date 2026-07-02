@@ -168,6 +168,7 @@ const LAYOUT_TOOLBAR_WIDTH = 700;
 const TOOLBAR_HEIGHT = 40;
 const TOOLBAR_GAP = 8;
 const TOOLBAR_MARGIN = 8;
+const SCROLL_DISMISS_THRESHOLD_PX = 300;
 
 type UnknownRecord = Record<string, any>;
 type RawUi = TemplateV2Layout & UnknownRecord;
@@ -198,13 +199,31 @@ type ComponentSelection = {
   componentIndex: number;
 };
 
+type MultiComponentSelection = {
+  kind: "multi-component";
+  componentIndexes: number[];
+};
+
 type ElementSelection = {
   kind: "element";
   componentIndex: number;
   elementPath: number[];
 };
 
-type Selection = ComponentSelection | ElementSelection | null;
+type Selection = ComponentSelection | MultiComponentSelection | ElementSelection | null;
+type SelectOptions = {
+  additive?: boolean;
+};
+type MultiComponentDragState = {
+  draggedComponentIndex: number;
+  draggedNodeStart: Point;
+  nodes: Array<{
+    componentIndex: number;
+    node: Konva.Node;
+    nodeStart: Point;
+    modelStart: Point;
+  }>;
+};
 
 type TemplateV2KonvaSlideProps = {
   layout: TemplateV2Layout;
@@ -230,6 +249,7 @@ function TemplateV2KonvaSlideComponent({
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
   const undoStackRef = useRef<RawUi[]>([]);
   const redoStackRef = useRef<RawUi[]>([]);
+  const multiComponentDragRef = useRef<MultiComponentDragState | null>(null);
   const [uiDraft, setUiDraft] = useState<RawUi>(() =>
     normalizeMarkdownTextInUi(cloneJson(layout as RawUi)),
   );
@@ -286,7 +306,16 @@ function TemplateV2KonvaSlideComponent({
     },
     [],
   );
-  const selectedKey = selection ? keyForSelection(selection) : null;
+  const selectedComponentIndexes = useMemo(
+    () => componentIndexesForSelection(selection),
+    [selection],
+  );
+  const selectedComponentIndexSet = useMemo(
+    () => new Set(selectedComponentIndexes),
+    [selectedComponentIndexes],
+  );
+  const selectedKeys = useMemo(() => keysForSelection(selection), [selection]);
+  const selectedKey = selectedKeys.length === 1 ? selectedKeys[0] : null;
   const selectedParentComponentKey =
     selection?.kind === "element" &&
     selection.componentIndex !== ROOT_ELEMENTS_COMPONENT_INDEX
@@ -353,6 +382,13 @@ function TemplateV2KonvaSlideComponent({
     [selectedComponent, selection],
   );
   const [, setToolbarViewportVersion] = useState(0);
+  const hasDismissibleEditorUi = Boolean(
+    selection ||
+      inlineEdit ||
+      iconEditorSelection ||
+      selectedTableCell ||
+      editingTableCell,
+  );
   const hasFloatingToolbars = Boolean(
     isEditMode &&
       selection?.kind === "component" &&
@@ -414,12 +450,10 @@ function TemplateV2KonvaSlideComponent({
       });
     };
     window.addEventListener("resize", refreshToolbarPosition);
-    window.addEventListener("scroll", refreshToolbarPosition, true);
     refreshToolbarPosition();
     return () => {
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", refreshToolbarPosition);
-      window.removeEventListener("scroll", refreshToolbarPosition, true);
     };
   }, [hasFloatingToolbars]);
 
@@ -510,6 +544,94 @@ function TemplateV2KonvaSlideComponent({
     }
   }, [surfaceId]);
 
+  const clearEditorUiState = useCallback(
+    (options?: { clearActiveSurface?: boolean }) => {
+      multiComponentDragRef.current = null;
+      setSelection(null);
+      clearTableCellSelection();
+      clearTableCellEditing();
+      clearInlineEdit();
+      setIconEditorSelection(null);
+      if (options?.clearActiveSurface) {
+        clearSurface();
+      }
+    },
+    [
+      clearInlineEdit,
+      clearSurface,
+      clearTableCellEditing,
+      clearTableCellSelection,
+    ],
+  );
+
+  useEffect(() => {
+    if (
+      !isEditMode ||
+      !hasDismissibleEditorUi ||
+      typeof document === "undefined" ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
+
+    let cleared = false;
+    let accumulatedScrollDistance = 0;
+    const lastScrollPositionByTarget = new Map<EventTarget, Point>([
+      [
+        document,
+        {
+          x: window.scrollX,
+          y: window.scrollY,
+        },
+      ],
+    ]);
+    const scrollStateForTarget = (target: EventTarget | null) => {
+      if (
+        target instanceof Element &&
+        target !== document.documentElement &&
+        target !== document.body
+      ) {
+        return {
+          key: target,
+          position: {
+            x: target.scrollLeft,
+            y: target.scrollTop,
+          },
+        };
+      }
+
+      return {
+        key: document,
+        position: {
+          x: window.scrollX,
+          y: window.scrollY,
+        },
+      };
+    };
+    const handleScroll = (event: Event) => {
+      if (cleared) return;
+      const { key, position } = scrollStateForTarget(event.target);
+      const previousPosition = lastScrollPositionByTarget.get(key);
+      lastScrollPositionByTarget.set(key, position);
+      if (!previousPosition) return;
+
+      accumulatedScrollDistance +=
+        Math.abs(position.x - previousPosition.x) +
+        Math.abs(position.y - previousPosition.y);
+      if (accumulatedScrollDistance < SCROLL_DISMISS_THRESHOLD_PX) return;
+
+      cleared = true;
+      clearEditorUiState({ clearActiveSurface: true });
+    };
+
+    document.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [clearEditorUiState, hasDismissibleEditorUi, isEditMode]);
+
   const commitUi = useCallback(
     (nextUi: RawUi, pushHistory = true) => {
       if (nextUi === currentUiRef.current) return;
@@ -551,12 +673,17 @@ function TemplateV2KonvaSlideComponent({
   }, [commitUi]);
 
   const select = useCallback(
-    (nextSelection: Selection) => {
-      activateSurface(nextSelection);
-      setSelection(nextSelection);
+    (nextSelection: Selection, options?: SelectOptions) => {
+      const resolvedSelection = selectionWithComponentToggle(
+        selection,
+        nextSelection,
+        options,
+      );
+      activateSurface(resolvedSelection);
+      setSelection(resolvedSelection);
       clearTableCellSelection();
     },
-    [activateSurface, clearTableCellSelection],
+    [activateSurface, clearTableCellSelection, selection],
   );
 
   const selectTableCell = useCallback(
@@ -598,6 +725,104 @@ function TemplateV2KonvaSlideComponent({
       commitUi(updateComponentInUi(currentUiRef.current, componentIndex, updater), pushHistory);
     },
     [commitUi],
+  );
+
+  const handleComponentDragStart = useCallback(
+    (componentIndex: number, node: Konva.Node) => {
+      if (
+        selectedComponentIndexes.length < 2 ||
+        !selectedComponentIndexes.includes(componentIndex)
+      ) {
+        multiComponentDragRef.current = null;
+        return;
+      }
+
+      const sourceComponents = readArray(currentUiRef.current.components);
+      const nodes = selectedComponentIndexes.flatMap((selectedIndex) => {
+        const selectedNode = nodeRefs.current.get(
+          keyForSelection({ kind: "component", componentIndex: selectedIndex }),
+        );
+        if (!selectedNode) return [];
+        const nodePosition = selectedNode.position();
+        const component = asRecord(sourceComponents[selectedIndex]);
+        const modelPosition = component
+          ? readPoint(component.position)
+          : nodePosition;
+        return [
+          {
+            componentIndex: selectedIndex,
+            node: selectedNode,
+            nodeStart: { x: nodePosition.x, y: nodePosition.y },
+            modelStart: { x: modelPosition.x, y: modelPosition.y },
+          },
+        ];
+      });
+      const draggedNodeStart = node.position();
+      multiComponentDragRef.current = {
+        draggedComponentIndex: componentIndex,
+        draggedNodeStart: { x: draggedNodeStart.x, y: draggedNodeStart.y },
+        nodes,
+      };
+    },
+    [selectedComponentIndexes],
+  );
+
+  const handleComponentDragMove = useCallback(
+    (componentIndex: number, node: Konva.Node) => {
+      const dragState = multiComponentDragRef.current;
+      if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
+        return;
+      }
+      const position = node.position();
+      const delta = {
+        x: position.x - dragState.draggedNodeStart.x,
+        y: position.y - dragState.draggedNodeStart.y,
+      };
+      dragState.nodes.forEach(({ node, nodeStart }) => {
+        node.position({
+          x: nodeStart.x + delta.x,
+          y: nodeStart.y + delta.y,
+        });
+      });
+      node.getLayer()?.batchDraw();
+    },
+    [],
+  );
+
+  const handleComponentDragEnd = useCallback(
+    (componentIndex: number, node: Konva.Node) => {
+      const dragState = multiComponentDragRef.current;
+      if (!dragState || dragState.draggedComponentIndex !== componentIndex) {
+        updateComponent(componentIndex, (current) => ({
+          ...current,
+          position: node.position(),
+        }));
+        return;
+      }
+
+      multiComponentDragRef.current = null;
+      const position = node.position();
+      const delta = {
+        x: position.x - dragState.draggedNodeStart.x,
+        y: position.y - dragState.draggedNodeStart.y,
+      };
+      if (Math.abs(delta.x) < 0.01 && Math.abs(delta.y) < 0.01) {
+        return;
+      }
+      commitUi(
+        setComponentPositionsInUi(
+          currentUiRef.current,
+          dragState.nodes.map(({ componentIndex, modelStart }) => ({
+            componentIndex,
+            position: {
+              x: modelStart.x + delta.x,
+              y: modelStart.y + delta.y,
+            },
+          })),
+        ),
+      );
+    },
+    [commitUi, updateComponent],
   );
 
   const updateElement = useCallback(
@@ -1092,18 +1317,19 @@ function TemplateV2KonvaSlideComponent({
         return;
       }
 
-      if (target?.closest("[data-template-v2-konva-surface]")) {
-        setSelection(null);
-      }
-      clearInlineEdit();
-      clearSurface();
+      clearEditorUiState({ clearActiveSurface: true });
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, true);
       clearSurface();
     };
-  }, [activateSurface, clearInlineEdit, clearSurface, isEditMode]);
+  }, [
+    activateSurface,
+    clearEditorUiState,
+    clearSurface,
+    isEditMode,
+  ]);
 
   useHotkey(
     "Mod+Z",
@@ -1168,9 +1394,7 @@ function TemplateV2KonvaSlideComponent({
         onMouseDown={(event) => {
           if (event.target === event.target.getStage()) {
             activateSurface(null);
-            setSelection(null);
-            clearTableCellSelection();
-            clearInlineEdit();
+            clearEditorUiState();
             return;
           }
           activateSurface();
@@ -1178,9 +1402,7 @@ function TemplateV2KonvaSlideComponent({
         onTouchStart={(event) => {
           if (event.target === event.target.getStage()) {
             activateSurface(null);
-            setSelection(null);
-            clearTableCellSelection();
-            clearInlineEdit();
+            clearEditorUiState();
             return;
           }
           activateSurface();
@@ -1219,6 +1441,10 @@ function TemplateV2KonvaSlideComponent({
               component={component}
               componentIndex={componentIndex}
               isEditMode={isEditMode}
+              isMultiSelectedComponent={
+                selectedComponentIndexes.length > 1 &&
+                selectedComponentIndexSet.has(componentIndex)
+              }
               editingKey={editingKey}
               selectedTableCell={visibleSelectedTableCell}
               setNodeRef={setSelectionNodeRef}
@@ -1227,6 +1453,9 @@ function TemplateV2KonvaSlideComponent({
               onTableCellEdit={editTableCell}
               onOpenElementEditor={handleElementDoubleClick}
               onComponentChange={updateComponent}
+              onComponentDragStart={handleComponentDragStart}
+              onComponentDragMove={handleComponentDragMove}
+              onComponentDragEnd={handleComponentDragEnd}
               onElementChange={updateElement}
             />
           ))}
@@ -1235,6 +1464,7 @@ function TemplateV2KonvaSlideComponent({
               nodeRefs={nodeRefs}
               parentComponentKey={inlineEdit ? null : selectedParentComponentKey}
               selectedKey={selectedKey}
+              selectedKeys={selectedKeys}
               selectionKind={selection?.kind ?? null}
               suppressSelectedOutline={Boolean(selectedTableCell || inlineEdit)}
             />
@@ -1587,6 +1817,7 @@ function RawComponentNode({
   component,
   componentIndex,
   isEditMode,
+  isMultiSelectedComponent,
   editingKey,
   selectedTableCell,
   setNodeRef,
@@ -1595,15 +1826,19 @@ function RawComponentNode({
   onTableCellEdit,
   onOpenElementEditor,
   onComponentChange,
+  onComponentDragStart,
+  onComponentDragMove,
+  onComponentDragEnd,
   onElementChange,
 }: {
   component: RawComponent;
   componentIndex: number;
   isEditMode: boolean;
+  isMultiSelectedComponent: boolean;
   editingKey: string | null;
   selectedTableCell: TableCellSelection | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
-  onSelect: (selection: Selection) => void;
+  onSelect: (selection: Selection, options?: SelectOptions) => void;
   onTableCellSelect: (
     selection: ElementSelection,
     rowIndex: number,
@@ -1619,6 +1854,9 @@ function RawComponentNode({
     componentIndex: number,
     updater: (component: RawComponent) => RawComponent,
   ) => void;
+  onComponentDragStart: (componentIndex: number, node: Konva.Node) => void;
+  onComponentDragMove: (componentIndex: number, node: Konva.Node) => void;
+  onComponentDragEnd: (componentIndex: number, node: Konva.Node) => void;
   onElementChange: (
     selection: ElementSelection,
     updater: (element: RawElement) => RawElement,
@@ -1649,30 +1887,37 @@ function RawComponentNode({
       onMouseDown={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
-        onSelect(selection);
+        if (isMultiSelectedComponent && !event.evt.shiftKey) return;
+        onSelect(selection, { additive: event.evt.shiftKey });
       }}
       onTouchStart={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
+        if (isMultiSelectedComponent) return;
         onSelect(selection);
       }}
       onDragStart={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
-        onSelect(selection);
+        const node = groupRef.current;
+        if (!node) return;
+        if (!isMultiSelectedComponent && !event.evt.shiftKey) {
+          onSelect(selection);
+        }
+        onComponentDragStart(componentIndex, node);
       }}
       onDragMove={(event) => {
         event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        onComponentDragMove(componentIndex, node);
       }}
       onDragEnd={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
         const node = groupRef.current;
         if (!node) return;
-        onComponentChange(componentIndex, (current) => ({
-          ...current,
-          position: node.position(),
-        }));
+        onComponentDragEnd(componentIndex, node);
       }}
       onTransformEnd={(event) => {
         if (!isEditMode) return;
@@ -1731,12 +1976,16 @@ const MemoizedRawComponentNode = memo(
       previous.component !== next.component ||
       previous.componentIndex !== next.componentIndex ||
       previous.isEditMode !== next.isEditMode ||
+      previous.isMultiSelectedComponent !== next.isMultiSelectedComponent ||
       previous.setNodeRef !== next.setNodeRef ||
       previous.onSelect !== next.onSelect ||
       previous.onTableCellSelect !== next.onTableCellSelect ||
       previous.onTableCellEdit !== next.onTableCellEdit ||
       previous.onOpenElementEditor !== next.onOpenElementEditor ||
       previous.onComponentChange !== next.onComponentChange ||
+      previous.onComponentDragStart !== next.onComponentDragStart ||
+      previous.onComponentDragMove !== next.onComponentDragMove ||
+      previous.onComponentDragEnd !== next.onComponentDragEnd ||
       previous.onElementChange !== next.onElementChange ||
       previous.selectedTableCell !== next.selectedTableCell
     ) {
@@ -1777,7 +2026,7 @@ function RawElementNode({
   editingKey: string | null;
   selectedTableCell: TableCellSelection | null;
   setNodeRef: (key: string, node: Konva.Node | null) => void;
-  onSelect: (selection: Selection) => void;
+  onSelect: (selection: Selection, options?: SelectOptions) => void;
   onTableCellSelect: (
     selection: ElementSelection,
     rowIndex: number,
@@ -2605,6 +2854,45 @@ function updateComponentInUi(
   return { ...sourceUi, components };
 }
 
+function setComponentPositionsInUi(
+  sourceUi: RawUi,
+  positions: Array<{ componentIndex: number; position: Point }>,
+) {
+  const positionByIndex = new Map<number, Point>();
+  positions.forEach(({ componentIndex, position }) => {
+    if (!Number.isInteger(componentIndex) || componentIndex < 0) return;
+    positionByIndex.set(componentIndex, {
+      x: position.x,
+      y: position.y,
+    });
+  });
+  if (positionByIndex.size === 0) return sourceUi;
+
+  let changed = false;
+  const components = readArray(sourceUi.components).map((component, index) => {
+    const record = asRecord(component);
+    const nextPosition = positionByIndex.get(index);
+    if (!record || !nextPosition) return component;
+    const currentPosition = readPoint(record.position);
+    if (
+      Math.abs(currentPosition.x - nextPosition.x) < 0.01 &&
+      Math.abs(currentPosition.y - nextPosition.y) < 0.01
+    ) {
+      return component;
+    }
+    changed = true;
+    return {
+      ...record,
+      position: {
+        x: nextPosition.x,
+        y: nextPosition.y,
+      },
+    };
+  });
+
+  return changed ? { ...sourceUi, components } : sourceUi;
+}
+
 function updateElementInUi(
   sourceUi: RawUi,
   selection: ElementSelection,
@@ -2702,6 +2990,17 @@ function deleteSelectionFromUi(sourceUi: RawUi, selection: Selection) {
   if (!selection) return sourceUi;
 
   const components = [...readArray(sourceUi.components)];
+  if (selection.kind === "multi-component") {
+    const indexes = Array.from(new Set(selection.componentIndexes))
+      .filter((index) => Number.isInteger(index) && index >= 0)
+      .sort((a, b) => b - a);
+    indexes.forEach((componentIndex) => {
+      if (componentIndex < components.length) {
+        components.splice(componentIndex, 1);
+      }
+    });
+    return { ...sourceUi, components };
+  }
   if (selection?.kind === "component") {
     components.splice(selection.componentIndex, 1);
     return { ...sourceUi, components };
@@ -3444,6 +3743,14 @@ function getElementFromArray(elements: unknown[], path: number[]): RawElement | 
 
 function absoluteBoxForSelection(ui: RawUi, selection: Selection): Box | null {
   if (!selection) return null;
+  if (selection.kind === "multi-component") {
+    const components = readArray(ui.components);
+    const boxes = selection.componentIndexes.flatMap((componentIndex) => {
+      const component = asRecord(components[componentIndex]);
+      return component ? [componentBox(component)] : [];
+    });
+    return boxes.length > 0 ? boxContainingBoxes(boxes) : null;
+  }
   if (
     selection.kind === "element" &&
     selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
@@ -3462,6 +3769,19 @@ function absoluteBoxForSelection(ui: RawUi, selection: Selection): Box | null {
     y: componentOrigin.y + elementBoxValue.y,
     width: elementBoxValue.width,
     height: elementBoxValue.height,
+  };
+}
+
+function boxContainingBoxes(boxes: Box[]): Box {
+  const minX = Math.min(...boxes.map((box) => box.x));
+  const minY = Math.min(...boxes.map((box) => box.y));
+  const maxX = Math.max(...boxes.map((box) => box.x + box.width));
+  const maxY = Math.max(...boxes.map((box) => box.y + box.height));
+  return {
+    x: minX,
+    y: minY,
+    width: Math.max(1, maxX - minX),
+    height: Math.max(1, maxY - minY),
   };
 }
 
@@ -4010,7 +4330,56 @@ function eventTargetsThisSlide(
 function keyForSelection(selection: Selection) {
   if (!selection) return "";
   if (selection.kind === "component") return `component:${selection.componentIndex}`;
+  if (selection.kind === "multi-component") {
+    return `multi-component:${selection.componentIndexes.join(".")}`;
+  }
   return `element:${selection.componentIndex}:${selection.elementPath.join(".")}`;
+}
+
+function keysForSelection(selection: Selection) {
+  if (!selection) return [];
+  if (selection.kind === "multi-component") {
+    return selection.componentIndexes.map((componentIndex) =>
+      keyForSelection({ kind: "component", componentIndex }),
+    );
+  }
+  return [keyForSelection(selection)];
+}
+
+function selectionWithComponentToggle(
+  currentSelection: Selection,
+  nextSelection: Selection,
+  options?: SelectOptions,
+): Selection {
+  if (!options?.additive || nextSelection?.kind !== "component") {
+    return nextSelection;
+  }
+
+  const componentIndex = nextSelection.componentIndex;
+  const currentIndexes = componentIndexesForSelection(currentSelection);
+  const nextIndexes = currentIndexes.includes(componentIndex)
+    ? currentIndexes.filter((index) => index !== componentIndex)
+    : [...currentIndexes, componentIndex];
+
+  return selectionForComponentIndexes(nextIndexes);
+}
+
+function componentIndexesForSelection(selection: Selection) {
+  if (!selection) return [];
+  if (selection.kind === "component") return [selection.componentIndex];
+  if (selection.kind === "multi-component") return selection.componentIndexes;
+  return [];
+}
+
+function selectionForComponentIndexes(indexes: number[]): Selection {
+  const uniqueIndexes = Array.from(
+    new Set(indexes.filter((index) => Number.isInteger(index) && index >= 0)),
+  );
+  if (uniqueIndexes.length === 0) return null;
+  if (uniqueIndexes.length === 1) {
+    return { kind: "component", componentIndex: uniqueIndexes[0] };
+  }
+  return { kind: "multi-component", componentIndexes: uniqueIndexes };
 }
 
 function componentForClipboardSelection(
@@ -4018,6 +4387,7 @@ function componentForClipboardSelection(
   selection: Selection,
 ): { component: RawComponent; box: Box } | null {
   if (!selection) return null;
+  if (selection.kind === "multi-component") return null;
 
   if (selection.kind === "component") {
     const component = asRecord(readArray(ui.components)[selection.componentIndex]);
@@ -4065,6 +4435,7 @@ function surfaceSelectionTarget(
   slideIndex: number | null,
 ): TemplateV2SurfaceSelectedDetail["selection"] {
   if (!selection) return null;
+  if (selection.kind === "multi-component") return null;
   if (selection.kind === "component") {
     const component = asRecord(readArray(ui.components)[selection.componentIndex]);
     const componentLabel = componentDisplayLabel(component, selection.componentIndex);
@@ -4152,6 +4523,14 @@ function selectionFromKey(key: string): Selection {
     return Number.isFinite(componentIndex)
       ? { kind: "component", componentIndex }
       : null;
+  }
+  if (key.startsWith("multi-component:")) {
+    const componentIndexes = key
+      .split(":")[1]
+      ?.split(".")
+      .map(Number)
+      .filter((value) => Number.isInteger(value) && value >= 0) ?? [];
+    return selectionForComponentIndexes(componentIndexes);
   }
   const [, component, path] = key.split(":");
   const componentIndex = Number(component);
