@@ -192,12 +192,12 @@ function TemplateV2KonvaSlideComponent({
   const nodeRefs = useRef(new Map<string, Konva.Node>());
   const imageUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingImageUploadRef = useRef<ElementSelection | null>(null);
-  const currentUiRef = useRef<RawUi>(cloneJson(layout as RawUi));
   const undoStackRef = useRef<RawUi[]>([]);
   const redoStackRef = useRef<RawUi[]>([]);
   const [uiDraft, setUiDraft] = useState<RawUi>(() =>
-    cloneJson(layout as RawUi),
+    normalizeMarkdownTextInUi(cloneJson(layout as RawUi)),
   );
+  const currentUiRef = useRef<RawUi>(uiDraft);
   const [selection, setSelection] = useState<Selection>(null);
   const {
     inlineEdit,
@@ -320,7 +320,7 @@ function TemplateV2KonvaSlideComponent({
   );
   useEffect(() => {
     if (layout === currentUiRef.current) return;
-    const next = cloneJson(layout as RawUi);
+    const next = normalizeMarkdownTextInUi(cloneJson(layout as RawUi));
     currentUiRef.current = next;
     setUiDraft(next);
     setSelection(null);
@@ -433,7 +433,7 @@ function TemplateV2KonvaSlideComponent({
       setUiDraft(nextUi);
       dispatch(
         updateSlideUi({
-          index: slideIndex,
+          index: surfaceSlideIndex ?? slideIndex,
           ui: nextUi as Record<string, unknown>,
         }),
       );
@@ -442,7 +442,7 @@ function TemplateV2KonvaSlideComponent({
         canRedo: redoStackRef.current.length > 0,
       });
     },
-    [dispatch, slideIndex],
+    [dispatch, slideIndex, surfaceSlideIndex],
   );
 
   const undo = useCallback(() => {
@@ -577,14 +577,17 @@ function TemplateV2KonvaSlideComponent({
         elementSelection,
       );
       if (type === "text") {
-        const runs = rawTextRunsForEditor(element);
+        const normalized = normalizeRawTextMarkdownElement(element);
+        if (normalized.changed) {
+          updateElement(elementSelection, () => normalized.element, false);
+        }
         startInlineEdit({
           kind: "text",
           selection: elementSelection,
-          draft: textRunsContent(runs),
-          runs,
+          draft: textRunsContent(normalized.runs),
+          runs: normalized.runs,
           frame,
-          style: rawTextStyle(element),
+          style: rawTextStyle(normalized.element),
         });
       } else if (type === "text-list") {
         startInlineEdit({
@@ -603,22 +606,24 @@ function TemplateV2KonvaSlideComponent({
         });
       }
     },
-    [clearTableCellEditing, startInlineEdit],
+    [clearTableCellEditing, startInlineEdit, updateElement],
   );
 
   const closeInlineEditor = useCallback(
-    (commit = true) => {
+    (commit = true, runsOverride?: TextRun[]) => {
       const current = inlineEdit;
       if (!current) return;
       if (commit) {
+        const runs =
+          current.kind === "text" ? runsOverride ?? current.runs : current.runs;
         updateElement(current.selection, (element) =>
           elementWithInlineDraft(
             element,
             current.kind,
-            current.draft,
+            runsOverride ? textRunsContent(runsOverride) : current.draft,
             current.style,
             current.frame,
-            current.runs,
+            runs,
           ),
         );
       }
@@ -626,6 +631,26 @@ function TemplateV2KonvaSlideComponent({
       clearInlineEdit();
     },
     [clearInlineEdit, inlineEdit, updateElement],
+  );
+
+  const commitInlineTextRuns = useCallback(
+    (elementSelection: ElementSelection, runs: TextRun[]) => {
+      updateInlineRuns(elementSelection, runs);
+      updateElement(
+        elementSelection,
+        (element) =>
+          elementWithInlineDraft(
+            element,
+            "text",
+            textRunsContent(runs),
+            undefined,
+            inlineEdit?.frame,
+            runs,
+          ),
+        false,
+      );
+    },
+    [inlineEdit?.frame, updateElement, updateInlineRuns],
   );
 
   const applyToolbarElementChange = useCallback(
@@ -1149,16 +1174,16 @@ function TemplateV2KonvaSlideComponent({
           runs={inlineEdit.runs}
           style={inlineEdit.style}
           onChange={updateInlineDraft}
-          onRunsChange={(runs) =>
-            updateInlineRuns(inlineEdit.selection, runs)
-          }
           onSelectionChange={(textSelectionRange) =>
             updateInlineTextSelectionRange(
               inlineEdit.selection,
               textSelectionRange,
             )
           }
-          onClose={(commit) => closeInlineEditor(commit)}
+          onRunsChange={(runs) =>
+            commitInlineTextRuns(inlineEdit.selection, runs)
+          }
+          onClose={(commit, runs) => closeInlineEditor(commit, runs)}
         />
       ) : null}
       {isEditMode &&
@@ -1778,19 +1803,7 @@ function measureRunText(text: string, font: RenderTextFont): number {
 // Convert the stored per-run array into render-ready runs, inheriting any
 // missing font properties from the element's base font.
 function editorRunsFromElement(element: RawElement): RenderTextRun[] {
-  const base = rawFont(element);
-  const built: RenderTextRun[] = [];
-  for (const value of readArray(element.runs)) {
-    const record = asRecord(value);
-    if (!record) continue;
-    const text = readString(record.text) ?? "";
-    if (!text) continue;
-    built.push({ text, font: fontFromRecord(asRecord(record.font), base) });
-  }
-  if (built.length === 0) {
-    return [{ text: rawTextContent(element), font: base }];
-  }
-  return built;
+  return rawRenderTextRuns(element);
 }
 
 type LaidToken = {
@@ -2057,30 +2070,14 @@ function RawRichTextElement({
 
 function rawRenderTextRuns(element: RawElement): RenderTextRun[] {
   const baseFont = rawFont(element);
-  const runs = readArray(element.runs)
-    .flatMap((run) => {
-      const record = asRecord(run);
-      const text = readString(record?.text) ?? "";
-      if (!text) return [];
-      const sourceRun = {
-        text,
-        font: fontToSource(fontFromRecord(asRecord(record?.font), baseFont)),
-      } satisfies TextRun;
-      return renderMarkdownTextRuns([sourceRun]).map((renderedRun) => ({
-        text: renderedRun.text,
-        font: fontFromRecord(asRecord(renderedRun.font), baseFont),
-      }));
-    })
-    .filter((run) => run.text) as RenderTextRun[];
+  const runs = normalizeRawTextMarkdownElement(element).runs;
 
-  return runs.length > 0
-    ? runs
-    : renderMarkdownTextRuns([
-        { text: rawTextContent(element) || " ", font: fontToSource(baseFont) },
-      ]).map((run) => ({
-        text: run.text,
-        font: fontFromRecord(asRecord(run.font), baseFont),
-      }));
+  return runs
+    .filter((run) => run.text)
+    .map((run) => ({
+      text: run.text,
+      font: fontFromRecord(asRecord(run.font), baseFont),
+    }));
 }
 
 function textRunsHaveMixedStyle(runs: RenderTextRun[]) {
@@ -4074,17 +4071,171 @@ function preserveInlineEditFrame(element: RawElement, frame?: Box | null) {
   };
 }
 
+function normalizeMarkdownTextInUi(ui: RawUi): RawUi {
+  let changed = false;
+  const nextUi: RawUi = { ...ui };
+  const elements = readArray(ui.elements);
+  const normalizedElements = normalizeMarkdownTextElementArray(elements);
+  if (normalizedElements !== elements) {
+    nextUi.elements = normalizedElements;
+    changed = true;
+  }
+
+  const components = readArray(ui.components);
+  let componentsChanged = false;
+  const normalizedComponents = components.map((component) => {
+    const record = asRecord(component);
+    if (!record) return component;
+    const componentElements = readArray(record.elements);
+    const normalizedComponentElements =
+      normalizeMarkdownTextElementArray(componentElements);
+    if (normalizedComponentElements === componentElements) return component;
+    componentsChanged = true;
+    return {
+      ...record,
+      elements: normalizedComponentElements,
+    };
+  });
+
+  if (componentsChanged) {
+    nextUi.components = normalizedComponents;
+    changed = true;
+  }
+
+  return changed ? nextUi : ui;
+}
+
+function normalizeMarkdownTextElementArray(elements: unknown[]): unknown[] {
+  let changed = false;
+  const normalized = elements.map((element) => {
+    const next = normalizeMarkdownTextElementTree(element);
+    if (next !== element) changed = true;
+    return next;
+  });
+  return changed ? normalized : elements;
+}
+
+function normalizeMarkdownTextElementTree(value: unknown): unknown {
+  const element = asRecord(value);
+  if (!element) return value;
+
+  let next = element;
+  if (readString(element.type) === "text") {
+    const normalized = normalizeRawTextMarkdownElement(element);
+    next = normalized.element;
+  }
+
+  const childInfo = childArrayInfo(next);
+  if (!childInfo) return next;
+
+  const normalizedChildren = normalizeMarkdownTextElementArray(childInfo.items);
+  return normalizedChildren === childInfo.items
+    ? next
+    : withUpdatedChildItems(next, childInfo, normalizedChildren);
+}
+
+function normalizeRawTextMarkdownElement(element: RawElement): {
+  element: RawElement;
+  runs: TextRun[];
+  changed: boolean;
+} {
+  const originalSourceRuns = rawSourceTextRuns(element);
+  const rawText = rawStoredTextContent(element);
+  const hasSourceRuns = rawTextHasRuns(element);
+  const sourceRuns = reconcileTextRunsWithStoredText(
+    originalSourceRuns,
+    rawText,
+  );
+  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
+  const renderedText = textRunsContent(renderedRuns);
+  const sourceHasMarkdown = sourceRuns.some((run) =>
+    containsMarkdownSyntax(run.text),
+  );
+  const runsChanged = !sameTextRuns(originalSourceRuns, sourceRuns);
+  const changed =
+    runsChanged ||
+    sourceHasMarkdown ||
+    (!hasSourceRuns && !sameTextRuns(sourceRuns, renderedRuns)) ||
+    ((!hasSourceRuns || containsMarkdownSyntax(rawText)) &&
+      rawText !== renderedText);
+
+  return {
+    element: changed ? setRawTextRunsContent(element, renderedRuns) : element,
+    runs: renderedRuns,
+    changed,
+  };
+}
+
+function reconcileTextRunsWithStoredText(
+  runs: TextRun[],
+  storedText: string,
+): TextRun[] {
+  if (!storedText || runs.length === 0) return runs;
+  if (containsMarkdownSyntax(storedText)) return runs;
+  if (textRunsContent(runs) === storedText) return runs;
+
+  const reconciled: TextRun[] = [];
+  let cursor = 0;
+
+  for (const run of runs) {
+    const runText = run.text ?? "";
+    if (!runText) continue;
+    const index = storedText.indexOf(runText, cursor);
+    if (index < 0) return runs;
+
+    const gap = storedText.slice(cursor, index);
+    appendRunText(reconciled, gap, run.font);
+    reconciled.push(cloneTextRun(run));
+    cursor = index + runText.length;
+  }
+
+  appendRunText(
+    reconciled,
+    storedText.slice(cursor),
+    runs[runs.length - 1]?.font,
+  );
+  return textRunsContent(reconciled) === storedText ? reconciled : runs;
+}
+
+function appendRunText(
+  runs: TextRun[],
+  text: string,
+  font: TextRun["font"],
+) {
+  if (!text) return;
+  const previous = runs[runs.length - 1];
+  if (previous) {
+    previous.text += text;
+    return;
+  }
+  runs.push(font ? { text, font: { ...font } } : { text });
+}
+
+function cloneTextRun(run: TextRun): TextRun {
+  return {
+    ...run,
+    font: run.font ? { ...run.font } : undefined,
+  };
+}
+
 function rawTextContent(element: RawElement) {
-  const text = readString(element.text);
-  if (text != null) return text;
   const runs = readArray(element.runs);
   if (runs.length > 0) {
-    return runs.map((run) => readString(asRecord(run)?.text) ?? "").join("");
+    const content = runs
+      .map((run) => readString(asRecord(run)?.text) ?? "")
+      .join("");
+    if (content) return content;
   }
+  return rawStoredTextContent(element);
+}
+
+function rawStoredTextContent(element: RawElement) {
+  const text = readString(element.text);
+  if (text != null) return text;
   return "";
 }
 
-function rawTextRunsForEditor(element: RawElement): TextRun[] {
+function rawSourceTextRuns(element: RawElement): TextRun[] {
   const fallbackFont = fontToSource(rawFont(element));
   const runs = readArray(element.runs)
     .map((run) => {
@@ -4101,10 +4252,33 @@ function rawTextRunsForEditor(element: RawElement): TextRun[] {
     })
     .filter(Boolean) as TextRun[];
 
-  return renderMarkdownTextRuns(
-    runs.length > 0
-      ? runs
-      : [{ text: rawTextContent(element) || " ", font: fallbackFont }],
+  return runs.length > 0
+    ? runs
+    : [{ text: rawTextContent(element) || " ", font: fallbackFont }];
+}
+
+function rawTextRunsForEditor(element: RawElement): TextRun[] {
+  return normalizeRawTextMarkdownElement(element).runs;
+}
+
+function rawTextHasRuns(element: RawElement) {
+  return readArray(element.runs).some((run) => {
+    const record = asRecord(run);
+    return Boolean(readString(record?.text));
+  });
+}
+
+function containsMarkdownSyntax(text: string) {
+  return /(\*\*|__|\*|_).+(\*\*|__|\*|_)/.test(text);
+}
+
+function sameTextRuns(left: TextRun[], right: TextRun[]) {
+  if (left.length !== right.length) return false;
+  return left.every(
+    (run, index) =>
+      run.text === right[index]?.text &&
+      JSON.stringify(run.font ?? null) ===
+        JSON.stringify(right[index]?.font ?? null),
   );
 }
 
@@ -4400,14 +4574,10 @@ function rawElementForEditorToolbar(
   };
 
   if (type === "text") {
-    const runs = readArray(element.runs).map((value) => {
-      const run = asRecord(value) ?? {};
-      return { ...run, font: rawFontRecordForEditor(run.font) };
-    });
-    projected.runs =
-      runs.length > 0
-        ? runs
-        : [{ text: rawTextContent(element) || " ", font: projected.font }];
+    projected.runs = rawTextRunsForEditor(element).map((run) => ({
+      text: run.text,
+      font: rawFontRecordForEditor(run.font),
+    }));
   } else if (type === "text-list") {
     projected.items = readArray(element.items).map((item) => {
       if (Array.isArray(item)) {
