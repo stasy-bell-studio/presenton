@@ -23,11 +23,13 @@ export const V1ContentRender = ({
     slide,
     isEditMode,
     theme,
+    fonts,
     renderIndex,
 }: {
     slide: any,
     isEditMode: boolean,
     theme?: any,
+    fonts?: unknown,
     renderIndex?: number,
     enableEditMode?: boolean,
     presentationLayout?: unknown,
@@ -117,6 +119,7 @@ export const V1ContentRender = ({
                     slideId={safeSlide.id ?? null}
                     slideIndex={safeSlide.index ?? 0}
                     renderIndex={renderIndex}
+                    fonts={fonts}
                 />
             </SlideErrorBoundary>
         );

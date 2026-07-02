@@ -8,6 +8,7 @@ const BASE_HEIGHT = 720;
 const SlideScale = ({
   slide,
   theme,
+  fonts,
   isEditMode = true,
 
   /** Fill viewport; scale may exceed 1 so slides appear larger in present mode */
@@ -19,6 +20,7 @@ const SlideScale = ({
 }: {
   slide: any;
   theme?: any;
+  fonts?: unknown;
   isEditMode?: boolean;
 
   presentMode?: boolean;
@@ -113,6 +115,7 @@ const SlideScale = ({
               slide={slide}
               isEditMode={isEditMode}
               theme={theme}
+              fonts={fonts}
               presentationLayout={presentationLayout}
               renderIndex={renderIndex}
             />

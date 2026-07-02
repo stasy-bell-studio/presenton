@@ -16,18 +16,21 @@ import {
   textRunsContent,
   type TextSelectionRange,
 } from "../lib/text-runs";
+import type { TemplateFontOption } from "../lib/google-fonts";
 import { inlineStyles } from "./inlineStyles";
 import { TextToolbar } from "./TextToolbar";
 import { TiptapInlineTextEditor } from "./TiptapInlineTextEditor";
 
 const DEFAULT_TABLE_NAME = "Default Table";
 const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
+const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
 export function TableInlineEditor({
   element,
   index,
   scale,
   selectedCell,
+  templateFonts = EMPTY_TEMPLATE_FONTS,
   onChange,
   onClose,
 }: {
@@ -35,6 +38,7 @@ export function TableInlineEditor({
   index: number;
   scale: number;
   selectedCell: TableCellSelection | null;
+  templateFonts?: TemplateFontOption[];
   onChange: (index: number, element: TableSlideElement) => void;
   onClose: () => void;
 }) {
@@ -177,6 +181,7 @@ export function TableInlineEditor({
           index={index}
           scale={scale}
           selectionRange={textSelectionRange}
+          templateFonts={templateFonts}
           onChange={(_index, nextTextElement) =>
             updateCellTextElement(nextTextElement)
           }

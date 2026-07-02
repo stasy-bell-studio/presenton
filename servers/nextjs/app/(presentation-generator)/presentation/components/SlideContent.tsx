@@ -202,6 +202,7 @@ const SlideContent = ({
             <SlideScale
               slide={slide}
               theme={presentationData?.theme || null}
+              fonts={presentationData?.fonts}
               renderIndex={index}
             />
           </div>

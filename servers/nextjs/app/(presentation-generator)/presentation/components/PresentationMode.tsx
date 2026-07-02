@@ -21,6 +21,7 @@ interface PresentationModeProps {
   slides: Slide[];
   currentSlide: number;
   theme?: Theme | null;
+  fonts?: unknown;
   isFullscreen: boolean;
   onFullscreenToggle: (target?: Element | null) => void;
   onExit: () => void;
@@ -33,6 +34,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
   slides,
   currentSlide,
   theme,
+  fonts,
   isFullscreen,
   onFullscreenToggle,
   onExit,
@@ -250,6 +252,7 @@ const PresentationMode: React.FC<PresentationModeProps> = ({
               key={activeSlide.id ?? `slide-${currentSlide}`}
               slide={activeSlide}
               theme={theme ?? undefined}
+              fonts={fonts}
               isEditMode={false}
               presentMode
             />

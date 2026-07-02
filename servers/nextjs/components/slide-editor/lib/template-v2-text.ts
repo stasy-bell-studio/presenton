@@ -45,6 +45,9 @@ const DEFAULT_FONT: RenderTextFont = {
 const MIN_TRANSFORM_FONT_SIZE = 1;
 const MAX_TRANSFORM_FONT_SIZE = 512;
 const TRANSFORM_FONT_SCALE_EPSILON = 0.001;
+const NO_SPACE_BEFORE = new Set([",", ".", ";", ":", "!", "?", ")", "]", "}"]);
+const NO_SPACE_AFTER = new Set(["-", "/", "(", "[", "{"]);
+const END_PUNCTUATION_SPACE_AFTER = new Set([",", ".", ";", ":", "!", "?"]);
 
 const richMeasureCtx: { ctx: CanvasRenderingContext2D | null } = { ctx: null };
 let renderTextMeasureCanvas: HTMLCanvasElement | null = null;
@@ -175,7 +178,9 @@ export function normalizeRawTextMarkdownElement(
     originalSourceRuns,
     rawText,
   );
-  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
+  const renderedRuns = inferMissingMarkdownRunSpaces(
+    renderMarkdownTextRuns(sourceRuns),
+  );
   const renderedText = textRunsContent(renderedRuns);
   const sourceHasMarkdown = sourceRuns.some((run) =>
     containsMarkdownSyntax(run.text),
@@ -911,6 +916,62 @@ function reconcileTextRunsWithStoredText(
     runs[runs.length - 1]?.font,
   );
   return textRunsContent(reconciled) === storedText ? reconciled : runs;
+}
+
+function inferMissingMarkdownRunSpaces(runs: TextRun[]): TextRun[] {
+  if (runs.length < 2) return runs;
+
+  const repaired: TextRun[] = [];
+  for (const run of runs) {
+    const previous = repaired[repaired.length - 1];
+    if (
+      previous &&
+      isMarkdownStyleBoundary(previous.font, run.font) &&
+      shouldInsertRunBoundarySpace(previous.text, run.text)
+    ) {
+      appendRunText(repaired, " ", previous.font);
+    }
+    repaired.push(cloneTextRun(run));
+  }
+
+  return sameTextRuns(repaired, runs) ? runs : repaired;
+}
+
+function isMarkdownStyleBoundary(
+  left: TextRun["font"],
+  right: TextRun["font"],
+) {
+  return (
+    Boolean(left?.bold) !== Boolean(right?.bold) ||
+    Boolean(left?.italic) !== Boolean(right?.italic)
+  );
+}
+
+function shouldInsertRunBoundarySpace(leftText: string, rightText: string) {
+  if (!leftText || !rightText) return false;
+  if (/\s$/.test(leftText) || /^\s/.test(rightText)) return false;
+
+  const left = lastNonWhitespaceCharacter(leftText);
+  const right = firstNonWhitespaceCharacter(rightText);
+  if (!left || !right) return false;
+  if (NO_SPACE_BEFORE.has(right) || NO_SPACE_AFTER.has(left)) return false;
+
+  return (
+    (isWordLikeCharacter(left) || END_PUNCTUATION_SPACE_AFTER.has(left)) &&
+    isWordLikeCharacter(right)
+  );
+}
+
+function firstNonWhitespaceCharacter(text: string) {
+  return text.match(/\S/u)?.[0] ?? null;
+}
+
+function lastNonWhitespaceCharacter(text: string) {
+  return text.match(/\S(?=\s*$)/u)?.[0] ?? null;
+}
+
+function isWordLikeCharacter(character: string) {
+  return /[\p{L}\p{N}%°]/u.test(character);
 }
 
 function appendRunText(

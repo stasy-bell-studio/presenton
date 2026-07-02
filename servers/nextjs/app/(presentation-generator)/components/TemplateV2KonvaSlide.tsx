@@ -29,6 +29,12 @@ import {
 import { notify } from "@/components/ui/sonner";
 import type { TemplateV2Layout } from "@/components/slide-editor/lib/template-v2-import";
 import { disintegrateTemplateV2ComponentInUi } from "@/components/slide-editor/lib/template-v2-disintegration";
+import {
+  ensureGoogleFontsForDescriptors,
+  ensureTemplateFontsForDescriptors,
+  templateFontOptionsFromMap,
+  type TemplateFontOption,
+} from "@/components/slide-editor/lib/google-fonts";
 import { effectiveLineHeight } from "@/components/slide-editor/lib/text-line-height";
 import { textRunsContent } from "@/components/slide-editor/lib/text-runs";
 import type {
@@ -168,6 +174,7 @@ const LAYOUT_TOOLBAR_WIDTH = 700;
 const TOOLBAR_HEIGHT = 40;
 const TOOLBAR_GAP = 8;
 const TOOLBAR_MARGIN = 8;
+const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
 type UnknownRecord = Record<string, any>;
 type RawUi = TemplateV2Layout & UnknownRecord;
@@ -212,6 +219,7 @@ type TemplateV2KonvaSlideProps = {
   slideId?: string | number | null;
   slideIndex: number;
   renderIndex?: number;
+  fonts?: unknown;
 };
 
 function TemplateV2KonvaSlideComponent({
@@ -220,6 +228,7 @@ function TemplateV2KonvaSlideComponent({
   slideId = null,
   slideIndex,
   renderIndex,
+  fonts,
 }: TemplateV2KonvaSlideProps) {
   const dispatch = useDispatch();
   const surfaceId = useId();
@@ -233,7 +242,10 @@ function TemplateV2KonvaSlideComponent({
   const [uiDraft, setUiDraft] = useState<RawUi>(() =>
     normalizeMarkdownTextInUi(cloneJson(layout as RawUi)),
   );
-  const fontLoadState = useFontLoadState(uiDraft);
+  const templateFonts = useMemo(() => templateFontOptionsFromMap(fonts), [
+    fonts,
+  ]);
+  const fontLoadState = useFontLoadState(uiDraft, templateFonts);
   const currentUiRef = useRef<RawUi>(uiDraft);
   const [selection, setSelection] = useState<Selection>(null);
   const {
@@ -1264,6 +1276,7 @@ function TemplateV2KonvaSlideComponent({
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
           selectedTableCell={selectedTableCell}
+          templateFonts={templateFonts}
           onChange={(_index, element) =>
             applyComponentToolbarChange(element)
           }
@@ -1300,6 +1313,7 @@ function TemplateV2KonvaSlideComponent({
           path={keyForSelection(selection)}
           scale={EDITOR_SCALE}
           selectedTableCell={selectedTableCell}
+          templateFonts={templateFonts}
           textSelectionRange={
             inlineEdit &&
             inlineEdit.kind === "text" &&
@@ -1324,6 +1338,7 @@ function TemplateV2KonvaSlideComponent({
           index={selection.componentIndex}
           scale={EDITOR_SCALE}
           selectedCell={editingTableCell}
+          templateFonts={templateFonts}
           onChange={(_index, element) => applyToolbarElementChange(element)}
           onClose={clearTableCellEditing}
         />
@@ -1376,7 +1391,10 @@ function TemplateV2KonvaSlideComponent({
 export const TemplateV2KonvaSlide = memo(TemplateV2KonvaSlideComponent);
 TemplateV2KonvaSlide.displayName = "TemplateV2KonvaSlide";
 
-function useFontLoadState(ui: RawUi) {
+function useFontLoadState(
+  ui: RawUi,
+  templateFonts: TemplateFontOption[] = EMPTY_TEMPLATE_FONTS,
+) {
   const fontSignature = useMemo(() => fontLoadSignatureForUi(ui), [ui]);
   const [state, setState] = useState(() => ({
     revision: 0,
@@ -1417,13 +1435,22 @@ function useFontLoadState(ui: RawUi) {
 
     const fonts = document.fonts;
     const descriptors = fontSignature.split("\n").filter(Boolean);
+    const stylesheetLoads = [
+      ...ensureTemplateFontsForDescriptors(descriptors, templateFonts),
+      ...ensureGoogleFontsForDescriptors(descriptors),
+    ];
+    const fontsAlreadyReady =
+      stylesheetLoads.length === 0 && areFontDescriptorsLoaded(fontSignature);
     setState((current) =>
-      current.ready && areFontDescriptorsLoaded(fontSignature)
+      current.ready && fontsAlreadyReady
         ? current
         : { ...current, ready: false },
     );
 
-    void Promise.all(descriptors.map((descriptor) => fonts.load(descriptor)))
+    void Promise.all(stylesheetLoads)
+      .then(() =>
+        Promise.all(descriptors.map((descriptor) => fonts.load(descriptor))),
+      )
       .then(() => fonts.ready)
       .then(scheduleReady)
       .catch(scheduleReady);
@@ -1438,7 +1465,7 @@ function useFontLoadState(ui: RawUi) {
       fonts.removeEventListener?.("loadingdone", scheduleReady);
       fonts.removeEventListener?.("loadingerror", scheduleReady);
     };
-  }, [fontSignature]);
+  }, [fontSignature, templateFonts]);
 
   return state;
 }

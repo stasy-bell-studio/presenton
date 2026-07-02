@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -24,6 +25,12 @@ import {
   mergeFontForTextSelection,
 } from "../lib/element-model";
 import {
+  ensureGoogleFontLoaded,
+  ensureTemplateFontLoaded,
+  GOOGLE_FONT_OPTIONS,
+  type TemplateFontOption,
+} from "../lib/google-fonts";
+import {
   fontForTextSelection,
   normalizedTextSelectionRange,
   textRunsContent,
@@ -32,18 +39,17 @@ import {
 import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 
-const FONT_FAMILIES = [
-  "Syne",
-  "Inter",
+const SYSTEM_FONT_FAMILIES = [
   "Arial",
   "Helvetica",
   "Georgia",
   "Times New Roman",
-  "Playfair Display",
-  "Montserrat",
-  "Poppins",
-  "Roboto",
 ];
+const FONT_FAMILIES = [
+  ...GOOGLE_FONT_OPTIONS.map(({ family }) => family),
+  ...SYSTEM_FONT_FAMILIES,
+];
+const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
 const HORIZONTAL_ALIGNMENT_ICONS = {
   left: AlignLeft,
@@ -88,12 +94,14 @@ export function TextToolbar({
   index,
   scale,
   selectionRange,
+  templateFonts = EMPTY_TEMPLATE_FONTS,
   onChange,
 }: {
   element: TextSlideElement;
   index: number;
   scale: number;
   selectionRange?: TextSelectionRange | null;
+  templateFonts?: TemplateFontOption[];
   onChange: (index: number, element: TextSlideElement) => void;
 }) {
   const activeSelectionRange = normalizedTextSelectionRange(
@@ -107,9 +115,19 @@ export function TextToolbar({
   const lineHeight = font.lineHeight ?? DEFAULT_LINE_HEIGHT;
   const HorizontalAlignmentIcon =
     HORIZONTAL_ALIGNMENT_ICONS[horizontalAlignment];
-  const fontFamilies = FONT_FAMILIES.includes(font.family)
-    ? FONT_FAMILIES
-    : [font.family, ...FONT_FAMILIES];
+  const templateFontFamilySet = new Set(
+    templateFonts.map(({ family }) => family),
+  );
+  const googleFontOptions = GOOGLE_FONT_OPTIONS.filter(
+    ({ family }) => !templateFontFamilySet.has(family),
+  );
+  const knownFontFamilySet = new Set([
+    ...templateFontFamilySet,
+    ...FONT_FAMILIES,
+  ]);
+  const customFontFamily = knownFontFamilySet.has(font.family)
+    ? null
+    : font.family;
   const [openPanel, setOpenPanel] = useState<TextToolbarPanel | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
   const closePanelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -139,6 +157,23 @@ export function TextToolbar({
         ? mergeFontForTextSelection(element, activeSelectionRange, fontPatch)
         : mergeFont(element, fontPatch),
     );
+  };
+  const loadFontFamily = useCallback(
+    (family: string) => {
+      const templateFont = templateFonts.find(
+        (fontOption) => fontOption.family === family,
+      );
+      if (templateFont) {
+        void ensureTemplateFontLoaded(templateFont);
+        return;
+      }
+      void ensureGoogleFontLoaded(family);
+    },
+    [templateFonts],
+  );
+  const updateFontFamily = (family: string) => {
+    loadFontFamily(family);
+    updateFont({ family });
   };
   const commitFontSize = (nextSize: number) => {
     if (!Number.isFinite(nextSize)) return;
@@ -191,6 +226,10 @@ export function TextToolbar({
     });
   };
 
+  useEffect(() => {
+    loadFontFamily(font.family);
+  }, [font.family, loadFontFamily]);
+
   return (
     <InlineToolbar element={element} scale={scale} offset={52} unstyled>
       <div style={textToolbarStyles.toolbar}>
@@ -199,16 +238,35 @@ export function TextToolbar({
             aria-label="Font family"
             title="Font family"
             value={font.family}
-            onChange={(event) =>
-              updateFont({ family: event.target.value })
-            }
+            onChange={(event) => updateFontFamily(event.target.value)}
             style={textToolbarStyles.fontSelect}
           >
-            {fontFamilies.map((family) => (
-              <option key={family} value={family}>
-                {family}
-              </option>
-            ))}
+            {customFontFamily ? (
+              <option value={customFontFamily}>{customFontFamily}</option>
+            ) : null}
+            {templateFonts.length > 0 ? (
+              <optgroup label="Template Fonts">
+                {templateFonts.map(({ family }) => (
+                  <option key={family} value={family}>
+                    {family}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            <optgroup label="Google Fonts">
+              {googleFontOptions.map(({ family }) => (
+                <option key={family} value={family}>
+                  {family}
+                </option>
+              ))}
+            </optgroup>
+            <optgroup label="System Fonts">
+              {SYSTEM_FONT_FAMILIES.map((family) => (
+                <option key={family} value={family}>
+                  {family}
+                </option>
+              ))}
+            </optgroup>
           </select>
           <ChevronDown
             size={18}
@@ -270,7 +328,7 @@ export function TextToolbar({
             aria-hidden="true"
             style={{
               ...textToolbarStyles.colorDot,
-            background: withHash(font.color),
+              background: withHash(font.color),
             }}
           />
           <DeferredColorInput
