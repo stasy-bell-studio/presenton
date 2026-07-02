@@ -2,7 +2,10 @@
 
 import {
   useCallback,
+  useEffect,
+  useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from "react";
 import { withHash } from "../editorUtils";
@@ -47,7 +50,7 @@ export function TemplateV2InlineEditor({
   runs?: TextRun[];
   style?: TemplateV2TextEditStyle;
   onChange: (draft: string) => void;
-  onClose: (commit: boolean) => void;
+  onClose: (commit: boolean, runs?: TextRun[]) => void;
   onRunsChange?: (runs: TextRun[]) => void;
   onSelectionChange?: (range: TextSelectionRange | null) => void;
 }) {
@@ -109,14 +112,29 @@ export function TemplateV2InlineEditor({
     textAlign: font.horizontal as CSSProperties["textAlign"],
     overflow: "auto",
   };
-  const textEditorRuns =
-    runs ?? [{ text: draft || " ", font: textEditStyleToFont(font) }];
+  const baseTextFont = useMemo(() => textEditStyleToFont(font), [font]);
+  const [initialTextEditorRuns] = useState<TextRun[]>(() =>
+    cloneTextRuns(runs ?? [{ text: draft || " ", font: baseTextFont }]),
+  );
+  const textEditorRuns = runs ?? initialTextEditorRuns;
+  const latestRunsRef = useRef<TextRun[]>(initialTextEditorRuns);
+
+  useEffect(() => {
+    latestRunsRef.current = cloneTextRuns(textEditorRuns);
+  }, [textEditorRuns]);
+
+  const closeTextEditor = useCallback(
+    (commit: boolean) => {
+      onClose(commit, commit ? latestRunsRef.current : undefined);
+    },
+    [onClose],
+  );
 
   return (
     <div
       ref={editorRef}
       data-inline-edit-ignore="true"
-      onBlur={closeAfterBlur}
+      onBlur={kind === "text" ? undefined : closeAfterBlur}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       style={{
@@ -128,13 +146,14 @@ export function TemplateV2InlineEditor({
     >
       {kind === "text" ? (
         <TiptapInlineTextEditor
-          baseFont={textEditStyleToFont(font)}
+          baseFont={baseTextFont}
           editorStyle={editorStyle}
           runs={textEditorRuns}
-          onBlurOutside={() => onClose(true)}
-          onCommitShortcut={() => onClose(true)}
-          onEscape={() => onClose(false)}
+          onBlurOutside={() => closeTextEditor(true)}
+          onCommitShortcut={() => closeTextEditor(true)}
+          onEscape={() => closeTextEditor(false)}
           onRunsChange={(nextRuns) => {
+            latestRunsRef.current = nextRuns;
             onRunsChange?.(nextRuns);
           }}
           onSelectionChange={onSelectionChange ?? (() => undefined)}
@@ -183,6 +202,13 @@ function textEditStyleToFont(font: TemplateV2TextEditStyle): Font {
     letter_spacing: font.letterSpacing,
     wrap: readFontWrap(font.wrap),
   };
+}
+
+function cloneTextRuns(runs: TextRun[]) {
+  return runs.map((run) => ({
+    ...run,
+    font: run.font ? { ...run.font } : undefined,
+  }));
 }
 
 function readFontWrap(value: unknown): Font["wrap"] {

@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
 } from "react";
 import {
@@ -120,6 +121,13 @@ export function TiptapInlineTextEditor({
     () => JSON.parse(baseFontSignature) as Font,
     [baseFontSignature],
   );
+  const [initialContent] = useState<JSONContent>(() =>
+    textRunsToTiptapContent(runs, stableBaseFont),
+  );
+  const [initialContentSignature] = useState(() => textRunsSignature(runs));
+  const syncedContentSignatureRef = useRef<string | null>(
+    initialContentSignature,
+  );
   const stableBaseFontRef = useLatestRef(stableBaseFont);
   const content = useMemo(
     () => textRunsToTiptapContent(runs, stableBaseFont),
@@ -143,7 +151,7 @@ export function TiptapInlineTextEditor({
 
   const editor = useEditor({
     extensions: TIPTAP_EXTENSIONS,
-    content,
+    content: initialContent,
     immediatelyRender: false,
     editorProps: {
       attributes: {
@@ -152,6 +160,13 @@ export function TiptapInlineTextEditor({
         "data-inline-edit-ignore": "true",
       },
       handleDOMEvents: {
+        beforeinput: (view, event) => {
+          if (!(event instanceof InputEvent)) return false;
+          if (!applyBeforeInput(view, event)) return false;
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        },
         mousedown: (_view, event) => {
           event.stopPropagation();
           return false;
@@ -161,6 +176,7 @@ export function TiptapInlineTextEditor({
           return false;
         },
         keydown: (_view, event) => {
+          event.stopPropagation();
           if (event.key === "Escape") {
             event.preventDefault();
             callbacksRef.current.onEscape();
@@ -180,9 +196,10 @@ export function TiptapInlineTextEditor({
         editor.getJSON(),
         stableBaseFontRef.current,
       );
-      lastEmittedSignatureRef.current = textRunsSignature(nextRuns);
+      const nextSignature = textRunsSignature(nextRuns);
+      lastEmittedSignatureRef.current = nextSignature;
+      syncedContentSignatureRef.current = nextSignature;
       callbacksRef.current.onRunsChange(nextRuns);
-      emitSelection(editor);
     },
     onSelectionUpdate: ({ editor }) => {
       emitSelection(editor);
@@ -217,19 +234,19 @@ export function TiptapInlineTextEditor({
 
   useEffect(() => {
     if (!editor) return;
+    if (contentSignature === syncedContentSignatureRef.current) return;
     if (contentSignature === lastEmittedSignatureRef.current) return;
     const { from, to } = editor.state.selection;
-    const wasFocused = editor.isFocused;
     lastEmittedSignatureRef.current = contentSignature;
+    syncedContentSignatureRef.current = contentSignature;
     editor.commands.setContent(content, false);
     const maxPosition = Math.max(1, editor.state.doc.content.size);
     editor.commands.setTextSelection({
       from: clampPosition(from, maxPosition),
       to: clampPosition(to, maxPosition),
     });
-    if (wasFocused) editor.commands.focus();
     emitSelection(editor);
-  }, [content, contentSignature, editor, emitSelection]);
+  }, [content, contentSignature, editor, emitSelection, runs]);
 
   useEffect(() => {
     if (!editor || !autoFocus) return;
@@ -262,6 +279,84 @@ function useLatestRef<T>(value: T) {
     ref.current = value;
   }, [value]);
   return ref;
+}
+
+function applyBeforeInput(view: Editor["view"], event: InputEvent) {
+  if (event.isComposing || event.inputType === "insertCompositionText") {
+    return false;
+  }
+  if (isManualDeleteInput(event.inputType)) {
+    return applyDeleteBeforeInput(view, event.inputType);
+  }
+  if (event.inputType === "insertText") {
+    const text = event.data;
+    if (!text) return false;
+    const { from, to } = view.state.selection;
+    const transaction = view.state.tr
+      .insertText(text, from, to)
+      .scrollIntoView();
+    view.dispatch(transaction);
+    return true;
+  }
+  if (
+    event.inputType === "insertLineBreak" ||
+    event.inputType === "insertParagraph"
+  ) {
+    const hardBreak = view.state.schema.nodes.hardBreak;
+    if (!hardBreak) return false;
+    view.dispatch(
+      view.state.tr
+        .replaceSelectionWith(hardBreak.create())
+        .scrollIntoView(),
+    );
+    return true;
+  }
+  return false;
+}
+
+function isManualDeleteInput(inputType: string) {
+  return (
+    inputType === "deleteContent" ||
+    inputType === "deleteContentBackward" ||
+    inputType === "deleteContentForward" ||
+    inputType === "deleteWordBackward" ||
+    inputType === "deleteWordForward"
+  );
+}
+
+function applyDeleteBeforeInput(view: Editor["view"], inputType: string) {
+  const { selection } = view.state;
+  if (!selection.empty) {
+    return dispatchManualDelete(view, selection.from, selection.to);
+  }
+
+  const isBackward =
+    inputType === "deleteContent" || inputType.endsWith("Backward");
+  const isForward = inputType.endsWith("Forward");
+  const cursor = selection.$from;
+
+  if (isBackward) {
+    if (cursor.parentOffset <= 0) {
+      return true;
+    }
+    return dispatchManualDelete(view, selection.from - 1, selection.from);
+  }
+
+  if (isForward) {
+    if (cursor.parentOffset >= cursor.parent.content.size) {
+      return true;
+    }
+    return dispatchManualDelete(view, selection.from, selection.from + 1);
+  }
+
+  return false;
+}
+
+function dispatchManualDelete(view: Editor["view"], from: number, to: number) {
+  if (from === to) return true;
+  const transaction = view.state.tr.delete(from, to).scrollIntoView();
+  view.dispatch(transaction);
+  return true;
 }
 
 function textRunsToTiptapContent(runs: TextRun[], baseFont: Font): JSONContent {
@@ -346,14 +441,15 @@ function fontFromMarks(marks: JSONContent["marks"], baseFont: Font): Font {
 
 function selectionRangeFromEditor(editor: Editor) {
   const { from, to } = editor.state.selection;
+  if (from === to) return null;
   return {
     start: editor.state.doc.textBetween(0, from, "\n", "\n").length,
     end: editor.state.doc.textBetween(0, to, "\n", "\n").length,
   };
 }
 
-function selectionRangeSignature(range: TextSelectionRange) {
-  return `${range.start}:${range.end}`;
+function selectionRangeSignature(range: TextSelectionRange | null) {
+  return range ? `${range.start}:${range.end}` : "none";
 }
 
 function textRunsSignature(runs: TextRun[]) {
