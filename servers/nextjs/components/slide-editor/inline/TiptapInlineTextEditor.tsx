@@ -109,6 +109,7 @@ export function TiptapInlineTextEditor({
   const lastEmittedSignatureRef = useRef<string | null>(null);
   const lastSelectionSignatureRef = useRef<string | null>(null);
   const didAutoFocusRef = useRef(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const callbacksRef = useLatestRef({
     onBlurOutside,
     onCommitShortcut,
@@ -260,8 +261,30 @@ export function TiptapInlineTextEditor({
     return () => window.clearTimeout(timeout);
   }, [autoFocus, editor, emitSelection]);
 
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (rootRef.current?.contains(target)) return;
+      const targetElement =
+        target instanceof Element ? target : target.parentElement;
+      if (targetElement?.closest("[data-inline-edit-ignore='true']")) {
+        return;
+      }
+      callbacksRef.current.onBlurOutside();
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [callbacksRef]);
+
   return (
     <div
+      ref={rootRef}
       data-inline-edit-ignore="true"
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}

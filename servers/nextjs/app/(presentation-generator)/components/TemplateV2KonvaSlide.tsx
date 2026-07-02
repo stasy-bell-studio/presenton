@@ -403,7 +403,7 @@ function TemplateV2KonvaSlideComponent({
       setUiDraft(nextUi);
       dispatch(
         updateSlideUi({
-          index: slideIndex,
+          index: surfaceSlideIndex ?? slideIndex,
           ui: nextUi as Record<string, unknown>,
         }),
       );
@@ -412,7 +412,7 @@ function TemplateV2KonvaSlideComponent({
         canRedo: redoStackRef.current.length > 0,
       });
     },
-    [dispatch, slideIndex],
+    [dispatch, slideIndex, surfaceSlideIndex],
   );
 
   const undo = useCallback(() => {
@@ -562,6 +562,9 @@ function TemplateV2KonvaSlideComponent({
       );
       if (type === "text") {
         const normalized = normalizeRawTextMarkdownElement(element);
+        if (normalized.changed) {
+          updateElement(elementSelection, () => normalized.element, false);
+        }
         startInlineEdit({
           kind: "text",
           selection: elementSelection,
@@ -587,7 +590,7 @@ function TemplateV2KonvaSlideComponent({
         });
       }
     },
-    [clearTableCellEditing, startInlineEdit],
+    [clearTableCellEditing, startInlineEdit, updateElement],
   );
 
   const closeInlineEditor = useCallback(
@@ -612,6 +615,26 @@ function TemplateV2KonvaSlideComponent({
       clearInlineEdit();
     },
     [clearInlineEdit, inlineEdit, updateElement],
+  );
+
+  const commitInlineTextRuns = useCallback(
+    (elementSelection: ElementSelection, runs: TextRun[]) => {
+      updateInlineRuns(elementSelection, runs);
+      updateElement(
+        elementSelection,
+        (element) =>
+          elementWithInlineDraft(
+            element,
+            "text",
+            textRunsContent(runs),
+            undefined,
+            inlineEdit?.frame,
+            runs,
+          ),
+        false,
+      );
+    },
+    [inlineEdit?.frame, updateElement, updateInlineRuns],
   );
 
   const applyToolbarElementChange = useCallback(
@@ -1141,7 +1164,9 @@ function TemplateV2KonvaSlideComponent({
               textSelectionRange,
             )
           }
-          onRunsChange={(runs) => updateInlineRuns(inlineEdit.selection, runs)}
+          onRunsChange={(runs) =>
+            commitInlineTextRuns(inlineEdit.selection, runs)
+          }
           onClose={(commit, runs) => closeInlineEditor(commit, runs)}
         />
       ) : null}
@@ -2008,10 +2033,7 @@ function RawRichTextElement({
 
 function rawRenderTextRuns(element: RawElement): RenderTextRun[] {
   const baseFont = rawFont(element);
-  const sourceRuns = rawSourceTextRuns(element);
-  const runs = rawTextHasRuns(element)
-    ? sourceRuns
-    : renderMarkdownTextRuns(sourceRuns);
+  const runs = normalizeRawTextMarkdownElement(element).runs;
 
   return runs
     .filter((run) => run.text)
@@ -4072,15 +4094,21 @@ function normalizeRawTextMarkdownElement(element: RawElement): {
   runs: TextRun[];
   changed: boolean;
 } {
-  const sourceRuns = rawSourceTextRuns(element);
-  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
-  const renderedText = textRunsContent(renderedRuns);
+  const originalSourceRuns = rawSourceTextRuns(element);
   const rawText = rawStoredTextContent(element);
   const hasSourceRuns = rawTextHasRuns(element);
+  const sourceRuns = reconcileTextRunsWithStoredText(
+    originalSourceRuns,
+    rawText,
+  );
+  const renderedRuns = renderMarkdownTextRuns(sourceRuns);
+  const renderedText = textRunsContent(renderedRuns);
   const sourceHasMarkdown = sourceRuns.some((run) =>
     containsMarkdownSyntax(run.text),
   );
+  const runsChanged = !sameTextRuns(originalSourceRuns, sourceRuns);
   const changed =
+    runsChanged ||
     sourceHasMarkdown ||
     (!hasSourceRuns && !sameTextRuns(sourceRuns, renderedRuns)) ||
     ((!hasSourceRuns || containsMarkdownSyntax(rawText)) &&
@@ -4090,6 +4118,58 @@ function normalizeRawTextMarkdownElement(element: RawElement): {
     element: changed ? setRawTextRunsContent(element, renderedRuns) : element,
     runs: renderedRuns,
     changed,
+  };
+}
+
+function reconcileTextRunsWithStoredText(
+  runs: TextRun[],
+  storedText: string,
+): TextRun[] {
+  if (!storedText || runs.length === 0) return runs;
+  if (containsMarkdownSyntax(storedText)) return runs;
+  if (textRunsContent(runs) === storedText) return runs;
+
+  const reconciled: TextRun[] = [];
+  let cursor = 0;
+
+  for (const run of runs) {
+    const runText = run.text ?? "";
+    if (!runText) continue;
+    const index = storedText.indexOf(runText, cursor);
+    if (index < 0) return runs;
+
+    const gap = storedText.slice(cursor, index);
+    appendRunText(reconciled, gap, run.font);
+    reconciled.push(cloneTextRun(run));
+    cursor = index + runText.length;
+  }
+
+  appendRunText(
+    reconciled,
+    storedText.slice(cursor),
+    runs[runs.length - 1]?.font,
+  );
+  return textRunsContent(reconciled) === storedText ? reconciled : runs;
+}
+
+function appendRunText(
+  runs: TextRun[],
+  text: string,
+  font: TextRun["font"],
+) {
+  if (!text) return;
+  const previous = runs[runs.length - 1];
+  if (previous) {
+    previous.text += text;
+    return;
+  }
+  runs.push(font ? { text, font: { ...font } } : { text });
+}
+
+function cloneTextRun(run: TextRun): TextRun {
+  return {
+    ...run,
+    font: run.font ? { ...run.font } : undefined,
   };
 }
 
