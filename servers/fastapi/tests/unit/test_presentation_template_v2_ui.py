@@ -186,6 +186,125 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
     assert ui["components"][0]["elements"][0]["runs"][0]["text"] == "Old headline"
 
 
+def test_apply_template_v2_content_to_ui_parses_markdown_text_to_runs():
+    ui = {
+        "id": "layout-1",
+        "description": "Layout with markdown generated content placeholders.",
+        "components": [
+            {
+                "id": "hero",
+                "description": "Hero content component.",
+                "elements": [
+                    {
+                        "type": "text",
+                        "decorative": False,
+                        "name": "headline",
+                        "runs": [
+                            {
+                                "text": "Old headline",
+                                "font": {"family": "Inter", "size": 24},
+                            }
+                        ],
+                    },
+                    {
+                        "type": "text-list",
+                        "decorative": False,
+                        "name": "bullets",
+                        "items": [
+                            [
+                                {
+                                    "text": "Old bullet",
+                                    "font": {"color": "#111111", "size": 14},
+                                }
+                            ]
+                        ],
+                    },
+                    {
+                        "type": "table",
+                        "decorative": False,
+                        "name": "metrics",
+                        "columns": [
+                            {
+                                "font": {"size": 10},
+                                "runs": [
+                                    {
+                                        "text": "Old column",
+                                        "font": {"size": 10},
+                                    }
+                                ],
+                            }
+                        ],
+                        "rows": [
+                            [
+                                {
+                                    "runs": [
+                                        {
+                                            "text": "Old value",
+                                            "font": {"size": 9},
+                                        }
+                                    ]
+                                }
+                            ]
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    content = {
+        "hero": {
+            "headline": "AI **agents** need _memory_",
+            "bullets": [
+                "Keep **scope** tight",
+                "Ship *incrementally*",
+            ],
+            "metrics": {
+                "columns": ["__Metric__"],
+                "rows": [["*Retention*"]],
+            },
+        }
+    }
+
+    hydrated = presentation_endpoint._apply_template_v2_content_to_ui(ui, content)
+
+    elements = hydrated["components"][0]["elements"]
+    assert elements[0]["runs"] == [
+        {"text": "AI ", "font": {"family": "Inter", "size": 24}},
+        {
+            "text": "agents",
+            "font": {"family": "Inter", "size": 24, "bold": True},
+        },
+        {"text": " need ", "font": {"family": "Inter", "size": 24}},
+        {
+            "text": "memory",
+            "font": {"family": "Inter", "size": 24, "italic": True},
+        },
+    ]
+    assert elements[1]["items"] == [
+        [
+            {"text": "Keep ", "font": {"color": "#111111", "size": 14}},
+            {
+                "text": "scope",
+                "font": {"color": "#111111", "size": 14, "bold": True},
+            },
+            {"text": " tight", "font": {"color": "#111111", "size": 14}},
+        ],
+        [
+            {"text": "Ship "},
+            {
+                "text": "incrementally",
+                "font": {"italic": True},
+            },
+        ],
+    ]
+    assert elements[2]["columns"][0]["runs"] == [
+        {"text": "Metric", "font": {"size": 10, "bold": True}}
+    ]
+    assert elements[2]["rows"][0][0]["runs"] == [
+        {"text": "Retention", "font": {"size": 9, "italic": True}}
+    ]
+
+
 def test_chat_template_v2_image_content_stores_prompt():
     image = {
         "type": "image",
