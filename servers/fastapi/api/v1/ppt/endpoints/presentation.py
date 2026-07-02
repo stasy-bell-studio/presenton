@@ -685,7 +685,11 @@ def _apply_template_v2_text_content(
     updated = copy.deepcopy(element)
     runs = element.get("runs")
     first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
-    updated["runs"] = _template_v2_text_runs_from_markdown(text, first_run)
+    updated["runs"] = _template_v2_text_runs_from_markdown(
+        text,
+        first_run,
+        fallback_font=element.get("font"),
+    )
     updated.pop("text", None)
     return updated
 
@@ -758,7 +762,13 @@ def _apply_template_v2_text_list_content(
                 and isinstance(existing_runs[0], dict)
                 else {}
             )
-            items.append(_template_v2_text_runs_from_markdown(text, first_run))
+            items.append(
+                _template_v2_text_runs_from_markdown(
+                    text,
+                    first_run,
+                    fallback_font=element.get("font"),
+                )
+            )
 
     updated = copy.deepcopy(element)
     updated["items"] = items
@@ -877,11 +887,16 @@ def _template_v2_text_runs_from_markdown(
     fallback_font: Any = None,
 ) -> list[dict[str, Any]]:
     base_run = copy.deepcopy(first_run) if isinstance(first_run, dict) else {}
-    if not isinstance(base_run.get("font"), dict) and isinstance(fallback_font, dict):
-        base_run["font"] = copy.deepcopy(fallback_font)
+    parsed = _parse_template_v2_markdown_text(text)
+    has_markdown_style = any(style for _parsed_text, style in parsed)
+    base_run = _template_v2_base_run_for_markdown(
+        base_run,
+        fallback_font,
+        strip_inline_emphasis=has_markdown_style,
+    )
 
     text_runs: list[dict[str, Any]] = []
-    for parsed_text, style in _parse_template_v2_markdown_text(text):
+    for parsed_text, style in parsed:
         run = copy.deepcopy(base_run)
         run["text"] = parsed_text
         if style:
@@ -895,6 +910,29 @@ def _template_v2_text_runs_from_markdown(
     if text_runs:
         return text_runs
     return [{**base_run, "text": " "}]
+
+
+def _template_v2_base_run_for_markdown(
+    base_run: dict[str, Any],
+    fallback_font: Any,
+    *,
+    strip_inline_emphasis: bool,
+) -> dict[str, Any]:
+    font = base_run.get("font")
+    if isinstance(fallback_font, dict):
+        merged_font = {
+            **copy.deepcopy(fallback_font),
+            **(copy.deepcopy(font) if isinstance(font, dict) else {}),
+        }
+        base_run["font"] = merged_font
+    elif isinstance(font, dict):
+        base_run["font"] = copy.deepcopy(font)
+
+    if strip_inline_emphasis and isinstance(base_run.get("font"), dict):
+        base_run["font"].pop("bold", None)
+        base_run["font"].pop("italic", None)
+
+    return base_run
 
 
 def _parse_template_v2_markdown_text(

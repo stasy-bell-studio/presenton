@@ -305,6 +305,77 @@ def test_apply_template_v2_content_to_ui_parses_markdown_text_to_runs():
     ]
 
 
+def test_apply_template_v2_content_to_ui_markdown_overrides_inherited_emphasis():
+    ui = {
+        "id": "layout-1",
+        "components": [
+            {
+                "id": "information_card_grid",
+                "elements": [
+                    {
+                        "type": "group",
+                        "name": "information_card",
+                        "children": [
+                            {
+                                "type": "text",
+                                "decorative": False,
+                                "name": "card_body",
+                                "font": {
+                                    "size": 21.33,
+                                    "family": "HK Grotesk",
+                                    "color": "#1E1E1E",
+                                    "wrap": "word",
+                                },
+                                "runs": [
+                                    {
+                                        "text": "Old body",
+                                        "font": {
+                                            "size": 21.33,
+                                            "family": "HK Grotesk",
+                                            "color": "#1E1E1E",
+                                            "bold": True,
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    content = {
+        "information_card_grid": {
+            "card_body": "**Digital ordering** supports quick, easy meals."
+        }
+    }
+
+    hydrated = presentation_endpoint._apply_template_v2_content_to_ui(ui, content)
+
+    text_element = hydrated["components"][0]["elements"][0]["children"][0]
+    assert text_element["runs"] == [
+        {
+            "text": "Digital ordering",
+            "font": {
+                "size": 21.33,
+                "family": "HK Grotesk",
+                "color": "#1E1E1E",
+                "wrap": "word",
+                "bold": True,
+            },
+        },
+        {
+            "text": " supports quick, easy meals.",
+            "font": {
+                "size": 21.33,
+                "family": "HK Grotesk",
+                "color": "#1E1E1E",
+                "wrap": "word",
+            },
+        },
+    ]
+
+
 def test_chat_template_v2_image_content_stores_prompt():
     image = {
         "type": "image",
