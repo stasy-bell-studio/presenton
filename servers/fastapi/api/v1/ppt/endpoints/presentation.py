@@ -679,7 +679,7 @@ def _apply_template_v2_text_content(
     value: Any,
 ) -> dict[str, Any]:
     text = _read_template_v2_text(value)
-    if not text:
+    if text is None or text == "":
         return copy.deepcopy(element)
 
     updated = copy.deepcopy(element)
@@ -749,7 +749,7 @@ def _apply_template_v2_text_list_content(
     items = []
     for index, item in enumerate(value):
         text = _read_template_v2_text(item)
-        if text:
+        if text is not None and text != "":
             existing_runs = (
                 existing_items[index]
                 if index < len(existing_items) and isinstance(existing_items[index], list)
@@ -1016,7 +1016,7 @@ def _append_template_v2_text_run(
     run: dict[str, Any],
 ) -> None:
     text = run.get("text")
-    if not isinstance(text, str) or not text:
+    if not isinstance(text, str) or text == "":
         return
 
     previous = text_runs[-1] if text_runs else None
@@ -1211,8 +1211,11 @@ async def get_all_presentations(sql_session: AsyncSession = Depends(get_async_se
 
 @PRESENTATION_ROUTER.get("/{id}", response_model=PresentationDetailWithSlides)
 async def get_presentation(
-    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+    id: uuid.UUID,
+    request: Request,
+    sql_session: AsyncSession = Depends(get_async_session),
 ):
+    print(f"Export cookie header: {_build_export_cookie_header(request)}")
     presentation = await sql_session.get(PresentationModel, id)
     if not presentation:
         raise HTTPException(404, "Presentation not found")

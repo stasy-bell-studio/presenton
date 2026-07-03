@@ -376,6 +376,125 @@ def test_apply_template_v2_content_to_ui_markdown_overrides_inherited_emphasis()
     ]
 
 
+def test_apply_template_v2_content_to_ui_keeps_markdown_run_whitespace():
+    ui = {
+        "id": "layout-1",
+        "description": "Layout with markdown spacing edge cases.",
+        "components": [
+            {
+                "id": "left_header_block",
+                "description": "Header content component.",
+                "elements": [
+                    {
+                        "type": "text",
+                        "decorative": False,
+                        "name": "introductory_paragraph",
+                        "runs": [
+                            {
+                                "text": "Old paragraph",
+                                "font": {
+                                    "family": "Public Sans",
+                                    "size": 18.68,
+                                    "color": "#1A1A1A",
+                                    "line_height": 1.45,
+                                    "wrap": "word",
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "type": "text",
+                        "decorative": False,
+                        "name": "compact_boundary",
+                        "runs": [
+                            {
+                                "text": "Old compact text",
+                                "font": {"family": "Inter", "size": 24},
+                            }
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+    content = {
+        "left_header_block": {
+            "introductory_paragraph": (
+                "Taco Bell's identity centers on **convenience, affordability, "
+                "bold flavors,** and a casual experience that feels playful, "
+                "accessible, and easy to customize."
+            ),
+            "compact_boundary": "Use **guided**selling with *agentic*workflows",
+        }
+    }
+
+    hydrated = presentation_endpoint._apply_template_v2_content_to_ui(ui, content)
+
+    elements = hydrated["components"][0]["elements"]
+    assert elements[0]["runs"] == [
+        {
+            "text": "Taco Bell's identity centers on ",
+            "font": {
+                "family": "Public Sans",
+                "size": 18.68,
+                "color": "#1A1A1A",
+                "line_height": 1.45,
+                "wrap": "word",
+            },
+        },
+        {
+            "text": "convenience, affordability, bold flavors,",
+            "font": {
+                "family": "Public Sans",
+                "size": 18.68,
+                "color": "#1A1A1A",
+                "line_height": 1.45,
+                "wrap": "word",
+                "bold": True,
+            },
+        },
+        {
+            "text": " and a casual experience that feels playful, accessible, and easy to customize.",
+            "font": {
+                "family": "Public Sans",
+                "size": 18.68,
+                "color": "#1A1A1A",
+                "line_height": 1.45,
+                "wrap": "word",
+            },
+        },
+    ]
+    assert elements[1]["runs"] == [
+        {"text": "Use ", "font": {"family": "Inter", "size": 24}},
+        {
+            "text": "guided",
+            "font": {"family": "Inter", "size": 24, "bold": True},
+        },
+        {"text": "selling with ", "font": {"family": "Inter", "size": 24}},
+        {
+            "text": "agentic",
+            "font": {"family": "Inter", "size": 24, "italic": True},
+        },
+        {"text": "workflows", "font": {"family": "Inter", "size": 24}},
+    ]
+
+
+def test_template_v2_markdown_text_runs_keep_source_boundary_spaces():
+    runs = presentation_endpoint._template_v2_text_runs_from_markdown(
+        "Hello **how are you?** and",
+        {"font": {"family": "Inter", "size": 24}},
+    )
+
+    assert runs == [
+        {"text": "Hello ", "font": {"family": "Inter", "size": 24}},
+        {
+            "text": "how are you?",
+            "font": {"family": "Inter", "size": 24, "bold": True},
+        },
+        {"text": " and", "font": {"family": "Inter", "size": 24}},
+    ]
+
+
 def test_chat_template_v2_image_content_stores_prompt():
     image = {
         "type": "image",

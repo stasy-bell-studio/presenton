@@ -73,6 +73,9 @@ class ChartType(str, Enum):
     AREA = "area"
     PIE = "pie"
     DONUT = "donut"
+    COLUMN = "column"
+    STACKED_BAR = "stacked_bar"
+    STACKED_COLUMN = "stacked_column"
 
 
 class Position(BaseModel):
