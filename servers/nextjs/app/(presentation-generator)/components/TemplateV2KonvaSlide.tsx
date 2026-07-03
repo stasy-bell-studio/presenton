@@ -631,6 +631,9 @@ function TemplateV2KonvaSlideComponent({
     };
     const handleScroll = (event: Event) => {
       if (cleared) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-inline-edit-ignore='true']")) return;
+
       const { key, position } = scrollStateForTarget(event.target);
       const previousPosition = lastScrollPositionByTarget.get(key);
       lastScrollPositionByTarget.set(key, position);

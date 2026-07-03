@@ -34,5 +34,5 @@ export function InlineToolbar({
 
 const unstyledToolbarStyle = {
   position: "absolute",
-  zIndex: 8,
+  zIndex: 64,
 } as const;

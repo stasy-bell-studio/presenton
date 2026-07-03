@@ -15,7 +15,7 @@ const editorTheme = {
 export const inlineStyles = {
   toolbar: {
     position: "absolute",
-    zIndex: 8,
+    zIndex: 64,
     display: "inline-flex",
     alignItems: "center",
     flexWrap: "wrap",
