@@ -8,7 +8,6 @@ export type ElementToolbarKey =
   | "shape"
   | "line"
   | "chart"
-  | "svg"
   | "table";
 export type ElementInspectorKey =
   | "text"
@@ -17,9 +16,7 @@ export type ElementInspectorKey =
   | "shape"
   | "chart"
   | "table"
-  | "svg";
 export type DomOverlayRendererKey =
-  | "svg"
   | "chart"
   | "text-list"
   | "text"
@@ -58,10 +55,10 @@ export const ELEMENT_REGISTRY = {
     createDefault: () => ({
       ...base,
       size: { width: 3.4, height: 2 },
-	      type: "container",
-	      fill: { color: "FFFFFF" },
-	      stroke: { color: "D9E2EF", width: 1 },
-	      border_radius: uniformBorderRadius(0.08),
+      type: "container",
+      fill: { color: "FFFFFF" },
+      stroke: { color: "D9E2EF", width: 1 },
+      border_radius: uniformBorderRadius(0.08),
       child: {
         type: "text",
         position: { x: 0.25, y: 0.25 },
@@ -87,19 +84,19 @@ export const ELEMENT_REGISTRY = {
       position: { x: 0.8, y: 0.8 },
       size: { width: 5.2, height: 1.5 },
       type: "flex",
-	      direction: "row",
-	      gap: 0.2,
-	      align_items: "stretch",
-	      justify_content: "stretch",
+      direction: "row",
+      gap: 0.2,
+      align_items: "stretch",
+      justify_content: "stretch",
       children: [
         {
           type: "container",
           position: { x: 0, y: 0 },
           size: { width: 2.5, height: 1.5 },
           layout: { grow: 1 },
-	          fill: { color: "FFFFFF" },
-	          stroke: { color: "D9E2EF", width: 1 },
-	          border_radius: uniformBorderRadius(0.08),
+          fill: { color: "FFFFFF" },
+          stroke: { color: "D9E2EF", width: 1 },
+          border_radius: uniformBorderRadius(0.08),
           child: {
             type: "text",
             position: { x: 0.2, y: 0.2 },
@@ -113,9 +110,9 @@ export const ELEMENT_REGISTRY = {
           position: { x: 0, y: 0 },
           size: { width: 2.5, height: 1.5 },
           layout: { grow: 1 },
-	          fill: { color: "FFFFFF" },
-	          stroke: { color: "D9E2EF", width: 1 },
-	          border_radius: uniformBorderRadius(0.08),
+          fill: { color: "FFFFFF" },
+          stroke: { color: "D9E2EF", width: 1 },
+          border_radius: uniformBorderRadius(0.08),
           child: {
             type: "text",
             position: { x: 0.2, y: 0.2 },
@@ -138,17 +135,17 @@ export const ELEMENT_REGISTRY = {
       position: { x: 0.8, y: 0.8 },
       size: { width: 5.2, height: 2.4 },
       type: "grid",
-	      columns: 2,
-	      gap: 0.2,
-	      align_items: "stretch",
-	      justify_items: "stretch",
+      columns: 2,
+      gap: 0.2,
+      align_items: "stretch",
+      justify_items: "stretch",
       children: [1, 2, 3, 4].map((item) => ({
         type: "container",
         position: { x: 0, y: 0 },
         size: { width: 2.5, height: 1.1 },
-	        fill: { color: "FFFFFF" },
-	        stroke: { color: "D9E2EF", width: 1 },
-	        border_radius: uniformBorderRadius(0.08),
+        fill: { color: "FFFFFF" },
+        stroke: { color: "D9E2EF", width: 1 },
+        border_radius: uniformBorderRadius(0.08),
         child: {
           type: "text",
           position: { x: 0.2, y: 0.2 },
@@ -167,10 +164,10 @@ export const ELEMENT_REGISTRY = {
     renderers: { konva: "rectangle", domOverlay: null },
     export: { pptx: "rectangle", pdf: "raster" },
     createDefault: () => ({
-	      ...base,
-	      type: "rectangle",
-	      fill: { color: "D4A24C" },
-	      border_radius: uniformBorderRadius(0.08),
+      ...base,
+      type: "rectangle",
+      fill: { color: "D4A24C" },
+      border_radius: uniformBorderRadius(0.08),
     }),
   },
   ellipse: {
@@ -208,16 +205,16 @@ export const ELEMENT_REGISTRY = {
     renderers: { konva: "chart", domOverlay: "chart", domOverlayOrder: 20 },
     export: { pptx: "chart", pdf: "raster" },
     createDefault: () => ({
-	      ...base,
-	      size: { width: 4.2, height: 1.8 },
-	      type: "chart",
-	      chart_type: "bar",
-	      title: "Chart title",
-	      color: "D4A24C",
-	      axis_color: "9AA7BD",
-	      data_labels_color: "6A7894",
-	      data_labels: true,
-	      series_colors: ["D4A24C", "3E78B2", "0B1F3A"],
+      ...base,
+      size: { width: 4.2, height: 1.8 },
+      type: "chart",
+      chart_type: "bar",
+      title: "Chart title",
+      color: "D4A24C",
+      axis_color: "9AA7BD",
+      data_labels_color: "6A7894",
+      data_labels: true,
+      series_colors: ["D4A24C", "3E78B2", "0B1F3A"],
       categories: ["A", "B", "C"],
       series: [{ name: "Chart title", values: [42, 68, 54] }],
       data: [
@@ -235,15 +232,15 @@ export const ELEMENT_REGISTRY = {
     renderers: { konva: "infographic", domOverlay: null },
     export: { pptx: "infographic", pdf: "raster" },
     createDefault: () => ({
-	      ...base,
-	      size: { width: 2.4, height: 1.2 },
-	      type: "infographic",
-	      infographic_type: "gauge",
-	      min_value: 0,
-	      max_value: 100,
-	      value: 65,
-	      base_color: "E5E7EB",
-	      highlight_color: "2563EB",
+      ...base,
+      size: { width: 2.4, height: 1.2 },
+      type: "infographic",
+      infographic_type: "gauge",
+      min_value: 0,
+      max_value: 100,
+      value: 65,
+      base_color: "E5E7EB",
+      highlight_color: "2563EB",
     }),
   },
   table: {
@@ -287,26 +284,6 @@ export const ELEMENT_REGISTRY = {
       fit: "contain",
     }),
   },
-  svg: {
-    label: "SVG",
-    addable: false,
-    toolbar: "svg",
-    inspector: "svg",
-    renderers: { konva: "svg", domOverlay: "svg", domOverlayOrder: 10 },
-    export: { pptx: "svg", pdf: "raster" },
-    createDefault: () => ({
-      ...base,
-      size: { width: 2.4, height: 2.4 },
-      type: "svg",
-      name: "SVG shape",
-      svg:
-        '<svg viewBox="0 0 240 240" xmlns="http://www.w3.org/2000/svg">' +
-        '<rect width="240" height="240" rx="24" fill="#0B1F3A"/>' +
-        '<circle cx="120" cy="120" r="74" fill="none" stroke="#D4A24C" stroke-width="14"/>' +
-        '<path d="M62 142 C94 70, 145 70, 178 142" fill="none" stroke="#75AADB" stroke-width="14" stroke-linecap="round"/>' +
-        "</svg>",
-    }),
-  },
   "text-list": {
     label: "Bullets",
     addable: true,
@@ -322,17 +299,17 @@ export const ELEMENT_REGISTRY = {
       ...base,
       size: { width: 2.6, height: 1.35 },
       type: "text-list",
-	      marker: "bullet",
-	      items: [
-	        [{ text: "First point" }],
-	        [{ text: "Second point" }],
-	      ],
+      marker: "bullet",
+      items: [
+        [{ text: "First point" }],
+        [{ text: "Second point" }],
+      ],
       font: {
         family: "Arial",
-	        size: 18,
-	        color: "1A2B45",
-	        line_height: 1.25,
-	      },
+        size: 18,
+        color: "1A2B45",
+        line_height: 1.25,
+      },
     }),
   },
   text: {

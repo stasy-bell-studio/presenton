@@ -37,7 +37,7 @@ import {
   type TextSelectionRange,
 } from "../lib/text-runs";
 import { DeferredColorInput } from "./DeferredColorInput";
-import { InlineToolbar } from "./InlineToolbar";
+import { inlineStyles } from "./inlineStyles";
 
 const SYSTEM_FONT_FAMILIES = [
   "Arial",
@@ -233,7 +233,13 @@ export function TextToolbar({
   }, [font.family, loadFontFamily]);
 
   return (
-    <InlineToolbar element={element} scale={scale} offset={52} unstyled>
+    <div data-inline-edit-ignore="true"
+      style={{
+        ...inlineStyles.toolbar,
+        left: Math.max(8, (element.position?.x ?? 0) * scale),
+        top: Math.max(8, (element.position?.y ?? 0) * scale - 52),
+      }}
+      onMouseDown={(event) => event.stopPropagation()}>
       <div style={textToolbarStyles.toolbar}>
         {extraControls}
         {extraControls ? <Divider /> : null}
@@ -515,7 +521,7 @@ export function TextToolbar({
           <Link size={18} strokeWidth={2.4} aria-hidden="true" />
         </ToolbarButton>
       </div>
-    </InlineToolbar>
+    </div>
   );
 }
 

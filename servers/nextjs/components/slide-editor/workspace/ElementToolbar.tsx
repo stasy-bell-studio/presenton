@@ -6,16 +6,18 @@ import type { TextSelectionRange } from "../lib/text-runs";
 import {
   BulletsToolbar,
   ChartToolbar,
-  DesignVariablesToolbar,
+
   ImageToolbar,
   LineToolbar,
   ShapeToolbar,
-  SvgToolbar,
+
   TableToolbar,
-  TextToolbar,
+
 } from "../inline";
 import { getElementDefinition, type ElementToolbarKey } from "../registry";
 import type { TableCellSelection } from "../state";
+import { DesignVariablesToolbar } from "../inline/DesignVariablesToolbar";
+import { TextToolbar } from "../inline/TextToolbar";
 
 type ElementToolbarProps = {
   element: SlideElement;
@@ -108,15 +110,7 @@ const TOOLBAR_RENDERERS = {
         onEdit={onEditChart ? (index) => onEditChart(index, path) : undefined}
       />
     ) : null,
-  svg: ({ element, index, onChange, path, scale }) =>
-    element.type === "svg" ? (
-      <SvgToolbar
-        element={element}
-        index={index}
-        scale={scale}
-        onChange={(index, element) => onChange(index, element, path)}
-      />
-    ) : null,
+
   table: ({ element, index, onChange, path, scale, selectedTableCell }) =>
     element.type === "table" ? (
       <TableToolbar

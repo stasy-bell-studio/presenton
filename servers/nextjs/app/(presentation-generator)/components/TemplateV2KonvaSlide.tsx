@@ -385,22 +385,15 @@ function TemplateV2KonvaSlideComponent({
           keyForSelection(inlineEdit.selection) === keyForSelection(selection)
           ? setRawTextRunsContent(selectedElement, inlineEdit.runs)
           : inlineEdit &&
-              inlineEdit.kind === "text-list" &&
-              inlineEdit.runs &&
-              selection?.kind === "element" &&
-              keyForSelection(inlineEdit.selection) === keyForSelection(selection)
+            inlineEdit.kind === "text-list" &&
+            inlineEdit.runs &&
+            selection?.kind === "element" &&
+            keyForSelection(inlineEdit.selection) === keyForSelection(selection)
             ? setRawTextListRunsContent(selectedElement, inlineEdit.runs)
             : selectedElement;
       return rawElementForEditorToolbar(inlineTextElement, selectedBox);
     },
     [inlineEdit, selectedBox, selectedElement, selection],
-  );
-  const componentToolbarElement = useMemo(
-    () =>
-      selectedComponent
-        ? rawComponentForEditorToolbar(selectedComponent)
-        : null,
-    [selectedComponent],
   );
   const canUngroupSelectedComponent = useMemo(
     () =>
@@ -1064,16 +1057,6 @@ function TemplateV2KonvaSlideComponent({
     [layoutToolbarTarget, updateComponent],
   );
 
-  const applyComponentToolbarChange = useCallback(
-    (editorElement: SlideElement) => {
-      if (selection?.kind !== "component") return;
-      updateComponent(selection.componentIndex, (component) =>
-        mergeEditorToolbarComponent(component, editorElement),
-      );
-    },
-    [selection, updateComponent],
-  );
-
   const ungroupSelectedComponent = useCallback(() => {
     if (selection?.kind !== "component" || !canUngroupSelectedComponent) return;
     const result = ungroupTemplateV2ComponentInUi(
@@ -1531,22 +1514,6 @@ function TemplateV2KonvaSlideComponent({
           slideWidth={STAGE_WIDTH}
           onLayerAction={reorderSelectedComponentLayer}
           onUngroup={ungroupSelectedComponent}
-        />
-      ) : null}
-      {isEditMode &&
-        selection?.kind === "component" &&
-        componentToolbarElement ? (
-        <ElementToolbar
-          element={componentToolbarElement}
-          index={selection.componentIndex}
-          path={keyForSelection(selection)}
-          scale={EDITOR_SCALE}
-          selectedTableCell={selectedTableCell}
-          templateFonts={templateFonts}
-          onChange={(_index, element) =>
-            applyComponentToolbarChange(element)
-          }
-          onEditImage={() => undefined}
         />
       ) : null}
       {isEditMode && layoutToolbarTarget ? (
@@ -2684,21 +2651,7 @@ function RawImageElement({
     if (!isStaticSvgIconSource(src, baseUrl)) return src;
     return buildSvgUpdateUrl(src, baseUrl, { color }) ?? src;
   }, [color, isIcon, src]);
-  const [loaded, setLoaded] = useState<HTMLImageElement | null>(null);
-
-  useEffect(() => {
-    if (!renderSrc) {
-      setLoaded(null);
-      return;
-    }
-    let cancelled = false;
-    void loadKonvaImage(renderSrc).then((image) => {
-      if (!cancelled) setLoaded(image);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [renderSrc]);
+  const loaded = useLoadedKonvaImage(renderSrc);
 
   if (!loaded) {
     return (
@@ -2763,6 +2716,28 @@ function RawImageElement({
       />
     </Group>
   );
+}
+
+function useLoadedKonvaImage(src: string | null): HTMLImageElement | null {
+  const [loaded, setLoaded] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (!src) {
+      setLoaded(null);
+      return;
+    }
+
+    let cancelled = false;
+    void loadKonvaImage(src).then((image) => {
+      if (!cancelled) setLoaded(image);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [src]);
+
+  return loaded;
 }
 
 function imageCornerRadii(
@@ -4551,130 +4526,6 @@ function normalizeMarkdownTextElementTree(value: unknown): unknown {
   return normalizedChildren === childInfo.items
     ? next
     : withUpdatedChildItems(next, childInfo, normalizedChildren);
-}
-
-function rawComponentForEditorToolbar(
-  component: RawComponent,
-): SlideElement {
-  const box = componentBox(component);
-  return {
-    ...component,
-    type: "group",
-    position: { x: box.x / EDITOR_SCALE, y: box.y / EDITOR_SCALE },
-    size: {
-      width: box.width / EDITOR_SCALE,
-      height: box.height / EDITOR_SCALE,
-    },
-    children: readArray(component.elements)
-      .filter(isRecord)
-      .map((element) => rawElementTreeForEditor(element)),
-  } as unknown as SlideElement;
-}
-
-function rawElementTreeForEditor(element: RawElement): SlideElement {
-  const box = elementBox(element);
-  const projected =
-    rawElementForEditorToolbar(element, box) ??
-    ({
-      ...element,
-      position: { x: box.x / EDITOR_SCALE, y: box.y / EDITOR_SCALE },
-      size: {
-        width: box.width / EDITOR_SCALE,
-        height: box.height / EDITOR_SCALE,
-      },
-    } as unknown as SlideElement);
-  const next = { ...(projected as unknown as UnknownRecord) };
-
-  if (Array.isArray(element.children)) {
-    next.children = element.children
-      .filter(isRecord)
-      .map((child) => rawElementTreeForEditor(child));
-  } else if (Array.isArray(element.elements)) {
-    next.children = element.elements
-      .filter(isRecord)
-      .map((child) => rawElementTreeForEditor(child));
-    delete next.elements;
-  } else if (isRecord(element.child)) {
-    next.child = rawElementTreeForEditor(element.child);
-  }
-
-  return next as unknown as SlideElement;
-}
-
-function mergeEditorToolbarComponent(
-  current: RawComponent,
-  editorElement: SlideElement,
-): RawComponent {
-  const editor = editorElement as unknown as UnknownRecord;
-  const editorPosition = asRecord(editor.position);
-  const editorSize = asRecord(editor.size);
-  const currentElements = readArray(current.elements);
-  const editorChildren = readArray(editor.children);
-  return {
-    ...current,
-    position: {
-      x: (readNumber(editorPosition?.x) ?? componentBox(current).x / EDITOR_SCALE) *
-        EDITOR_SCALE,
-      y: (readNumber(editorPosition?.y) ?? componentBox(current).y / EDITOR_SCALE) *
-        EDITOR_SCALE,
-    },
-    size: {
-      width:
-        (readNumber(editorSize?.width) ??
-          componentBox(current).width / EDITOR_SCALE) * EDITOR_SCALE,
-      height:
-        (readNumber(editorSize?.height) ??
-          componentBox(current).height / EDITOR_SCALE) * EDITOR_SCALE,
-    },
-    design_variables: editor.design_variables ?? current.design_variables,
-    elements: currentElements.map((value, index) => {
-      const raw = asRecord(value);
-      const edited = asRecord(editorChildren[index]);
-      return raw && edited
-        ? mergeEditorElementTree(raw, edited as unknown as SlideElement)
-        : value;
-    }),
-  };
-}
-
-function mergeEditorElementTree(
-  current: RawElement,
-  editorElement: SlideElement,
-): RawElement {
-  const merged = mergeEditorToolbarElement(
-    current,
-    editorElement,
-    elementBox(current),
-  );
-  const editor = editorElement as unknown as UnknownRecord;
-
-  if (Array.isArray(current.children)) {
-    const editorChildren = readArray(editor.children);
-    merged.children = current.children.map((value, index) => {
-      const raw = asRecord(value);
-      const edited = asRecord(editorChildren[index]);
-      return raw && edited
-        ? mergeEditorElementTree(raw, edited as unknown as SlideElement)
-        : value;
-    });
-  } else if (Array.isArray(current.elements)) {
-    const editorChildren = readArray(editor.children);
-    merged.elements = current.elements.map((value, index) => {
-      const raw = asRecord(value);
-      const edited = asRecord(editorChildren[index]);
-      return raw && edited
-        ? mergeEditorElementTree(raw, edited as unknown as SlideElement)
-        : value;
-    });
-    delete merged.children;
-  } else if (isRecord(current.child) && isRecord(editor.child)) {
-    merged.child = mergeEditorElementTree(
-      current.child,
-      editor.child as unknown as SlideElement,
-    );
-  }
-
-  return merged;
 }
 
 function rawElementForEditorToolbar(
