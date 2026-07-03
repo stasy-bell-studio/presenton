@@ -62,17 +62,20 @@ import {
   rawSvgContent,
   rawTableCellText,
   rawTextContent,
-  rawTextListContent,
   rawTextListItemText,
+  rawTextListRenderTextRuns,
+  rawTextListRunsForEditor,
   rawTextRunsForEditor,
   rawTextStyle,
   scaleRawTextMetrics,
   setRawSvgContent,
   setRawTextContent,
   setRawTextListContent,
+  setRawTextListRunsContent,
   setRawTextRunsContent,
   textRunsHaveMixedStyle,
   textVisualLocalBox,
+  type RenderTextRun,
   verticalTextStartY,
 } from "@/components/slide-editor/lib/template-v2-text";
 import {
@@ -381,7 +384,13 @@ function TemplateV2KonvaSlideComponent({
           selection?.kind === "element" &&
           keyForSelection(inlineEdit.selection) === keyForSelection(selection)
           ? setRawTextRunsContent(selectedElement, inlineEdit.runs)
-          : selectedElement;
+          : inlineEdit &&
+              inlineEdit.kind === "text-list" &&
+              inlineEdit.runs &&
+              selection?.kind === "element" &&
+              keyForSelection(inlineEdit.selection) === keyForSelection(selection)
+            ? setRawTextListRunsContent(selectedElement, inlineEdit.runs)
+            : selectedElement;
       return rawElementForEditorToolbar(inlineTextElement, selectedBox);
     },
     [inlineEdit, selectedBox, selectedElement, selection],
@@ -927,10 +936,12 @@ function TemplateV2KonvaSlideComponent({
           style: rawTextStyle(normalized.element),
         });
       } else if (type === "text-list") {
+        const runs = rawTextListRunsForEditor(element);
         startInlineEdit({
           kind: "text-list",
           selection: elementSelection,
-          draft: rawTextListContent(element),
+          draft: textRunsContent(runs),
+          runs,
           frame,
           style: rawTextStyle(element),
         });
@@ -952,7 +963,9 @@ function TemplateV2KonvaSlideComponent({
       if (!current) return;
       if (commit) {
         const runs =
-          current.kind === "text" ? runsOverride ?? current.runs : current.runs;
+          current.kind === "text" || current.kind === "text-list"
+            ? runsOverride ?? current.runs
+            : current.runs;
         updateElement(current.selection, (element) =>
           elementWithInlineDraft(
             element,
@@ -973,12 +986,13 @@ function TemplateV2KonvaSlideComponent({
   const commitInlineTextRuns = useCallback(
     (elementSelection: ElementSelection, runs: TextRun[]) => {
       updateInlineRuns(elementSelection, runs);
+      const kind = inlineEdit?.kind === "text-list" ? "text-list" : "text";
       updateElement(
         elementSelection,
         (element) =>
           elementWithInlineDraft(
             element,
-            "text",
+            kind,
             textRunsContent(runs),
             undefined,
             inlineEdit?.frame,
@@ -987,7 +1001,7 @@ function TemplateV2KonvaSlideComponent({
         false,
       );
     },
-    [inlineEdit?.frame, updateElement, updateInlineRuns],
+    [inlineEdit?.frame, inlineEdit?.kind, updateElement, updateInlineRuns],
   );
 
   const applyToolbarElementChange = useCallback(
@@ -1010,6 +1024,15 @@ function TemplateV2KonvaSlideComponent({
             ...active,
             draft: rawTextContent(next),
             runs: rawTextRunsForEditor(next),
+            style: rawTextStyle(next),
+          };
+        }
+        if (active.kind === "text-list") {
+          const runs = rawTextListRunsForEditor(next);
+          return {
+            ...active,
+            draft: textRunsContent(runs),
+            runs,
             style: rawTextStyle(next),
           };
         }
@@ -1558,7 +1581,7 @@ function TemplateV2KonvaSlideComponent({
           templateFonts={templateFonts}
           textSelectionRange={
             inlineEdit &&
-              inlineEdit.kind === "text" &&
+              (inlineEdit.kind === "text" || inlineEdit.kind === "text-list") &&
               keyForSelection(inlineEdit.selection) === keyForSelection(selection)
               ? inlineEdit.textSelectionRange
               : null
@@ -2417,7 +2440,7 @@ function RawElementVisual({
         element={element}
         width={width}
         height={height}
-        text={rawTextListContent(element)}
+        runs={rawTextListRenderTextRuns(element)}
         interactive={interactive}
       />
     );
@@ -2467,18 +2490,23 @@ function RawRichTextElement({
   width,
   height,
   text,
+  runs: runsOverride,
   interactive,
 }: {
   element: RawElement;
   width: number;
   height: number;
   text?: string;
+  runs?: RenderTextRun[];
   interactive: boolean;
 }) {
   const font = rawFont(element);
-  const content = text ?? rawTextContent(element);
+  const renderRuns =
+    runsOverride ?? (text == null ? rawRenderTextRuns(element) : []);
+  const content =
+    text ??
+    (runsOverride ? textRunsContent(runsOverride) : rawTextContent(element));
   const displayContent = displayText(content);
-  const renderRuns = text == null ? rawRenderTextRuns(element) : [];
   const renderRunsDifferFromElement =
     renderRuns.length > 0 &&
     textRunsHaveMixedStyle([{ text: "", font }, ...renderRuns]);
@@ -2558,11 +2586,9 @@ function RawRichTextElement({
     );
   }
 
-  // Multi-run (partially styled) text elements are laid out per-run so each
-  // segment keeps its own font. Everything else — text-list (explicit joined
-  // string) and single-run text — uses the original single-node path, so
-  // existing content renders byte-for-byte as before.
-  const runs = typeof text === "string" ? null : rawRenderTextRuns(element);
+  // Multi-run text is laid out per-run so each segment keeps its own font.
+  // Single-run text still uses Konva's native Text node.
+  const runs = typeof text === "string" && !runsOverride ? null : renderRuns;
   if (runs && runs.length > 1) {
     const { tokens } = layoutRichText(
       runs,
@@ -4331,7 +4357,7 @@ function elementSize(element: RawElement, fallback?: Size): Size {
   }
   if (type === "text-list") {
     const font = rawFont(element);
-    const text = displayText(rawTextListContent(element));
+    const text = displayText(textRunsContent(rawTextListRunsForEditor(element)));
     const width = fallback?.width ?? estimateTextWidth(text, font);
     return {
       width: Math.max(1, width),
@@ -4431,8 +4457,14 @@ function elementWithInlineDraft(
     return preserveInlineEditFrame(next, frame);
   }
   if (kind === "text-list") {
-    const next = setRawTextListContent(element, draft);
-    return preserveInlineEditFrame(style ? applyTextStyle(next, style) : next, frame);
+    const next =
+      runs != null
+        ? setRawTextListRunsContent(element, runs)
+        : setRawTextListContent(element, draft);
+    return preserveInlineEditFrame(
+      style ? applyTextStyle(next, style) : next,
+      frame,
+    );
   }
   if (kind === "svg") {
     return preserveInlineEditFrame(setRawSvgContent(element, draft), frame);

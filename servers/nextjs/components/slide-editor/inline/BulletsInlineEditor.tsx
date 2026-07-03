@@ -37,7 +37,7 @@ export function BulletsInlineEditor({
         onDraftChange(nextDraft);
         const items = nextDraft
           .split("\n")
-          .map((item) => item.replace(/^\s*[•*-]\s?/, "").trimEnd())
+          .map((item) => item.replace(/^\s*(?:[•*-]|\d+\.)\s?/, "").trimEnd())
           .filter((item) => item.trim())
           .slice(0, 8);
         onChange(index, setTextListStrings(element, items.length > 0 ? items : [" "]));

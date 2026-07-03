@@ -318,6 +318,43 @@ export function rawTextListContent(element: TemplateV2RawTextElement) {
   return items.map(rawTextListItemText).join("\n");
 }
 
+export function rawTextListRunsForEditor(
+  element: TemplateV2RawTextElement,
+): TextRun[] {
+  const baseFont = rawFont(element);
+  const fallbackFont = fontToSource(baseFont);
+  const items = readArray(element.items);
+  const runs: TextRun[] = [];
+
+  items.forEach((item, index) => {
+    const itemRuns = inferMissingMarkdownRunSpaces(
+      renderMarkdownTextRuns(rawTextListItemSourceRuns(item, baseFont)),
+    );
+    const itemFont = itemRuns[0]?.font ?? fallbackFont;
+    const prefix = textListMarkerPrefix(element.marker, index);
+
+    if (index > 0) appendTextRun(runs, "\n", itemFont);
+    if (prefix) appendTextRun(runs, prefix, itemFont);
+    itemRuns.forEach((run) =>
+      appendTextRun(runs, run.text, run.font ?? itemFont),
+    );
+  });
+
+  return runs.length > 0 ? runs : [{ text: " ", font: fallbackFont }];
+}
+
+export function rawTextListRenderTextRuns(
+  element: TemplateV2RawTextElement,
+): RenderTextRun[] {
+  const baseFont = rawFont(element);
+  return rawTextListRunsForEditor(element)
+    .filter((run) => run.text)
+    .map((run) => ({
+      text: run.text,
+      font: fontFromRecord(asRecord(run.font), baseFont),
+    }));
+}
+
 export function rawTextListItemText(item: unknown) {
   if (typeof item === "string") return item;
   if (Array.isArray(item)) {
@@ -360,7 +397,7 @@ export function setRawTextListContent(
   const sourceItems = readArray(element.items);
   const texts = draft
     .split(/\r?\n/)
-    .map((item) => item.replace(/^\s*[•*-]\s?/, "").trimEnd())
+    .map((item) => item.replace(/^\s*(?:[•*-]|\d+\.)\s?/, "").trimEnd())
     .filter((item) => item.trim().length > 0);
   const items = (texts.length > 0 ? texts : [" "]).map((text, index) =>
     rawTextListItemWithText(
@@ -368,6 +405,29 @@ export function setRawTextListContent(
       text,
     ),
   );
+  return { ...element, items };
+}
+
+export function setRawTextListRunsContent(
+  element: TemplateV2RawTextElement,
+  runs: TextRun[],
+): TemplateV2RawTextElement {
+  const sourceItems = readArray(element.items);
+  const stripMarker = readString(element.marker) !== "none";
+  const lines = splitTextRunsOnNewlines(runs)
+    .map((line) => (stripMarker ? stripTextListMarkerFromRuns(line) : line))
+    .map((line) => line.filter((run) => run.text))
+    .filter((line) => textRunsContent(line).trim().length > 0);
+
+  const fallbackItem = sourceItems[sourceItems.length - 1];
+  const items = (lines.length > 0 ? lines : [[{ text: " " }]]).map(
+    (line, index) =>
+      rawTextListItemWithRuns(
+        sourceItems[index] ?? fallbackItem,
+        line as TextRun[],
+      ),
+  );
+
   return { ...element, items };
 }
 
@@ -890,6 +950,143 @@ function scaleFontSize(size: number, scale: number) {
 
 function scaleTextMetric(value: number, scale: number) {
   return Math.round(value * scale * 100) / 100;
+}
+
+function rawTextListItemSourceRuns(
+  item: unknown,
+  fallback: RenderTextFont,
+): TextRun[] {
+  const fallbackFont = fontToSource(fallback);
+  if (typeof item === "string") return [{ text: item, font: fallbackFont }];
+  if (typeof item === "number") {
+    return [{ text: String(item), font: fallbackFont }];
+  }
+
+  if (Array.isArray(item)) {
+    const runs = item
+      .map((run) => rawRunRecordToTextRun(run, fallback))
+      .filter((run): run is TextRun => Boolean(run));
+    return runs.length > 0 ? runs : [{ text: " ", font: fallbackFont }];
+  }
+
+  const record = asRecord(item);
+  if (!record) return [];
+  const itemFont = fontFromRecord(asRecord(record.font), fallback);
+  const runs = readArray(record.runs)
+    .map((run) => rawRunRecordToTextRun(run, itemFont))
+    .filter((run): run is TextRun => Boolean(run));
+  if (runs.length > 0) return runs;
+
+  const text = readString(record.text);
+  if (text != null) return [{ text, font: fontToSource(itemFont) }];
+  return [];
+}
+
+function rawRunRecordToTextRun(
+  value: unknown,
+  fallback: RenderTextFont,
+): TextRun | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const text = readString(record.text) ?? "";
+  if (!text) return null;
+  return {
+    text,
+    font: fontToSource(fontFromRecord(asRecord(record.font), fallback)),
+  };
+}
+
+function textListMarkerPrefix(value: unknown, index: number) {
+  const marker = readString(value);
+  if (marker === "none") return "";
+  if (marker === "number") return `${index + 1}. `;
+  return "• ";
+}
+
+function rawTextListItemWithRuns(source: unknown, runs: TextRun[]): unknown {
+  const sourceRuns = Array.isArray(source)
+    ? source
+    : readArray(asRecord(source)?.runs);
+  return runs.map((run, index) => {
+    const sourceRun = asRecord(sourceRuns[index]) ?? {};
+    return {
+      ...sourceRun,
+      text: run.text,
+      font: rawInlineTextFontRecord(run.font, sourceRun.font),
+    };
+  });
+}
+
+function splitTextRunsOnNewlines(runs: TextRun[]): TextRun[][] {
+  const lines: TextRun[][] = [[]];
+
+  for (const run of runs) {
+    const parts = (run.text || "").split(/\r?\n/);
+    parts.forEach((part, index) => {
+      if (index > 0) lines.push([]);
+      if (!part) return;
+      lines[lines.length - 1].push({
+        ...run,
+        text: part,
+        font: run.font ? { ...run.font } : undefined,
+      });
+    });
+  }
+
+  return lines;
+}
+
+function stripTextListMarkerFromRuns(runs: TextRun[]): TextRun[] {
+  const marker = textRunsContent(runs).match(
+    /^\s*(?:[-*•]\s+|\d+\.\s+)/u,
+  )?.[0];
+  if (!marker) return runs;
+  return removeTextRunPrefix(runs, marker.length);
+}
+
+function removeTextRunPrefix(runs: TextRun[], length: number): TextRun[] {
+  let remaining = length;
+  const stripped: TextRun[] = [];
+
+  for (const run of runs) {
+    if (remaining <= 0) {
+      stripped.push(cloneTextRun(run));
+      continue;
+    }
+
+    const text = run.text ?? "";
+    if (text.length <= remaining) {
+      remaining -= text.length;
+      continue;
+    }
+
+    const consumed = remaining;
+    remaining = 0;
+    stripped.push({
+      ...run,
+      text: text.slice(consumed),
+      font: run.font ? { ...run.font } : undefined,
+    });
+  }
+
+  return stripped;
+}
+
+function appendTextRun(
+  runs: TextRun[],
+  text: string,
+  font: TextRun["font"],
+) {
+  if (!text) return;
+  const previous = runs[runs.length - 1];
+  if (
+    previous &&
+    JSON.stringify(previous.font ?? null) === JSON.stringify(font ?? null)
+  ) {
+    previous.text += text;
+    return;
+  }
+  runs.push(font ? { text, font: { ...font } } : { text });
 }
 
 function reconcileTextRunsWithStoredText(

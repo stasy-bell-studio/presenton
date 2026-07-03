@@ -33,7 +33,7 @@ export function useTemplateV2InlineEditing<Selection>({
     (selection: Selection, runs: TextRun[]) => {
       setInlineEdit((current) =>
         current &&
-        current.kind === "text" &&
+        (current.kind === "text" || current.kind === "text-list") &&
         keyForSelection(current.selection) === keyForSelection(selection)
           ? { ...current, draft: textRunsContent(runs), runs }
           : current,
@@ -46,7 +46,7 @@ export function useTemplateV2InlineEditing<Selection>({
     (selection: Selection, textSelectionRange: TextSelectionRange | null) => {
       setInlineEdit((current) =>
         current &&
-        current.kind === "text" &&
+        (current.kind === "text" || current.kind === "text-list") &&
         keyForSelection(current.selection) === keyForSelection(selection)
           ? { ...current, textSelectionRange }
           : current,

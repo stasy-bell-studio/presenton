@@ -233,6 +233,7 @@ const elementItems = [
 const templateBlocksCache = new Map<string, TemplateBlockGroup[]>();
 const BLOCK_PREVIEW_WIDTH = 1280;
 const BLOCK_PREVIEW_HEIGHT = 720;
+const TEMPLATE_V2_EDITOR_PX_PER_IN = 128;
 const DEFAULT_BAR_CHART_SOURCE = "presenton-default-bar-chart";
 const DEFAULT_LINE_CHART_SOURCE = "presenton-default-line-chart";
 const DEFAULT_AREA_CHART_SOURCE = "presenton-default-area-chart";
@@ -279,23 +280,49 @@ const makeTextElement = ({
   },
 });
 
-const makeBulletListElement = (): SlideElement => ({
-  type: "text-list",
-  position: { x: 0.95, y: 1.2 },
-  size: { width: 5.4, height: 1.5 },
-  marker: "bullet",
-  items: [
-    [{ text: "First point" }],
-    [{ text: "Second point" }],
-    [{ text: "Third point" }],
-  ],
-  font: {
-    family: "Arial",
+const makeBulletListElement = (): SlideElement => {
+  const px = (value: number) => value / TEMPLATE_V2_EDITOR_PX_PER_IN;
+  const baseFont = {
     size: 18,
-    color: "101323",
-    line_height: 1.3,
-  },
-});
+    family: "Inter",
+    color: "#111111",
+    bold: false,
+    italic: false,
+    line_height: 1.4,
+    letter_spacing: 0,
+    wrap: "word" as const,
+    ellipsis: false,
+  };
+  const firstFont = { ...baseFont, bold: true };
+  const secondFont = { ...baseFont };
+  const thirdFont = { ...baseFont, italic: true };
+
+  return {
+    type: "text-list",
+    position: {
+      x: px(120),
+      y: px(80),
+    },
+    size: {
+      width: px(420),
+      height: px(260),
+    },
+    rotation: 0,
+    font: baseFont,
+    marker: "bullet",
+    items: [
+      [{ text: "Gather requirements", font: firstFont }],
+      [{ text: "Design architecture", font: secondFont }],
+      [{ text: "Implement API", font: thirdFont }],
+    ],
+    decorative: false,
+    name: "Project task list",
+    max_items: 6,
+    min_items: 3,
+    max_item_length: 60,
+    min_item_length: 30,
+  };
+};
 
 const createTextInsertElements = (kind?: string): SlideElement[] => {
   switch (kind) {
@@ -903,11 +930,11 @@ function templateBlockGroupsFromTemplate(template: unknown): TemplateBlockGroup[
 
       return variantBlocks.length > 0
         ? {
-            key: baseBlock.key,
-            title: baseBlock.title,
-            description: baseBlock.description,
-            variants: variantBlocks,
-          }
+          key: baseBlock.key,
+          title: baseBlock.title,
+          description: baseBlock.description,
+          variants: variantBlocks,
+        }
         : null;
     })
     .filter((group): group is TemplateBlockGroup => Boolean(group));
@@ -1224,12 +1251,12 @@ function BlockGroupCard({
           <div className="space-y-3 pt-3">
             {hasExpanded
               ? additionalVariants.map((block) => (
-                  <BlockVariantButton
-                    key={block.key}
-                    block={block}
-                    onInsertBlock={onInsertBlock}
-                  />
-                ))
+                <BlockVariantButton
+                  key={block.key}
+                  block={block}
+                  onInsertBlock={onInsertBlock}
+                />
+              ))
               : null}
           </div>
         </div>
@@ -1604,14 +1631,12 @@ function templateV2TargetKey(
   target: TemplateV2SurfaceSelectedDetail["selection"],
 ) {
   if (target?.kind === "element") {
-    return `slide:${slideIndex ?? ""}:element:${
-      target.elementPath ?? target.componentIndex ?? ""
-    }`;
+    return `slide:${slideIndex ?? ""}:element:${target.elementPath ?? target.componentIndex ?? ""
+      }`;
   }
   if (target?.kind === "component") {
-    return `slide:${slideIndex ?? ""}:component:${
-      target.componentId ?? target.componentIndex ?? ""
-    }`;
+    return `slide:${slideIndex ?? ""}:component:${target.componentId ?? target.componentIndex ?? ""
+      }`;
   }
   return null;
 }

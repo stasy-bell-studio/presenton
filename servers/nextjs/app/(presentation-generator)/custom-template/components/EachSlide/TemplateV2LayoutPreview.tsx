@@ -267,9 +267,10 @@ function renderTextList(
   key: string,
   mode: RenderMode
 ) {
-  const marker = readString(element.marker);
-  const items = Array.isArray(element.items) ? element.items : [];
-  const ListTag = marker === "number" ? "ol" : "ul";
+  const runs = readTextListRuns(element);
+  const alignment = readRecord(element.alignment);
+  const horizontal = readString(alignment.horizontal);
+  const vertical = readString(alignment.vertical);
 
   return (
     <div
@@ -277,34 +278,49 @@ function renderTextList(
       style={{
         ...frameStyle(element, mode),
         ...fontStyle(element.font),
+        alignItems: verticalAlign(vertical),
+        display: "flex",
+        justifyContent: horizontalAlign(horizontal),
+        lineHeight: readLineHeight(element.font) ?? 1.1,
         overflow: "hidden",
+        textAlign: textAlign(horizontal),
+        whiteSpace: "pre-wrap",
+        wordBreak: "break-word",
       }}
     >
-      <ListTag
-        style={{
-          listStyleType: marker === "none" ? "none" : undefined,
-          margin: 0,
-          paddingLeft: marker === "none" ? 0 : 24,
-        }}
-      >
-        {items.map((item, itemIndex) => {
-          const runs = readTextListItemRuns(item);
-          return (
-            <li key={`${key}-item-${itemIndex}`}>
-              {runs.map((run, runIndex) => (
-                <span
-                  key={`${key}-item-${itemIndex}-run-${runIndex}`}
-                  style={fontStyle({ ...(element.font ?? {}), ...(run.font ?? {}) })}
-                >
-                  {run.text ?? ""}
-                </span>
-              ))}
-            </li>
-          );
-        })}
-      </ListTag>
+      <span style={{ width: "100%" }}>
+        {runs.map((run, runIndex) => (
+          <span
+            key={`${key}-list-run-${runIndex}`}
+            style={fontStyle({ ...(element.font ?? {}), ...(run.font ?? {}) })}
+          >
+            {run.text ?? ""}
+          </span>
+        ))}
+      </span>
     </div>
   );
+}
+
+function readTextListRuns(element: TemplateV2Element): TemplateV2TextRun[] {
+  const marker = readString(element.marker);
+  const items = Array.isArray(element.items) ? element.items : [];
+  const runs: TemplateV2TextRun[] = [];
+
+  items.forEach((item, itemIndex) => {
+    const itemRuns = readTextListItemRuns(item);
+    const prefix =
+      marker === "none" ? "" : marker === "number" ? `${itemIndex + 1}. ` : "• ";
+    if (itemIndex > 0) {
+      runs.push({ text: "\n", font: itemRuns[0]?.font });
+    }
+    if (prefix) {
+      runs.push({ text: prefix, font: itemRuns[0]?.font });
+    }
+    runs.push(...itemRuns);
+  });
+
+  return runs;
 }
 
 function readTextListItemRuns(item: unknown): TemplateV2TextRun[] {

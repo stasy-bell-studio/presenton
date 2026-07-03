@@ -51,12 +51,22 @@ const TOOLBAR_RENDERERS = {
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  bullets: ({ element, index, onChange, path, scale }) =>
+  bullets: ({
+    element,
+    index,
+    onChange,
+    path,
+    scale,
+    templateFonts,
+    textSelectionRange,
+  }) =>
     element.type === "text-list" ? (
       <BulletsToolbar
         element={element}
         index={index}
         scale={scale}
+        selectionRange={textSelectionRange}
+        templateFonts={templateFonts}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

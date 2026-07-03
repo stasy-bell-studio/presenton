@@ -463,30 +463,25 @@ function renderText(item: JsonRecord, mode: RenderMode): string {
 }
 
 function renderTextList(item: JsonRecord, mode: RenderMode): string {
-  const marker = readString(item.marker);
-  const tag = marker === "number" ? "ol" : "ul";
-  const entries = readArray(item.items)
-    .map((entry) => {
-      const runs = readListRuns(entry);
-      const html = runs
-        .map(
-          (run) =>
-            `<span style="${fontStyle({
-              ...readRecord(item.font),
-              ...readRecord(run.font),
-            })}">${escapeHtml(readStringValue(run.text))}</span>`
-        )
-        .join("");
-      return `<li>${html}</li>`;
+  const font = readRecord(item.font);
+  const alignment = readRecord(item.alignment);
+  const horizontal = readString(alignment.horizontal);
+  const vertical = readString(alignment.vertical);
+  const runs = readTextListRuns(item);
+  const runHtml = runs
+    .map((run) => {
+      const runFont = { ...font, ...readRecord(run.font) };
+      return `<span style="${fontStyle(runFont)}">${escapeHtml(
+        readStringValue(run.text)
+      )}</span>`;
     })
     .join("");
-  const listStyle = `margin:0;padding-left:${marker === "none" ? 0 : 24}px;${
-    marker === "none" ? "list-style-type:none;" : ""
-  }`;
 
-  return `<div style="${frameStyle(item, mode)}${transformStyle(item)}${fontStyle(
-    readRecord(item.font)
-  )}overflow:hidden"><${tag} style="${listStyle}">${entries}</${tag}></div>`;
+  return `<div style="${frameStyle(item, mode)}${transformStyle(item)}${fontStyle(font)}display:flex;align-items:${verticalAlign(
+    vertical
+  )};justify-content:${horizontalAlign(horizontal)};line-height:${cssNumber(
+    readNumber(font.lineHeight ?? font.line_height) ?? 1.1
+  )};overflow:hidden;text-align:${textAlign(horizontal)};white-space:pre-wrap;word-break:break-word"><span style="width:100%">${runHtml}</span></div>`;
 }
 
 function renderTable(item: JsonRecord, mode: RenderMode): string {
@@ -1221,6 +1216,20 @@ function readListRuns(value: unknown): JsonRecord[] {
   const record = readRecord(value);
   const text = readStringValue(record.text || value);
   return text ? [{ text, font: record.font }] : [];
+}
+
+function readTextListRuns(item: JsonRecord): JsonRecord[] {
+  const marker = readString(item.marker);
+  const runs: JsonRecord[] = [];
+  readArray(item.items).forEach((entry, index) => {
+    const itemRuns = readListRuns(entry);
+    const prefix =
+      marker === "none" ? "" : marker === "number" ? `${index + 1}. ` : "• ";
+    if (index > 0) runs.push({ text: "\n", font: itemRuns[0]?.font });
+    if (prefix) runs.push({ text: prefix, font: itemRuns[0]?.font });
+    runs.push(...itemRuns);
+  });
+  return runs.length ? runs : [{ text: "" }];
 }
 
 function isComponent(item: JsonRecord): item is JsonRecord & { elements: unknown[] } {

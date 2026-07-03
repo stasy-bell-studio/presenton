@@ -1,5 +1,6 @@
 import { resolveBackendAssetUrl } from "@/utils/api";
 import { chartDataFromSeries } from "./chart-data";
+import { renderMarkdownTextRuns } from "./markdown-text";
 import {
   DeckSchema,
   SLIDE_H,
@@ -777,11 +778,13 @@ function adaptImage(raw: UnknownRecord): SlideElement {
 }
 
 function adaptTextList(raw: UnknownRecord): SlideElement {
+  const font = adaptFont(readRecord(raw, "font"));
+  const marker = readEnum(raw, ["bullet", "number", "none"], "marker");
   return {
     ...baseElement(raw),
     type: "text-list",
-    font: adaptFont(readRecord(raw, "font")),
-    marker: readEnum(raw, ["bullet", "number", "none"], "marker"),
+    font,
+    marker,
     items: adaptTextListItems(readArray(raw, "items")),
     max_items: readNumber(raw, "max_items"),
     min_items: readNumber(raw, "min_items"),
@@ -1331,17 +1334,23 @@ function widenSingleLineTextElement(element: TextElement): TextElement {
 function adaptTextListItems(value: unknown[]): TextListItem[] {
   const items = value
     .map((item) => {
+      let runs: TextRun[] = [];
       if (Array.isArray(item)) {
-        const runs = item
+        runs = item
           .map(adaptTextRun)
           .filter((run): run is TextRun => Boolean(run));
-        return runs.length > 0 ? runs : null;
+      } else {
+        const record = asRecord(item);
+        const text = truncateString(
+          readString(record?.text) ?? readString(item) ?? "",
+          180,
+        );
+        runs = text ? [textRun(text)] : [];
       }
-      const record = asRecord(item);
-      const text = truncateString(readString(record?.text) ?? readString(item) ?? "", 180);
-      return text ? [textRun(text)] : null;
+      if (runs.length === 0) return null;
+      return renderMarkdownTextRuns(runs).slice(0, 12);
     })
-    .filter((item): item is TextRun[] => Boolean(item))
+    .filter((item): item is TextRun[] => Boolean(item?.length))
     .slice(0, 8);
 
   return items.length > 0 ? items : [[textRun("List item")]];

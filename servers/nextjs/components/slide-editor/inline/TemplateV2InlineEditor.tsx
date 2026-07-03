@@ -57,6 +57,7 @@ export function TemplateV2InlineEditor({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const font = style ?? DEFAULT_TEXT_EDIT_STYLE;
   const isCode = kind === "svg";
+  const isRichText = kind === "text" || kind === "text-list";
   const fontSize = isCode ? 12 : font.size;
   const editorLineHeight = effectiveLineHeight({
     text: draft,
@@ -76,13 +77,13 @@ export function TemplateV2InlineEditor({
   }, [onClose]);
   const reportSelection = useCallback(
     (target: HTMLTextAreaElement) => {
-      if (kind !== "text") return;
+      if (!isRichText) return;
       onSelectionChange?.({
         start: target.selectionStart,
         end: target.selectionEnd,
       });
     },
-    [kind, onSelectionChange],
+    [isRichText, onSelectionChange],
   );
   const editorStyle: CSSProperties = {
     position: "absolute",
@@ -134,7 +135,7 @@ export function TemplateV2InlineEditor({
     <div
       ref={editorRef}
       data-inline-edit-ignore="true"
-      onBlur={kind === "text" ? undefined : closeAfterBlur}
+      onBlur={isRichText ? undefined : closeAfterBlur}
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}
       style={{
@@ -144,7 +145,7 @@ export function TemplateV2InlineEditor({
         pointerEvents: "none",
       }}
     >
-      {kind === "text" ? (
+      {isRichText ? (
         <TiptapInlineTextEditor
           baseFont={baseTextFont}
           editorStyle={editorStyle}

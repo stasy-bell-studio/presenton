@@ -93,6 +93,7 @@ export function TextToolbar({
   element,
   index,
   scale,
+  extraControls,
   selectionRange,
   templateFonts = EMPTY_TEMPLATE_FONTS,
   onChange,
@@ -100,6 +101,7 @@ export function TextToolbar({
   element: TextSlideElement;
   index: number;
   scale: number;
+  extraControls?: ReactNode;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
   onChange: (index: number, element: TextSlideElement) => void;
@@ -233,6 +235,8 @@ export function TextToolbar({
   return (
     <InlineToolbar element={element} scale={scale} offset={52} unstyled>
       <div style={textToolbarStyles.toolbar}>
+        {extraControls}
+        {extraControls ? <Divider /> : null}
         <label style={textToolbarStyles.fontControl}>
           <select
             aria-label="Font family"
