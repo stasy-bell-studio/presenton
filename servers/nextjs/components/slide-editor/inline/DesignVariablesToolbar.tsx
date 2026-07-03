@@ -5,7 +5,6 @@ import {
   designVariableOptionLabel,
   selectedDesignVariableOptionIndex,
 } from "../lib/design-variables";
-import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
 export function DesignVariablesToolbar({
@@ -23,7 +22,7 @@ export function DesignVariablesToolbar({
   if (variables.length === 0) return null;
 
   return (
-    <InlineToolbar element={element} scale={scale}>
+    <div style={{ ...inlineStyles.toolbar, left: Math.max(8, (element.position?.x ?? 0) * scale), top: Math.max(8, (element.position?.y ?? 0) * scale - 48) }} onMouseDown={(event) => event.stopPropagation()}>
       {variables.map((variable) => {
         const selectedIndex = selectedDesignVariableOptionIndex(element, variable);
         const label = designVariableNameLabel(variable.name);
@@ -54,6 +53,6 @@ export function DesignVariablesToolbar({
           </select>
         );
       })}
-    </InlineToolbar>
+    </div>
   );
 }

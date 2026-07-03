@@ -1,34 +1,34 @@
 import type { ReactNode } from "react";
 import type { SlideElement } from "../lib/slide-schema";
-import { rootPath, type ElementPath } from "../lib/element-path";
 import type { TemplateFontOption } from "../lib/google-fonts";
 import type { TextSelectionRange } from "../lib/text-runs";
 import {
   BulletsToolbar,
   ChartToolbar,
-  DesignVariablesToolbar,
+
   ImageToolbar,
   LineToolbar,
   ShapeToolbar,
-  SvgToolbar,
+
   TableToolbar,
-  TextToolbar,
+
 } from "../inline";
-import { getElementDefinition, type ElementToolbarKey } from "../registry";
 import type { TableCellSelection } from "../state";
+import { DesignVariablesToolbar } from "../inline/DesignVariablesToolbar";
+import { TextToolbar } from "../inline/TextToolbar";
 
 type ElementToolbarProps = {
   element: SlideElement;
   index: number;
-  path: ElementPath;
+  path: string;
   scale: number;
   selectedTableCell: TableCellSelection | null;
   templateFonts?: TemplateFontOption[];
   textSelectionRange?: TextSelectionRange | null;
-  onChange: (index: number, element: SlideElement, path?: ElementPath) => void;
-  onEditChart?: (index: number, path?: ElementPath) => void;
-  onEditImage: (index: number, path?: ElementPath) => void;
-  onEditText?: (index: number, path?: ElementPath) => void;
+  onChange: (index: number, element: SlideElement, path?: string) => void;
+  onEditChart?: (index: number, path?: string) => void;
+  onEditImage: (index: number, path?: string) => void;
+  onEditText?: (index: number, path?: string) => void;
 };
 
 const TOOLBAR_RENDERERS = {
@@ -108,15 +108,7 @@ const TOOLBAR_RENDERERS = {
         onEdit={onEditChart ? (index) => onEditChart(index, path) : undefined}
       />
     ) : null,
-  svg: ({ element, index, onChange, path, scale }) =>
-    element.type === "svg" ? (
-      <SvgToolbar
-        element={element}
-        index={index}
-        scale={scale}
-        onChange={(index, element) => onChange(index, element, path)}
-      />
-    ) : null,
+
   table: ({ element, index, onChange, path, scale, selectedTableCell }) =>
     element.type === "table" ? (
       <TableToolbar
@@ -126,7 +118,7 @@ const TOOLBAR_RENDERERS = {
         selectedCell={
           (selectedTableCell?.elementPath ??
             (selectedTableCell
-              ? rootPath(selectedTableCell.elementIndex)
+              ? String(selectedTableCell.elementIndex)
               : null)) === path
             ? selectedTableCell
             : null
@@ -134,10 +126,7 @@ const TOOLBAR_RENDERERS = {
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-} satisfies Record<
-  ElementToolbarKey,
-  (props: ElementToolbarProps) => ReactNode
->;
+};
 
 export function ElementToolbar(props: ElementToolbarProps) {
   if (props.element.design_variables?.length) {
@@ -153,7 +142,7 @@ export function ElementToolbar(props: ElementToolbarProps) {
     );
   }
 
-  const toolbar = getElementDefinition(props.element.type).toolbar;
+  const toolbar = props.element.type as keyof typeof TOOLBAR_RENDERERS;
   if (toolbar == null) return null;
 
   return TOOLBAR_RENDERERS[toolbar](props);

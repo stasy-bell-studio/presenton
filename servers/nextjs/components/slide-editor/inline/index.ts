@@ -1,14 +1,10 @@
-export { BulletsInlineEditor } from "./BulletsInlineEditor";
 export { BulletsToolbar } from "./BulletsToolbar";
 export { ChartToolbar } from "./ChartToolbar";
-export { DesignVariablesToolbar } from "./DesignVariablesToolbar";
 export { ImageToolbar } from "./ImageToolbar";
 export { LineToolbar } from "./LineToolbar";
 export { ShapeToolbar } from "./ShapeToolbar";
-export { SvgInlineEditor, svgDraftFromElement } from "./SvgInlineEditor";
-export { SvgToolbar } from "./SvgToolbar";
+
 export { TableInlineEditor, tableDraftFromElement } from "./TableInlineEditor";
 export { TableToolbar } from "./TableToolbar";
 export { TemplateV2InlineEditor } from "./TemplateV2InlineEditor";
 export { TiptapInlineTextEditor } from "./TiptapInlineTextEditor";
-export { TextToolbar } from "./TextToolbar";

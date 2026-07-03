@@ -2,7 +2,6 @@ import type {
   ChartElement,
   SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
-import type { ElementPath } from "@/components/slide-editor/lib/element-path";
 
 export const TEMPLATE_V2_INSERT_ELEMENTS_EVENT =
   "presenton:template-v2-insert-elements";
@@ -56,7 +55,7 @@ export type TemplateV2ActivateSurfaceDetail = {
 export type TemplateV2ChartEditorDetail = {
   chart?: ChartElement | null;
   open?: boolean;
-  path?: ElementPath | null;
+  path?: string | null;
   rootIndex?: number | null;
   slideId?: string | number | null;
   slideIndex?: number | null;
@@ -66,7 +65,7 @@ export type TemplateV2ChartUpdateDetail = {
   action?: "update" | "close";
   chart?: ChartElement | null;
   handled?: boolean;
-  path?: ElementPath | null;
+  path?: string | null;
   slideId?: string | number | null;
   slideIndex?: number | null;
 };

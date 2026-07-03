@@ -7,7 +7,6 @@ import {
   updateChartColorTarget,
 } from "../lib/chart-data";
 import { ChartColorPaletteCard } from "./ChartColorPalette";
-import { InlineToolbar } from "./InlineToolbar";
 import { inlineStyles } from "./inlineStyles";
 
 const DEFAULT_CHART_TOOLBAR_SIZE = { width: 2.5, height: 2.5 };
@@ -36,7 +35,13 @@ export function ChartToolbar({
     element.source.startsWith("presenton-default-");
 
   return (
-    <InlineToolbar element={element} scale={scale}>
+    <div data-inline-edit-ignore="true"
+      style={{
+        ...inlineStyles.toolbar,
+        left: Math.max(8, (element.position?.x ?? 0) * scale),
+        top: Math.max(8, (element.position?.y ?? 0) * scale - 48),
+      }}
+      onMouseDown={(event) => event.stopPropagation()}>
       <div
         style={{
           display: "inline-flex",
@@ -146,7 +151,7 @@ export function ChartToolbar({
       >
         <Download size={16} strokeWidth={2} />
       </button>
-    </InlineToolbar>
+    </div>
   );
 }
 

@@ -1,4 +1,3 @@
-import type { ElementPath } from "../lib/element-path";
 import type { SlideElement } from "../lib/slide-schema";
 
 export type ExportMode = "native" | "keynote" | "raster";
@@ -15,12 +14,10 @@ export type ChartSlideElement = Extract<SlideElement, { type: "chart" }>;
 export type SvgSlideElement = Extract<SlideElement, { type: "svg" }>;
 export type TableCellSelection = {
   elementIndex: number;
-  elementPath?: ElementPath | null;
+  elementPath?: string | null;
   rowIndex: number;
   colIndex: number;
 };
 
-export { getComponentRun, type ComponentRun } from "./componentGroups";
-export { createDefaultElement } from "./createDefaultElement";
 export { useTableCellSelection } from "./useTableCellSelection";
 export { useTemplateV2InlineEditing } from "./useTemplateV2InlineEditing";
