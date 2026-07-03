@@ -483,7 +483,7 @@ function DefaultBarChartParts({
   const seriesColors = element.series_colors ?? [];
   const primaryColor = withHash(seriesColors[0] ?? color);
   const showGrid = element.grid ?? true;
-  const maxTick = Math.max(200, Math.ceil(Math.max(1, ...values) / 50) * 50);
+  const maxTick = niceChartMax(Math.max(1, ...values));
   const tickStep = maxTick / 4;
   const ticks = Array.from({ length: 5 }, (_, index) => index * tickStep);
   const titleFontSize = clamp(height * 0.064, 9, 18);
@@ -774,7 +774,14 @@ function DefaultLineChartParts({
   const axisTitleFontSize = clamp(height * 0.035, 6, 18);
   const lineStrokeWidth = clamp(height * 0.004, 1, 3);
   const dotRadius = clamp(legendFontSize * 0.42, 3.5, 11);
-  const yTickSpace = axisOptions.showYAxis ? clamp(width * 0.06, 18, 54) : 0;
+  const yTickLabelWidth = axisOptions.showYAxis
+    ? Math.max(...ticks.map((tick) => axisTickLabel(tick).length)) *
+      tickFontSize *
+      0.74
+    : 0;
+  const yTickSpace = axisOptions.showYAxis
+    ? clamp(Math.max(width * 0.06, yTickLabelWidth + 8), 24, 62)
+    : 0;
   const yAxisTitleSpace = axisOptions.yAxisTitle ? axisTitleFontSize + 5 : 0;
   const xAxisTitleSpace = axisOptions.xAxisTitle ? axisTitleFontSize + 6 : 0;
   const leftPad = clamp(width * 0.13, 24, 170) + yTickSpace + yAxisTitleSpace;
@@ -867,6 +874,7 @@ function DefaultLineChartParts({
                 fontSize={tickFontSize}
                 fontStyle="bold"
                 align="right"
+                wrap="none"
               />
             );
           })
@@ -1037,7 +1045,14 @@ function DefaultAreaChartParts({
   const axisTitleFontSize = clamp(height * 0.035, 6, 18);
   const lineStrokeWidth = clamp(height * 0.004, 1, 3);
   const dotRadius = clamp(legendFontSize * 0.42, 3.5, 11);
-  const yTickSpace = axisOptions.showYAxis ? clamp(width * 0.06, 18, 54) : 0;
+  const yTickLabelWidth = axisOptions.showYAxis
+    ? Math.max(...ticks.map((tick) => axisTickLabel(tick).length)) *
+      tickFontSize *
+      0.74
+    : 0;
+  const yTickSpace = axisOptions.showYAxis
+    ? clamp(Math.max(width * 0.06, yTickLabelWidth + 8), 24, 62)
+    : 0;
   const yAxisTitleSpace = axisOptions.yAxisTitle ? axisTitleFontSize + 5 : 0;
   const xAxisTitleSpace = axisOptions.xAxisTitle ? axisTitleFontSize + 6 : 0;
   const leftPad = clamp(width * 0.13, 24, 170) + yTickSpace + yAxisTitleSpace;
@@ -1134,6 +1149,7 @@ function DefaultAreaChartParts({
                 fontSize={tickFontSize}
                 fontStyle="bold"
                 align="right"
+                wrap="none"
               />
             );
           })
@@ -1504,9 +1520,32 @@ function DefaultPieChartParts({
   const labelFontSize = clamp(height * 0.045, 8, 22);
   const legendFontSize = clamp(height * 0.036, 7, 18);
   const legendDotRadius = clamp(legendFontSize * 0.5, 4, 12);
+  const legendItems = data.map((datum) => {
+    const textWidth = Math.max(
+      36,
+      Math.min(width * 0.22, datum.label.length * legendFontSize * 0.56),
+    );
+    return { datum, textWidth };
+  });
+  const legendGap = clamp(width * 0.055, 12, 46);
+  const legendItemHeight = Math.max(legendDotRadius * 2, legendFontSize * 1.35);
+  const legendRowGap = clamp(legendFontSize * 0.8, 6, 18);
+  const legendRows: Array<typeof legendItems> = [];
+  for (let index = 0; index < legendItems.length; index += 3) {
+    legendRows.push(legendItems.slice(index, index + 3));
+  }
+  const legendStartY =
+    height -
+    clamp(height * 0.12, 24, 72) -
+    Math.max(0, legendRows.length - 1) * (legendItemHeight + legendRowGap);
   const radius = clamp(Math.min(width * 0.34, height * 0.31), 34, 210);
   const cx = width / 2;
-  const cy = clamp(height * 0.54, radius + titleFontSize + 22, height - radius - 42);
+  const minCy = radius + titleFontSize + 22;
+  const maxCy = Math.max(
+    minCy,
+    legendStartY - radius - clamp(height * 0.025, 8, 24),
+  );
+  const cy = clamp(height * 0.54, minCy, maxCy);
   const orderedData =
     data.length === 3 ? [data[1], data[0], data[2]].filter(Boolean) : data;
   let rotation = -90;
@@ -1518,22 +1557,6 @@ function DefaultPieChartParts({
   });
   const titleY = clamp(height * 0.07, 7, 38);
   const subtitleY = titleY + titleFontSize + 1;
-  const legendY = height - clamp(height * 0.12, 24, 72);
-  const legendItems = data.map((datum) => {
-    const textWidth = Math.max(
-      36,
-      Math.min(width * 0.22, datum.label.length * legendFontSize * 0.56),
-    );
-    return { datum, textWidth };
-  });
-  const legendGap = clamp(width * 0.055, 12, 46);
-  const legendWidth =
-    legendItems.reduce(
-      (sum, item) => sum + legendDotRadius * 2 + 7 + item.textWidth,
-      0,
-    ) +
-    legendGap * Math.max(0, legendItems.length - 1);
-  let legendX = Math.max(0, (width - legendWidth) / 2);
 
   return (
     <>
@@ -1611,30 +1634,43 @@ function DefaultPieChartParts({
           })
         : null}
 
-      {legendItems.map(({ datum, textWidth }) => {
-        const currentX = legendX;
-        legendX += legendDotRadius * 2 + 7 + textWidth + legendGap;
-        return (
-          <Group key={`legend-${chartDatumKey(datum)}`} x={currentX} y={legendY}>
-            <Circle
-              x={legendDotRadius}
-              y={legendDotRadius}
-              radius={legendDotRadius}
-              fill={withHash(datum.color ?? element.color ?? "7555F6")}
-            />
-            <Text
-              x={legendDotRadius * 2 + 7}
-              y={-1}
-              width={textWidth}
-              text={datum.label}
-              fill="#252525"
-              fontFamily="Arial, Helvetica, sans-serif"
-              fontSize={legendFontSize}
-              fontStyle="bold"
-              wrap="none"
-            />
-          </Group>
-        );
+      {legendRows.flatMap((row, rowIndex) => {
+        const rowWidth =
+          row.reduce(
+            (sum, item) => sum + legendDotRadius * 2 + 7 + item.textWidth,
+            0,
+          ) + legendGap * Math.max(0, row.length - 1);
+        let legendX = Math.max(0, (width - rowWidth) / 2);
+        const legendY = legendStartY + rowIndex * (legendItemHeight + legendRowGap);
+        return row.map(({ datum, textWidth }, index) => {
+          const currentX = legendX;
+          legendX += legendDotRadius * 2 + 7 + textWidth + legendGap;
+          return (
+            <Group
+              key={`legend-${chartDatumKey(datum)}-${rowIndex}-${index}`}
+              x={currentX}
+              y={legendY}
+            >
+              <Circle
+                x={legendDotRadius}
+                y={legendDotRadius}
+                radius={legendDotRadius}
+                fill={withHash(datum.color ?? element.color ?? "7555F6")}
+              />
+              <Text
+                x={legendDotRadius * 2 + 7}
+                y={-1}
+                width={textWidth}
+                text={datum.label}
+                fill="#252525"
+                fontFamily="Arial, Helvetica, sans-serif"
+                fontSize={legendFontSize}
+                fontStyle="bold"
+                wrap="none"
+              />
+            </Group>
+          );
+        });
       })}
     </>
   );
@@ -1736,9 +1772,21 @@ function clamp(value: number, min: number, max: number) {
 }
 
 function niceChartMax(value: number) {
-  if (value <= 10) return Math.max(1, Math.ceil(value));
-  if (value <= 100) return Math.ceil(value / 10) * 10;
-  return Math.ceil(value / 50) * 50;
+  const maxValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (maxValue <= 0) return 1;
+
+  const roughStep = maxValue / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalizedStep = roughStep / magnitude;
+  const stepOptions =
+    magnitude >= 10
+      ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+      : [1, 2, 3, 4, 5, 6, 8, 10];
+  const niceStep =
+    stepOptions.find((option) => normalizedStep <= option) ??
+    stepOptions[stepOptions.length - 1];
+
+  return niceStep * magnitude * 4;
 }
 
 function axisTickLabel(value: number) {

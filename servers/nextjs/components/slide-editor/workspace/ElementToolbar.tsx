@@ -5,13 +5,10 @@ import type { TextSelectionRange } from "../lib/text-runs";
 import {
   BulletsToolbar,
   ChartToolbar,
-
   ImageToolbar,
   LineToolbar,
   ShapeToolbar,
-
   TableToolbar,
-
 } from "../inline";
 import type { TableCellSelection } from "../state";
 import { DesignVariablesToolbar } from "../inline/DesignVariablesToolbar";
@@ -31,7 +28,11 @@ type ElementToolbarProps = {
   onEditText?: (index: number, path?: string) => void;
 };
 
-const TOOLBAR_RENDERERS = {
+type ToolbarRenderer = (props: ElementToolbarProps) => ReactNode;
+
+const TOOLBAR_RENDERERS: Partial<
+  Record<SlideElement["type"], ToolbarRenderer>
+> = {
   text: ({
     element,
     index,
@@ -51,7 +52,7 @@ const TOOLBAR_RENDERERS = {
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  bullets: ({
+  "text-list": ({
     element,
     index,
     onChange,
@@ -80,7 +81,16 @@ const TOOLBAR_RENDERERS = {
         onUpload={(index) => onEditImage(index, path)}
       />
     ) : null,
-  shape: ({ element, index, onChange, path, scale }) =>
+  rectangle: ({ element, index, onChange, path, scale }) =>
+    element.type === "rectangle" || element.type === "ellipse" ? (
+      <ShapeToolbar
+        element={element}
+        index={index}
+        scale={scale}
+        onChange={(index, element) => onChange(index, element, path)}
+      />
+    ) : null,
+  ellipse: ({ element, index, onChange, path, scale }) =>
     element.type === "rectangle" || element.type === "ellipse" ? (
       <ShapeToolbar
         element={element}
@@ -142,8 +152,6 @@ export function ElementToolbar(props: ElementToolbarProps) {
     );
   }
 
-  const toolbar = props.element.type as keyof typeof TOOLBAR_RENDERERS;
-  if (toolbar == null) return null;
-
-  return TOOLBAR_RENDERERS[toolbar](props);
+  const renderToolbar = TOOLBAR_RENDERERS[props.element.type];
+  return renderToolbar ? renderToolbar(props) : null;
 }

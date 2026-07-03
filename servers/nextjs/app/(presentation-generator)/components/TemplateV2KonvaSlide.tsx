@@ -859,6 +859,22 @@ function TemplateV2KonvaSlideComponent({
     [commitUi],
   );
 
+  const closeChartEditor = useCallback(() => {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent<TemplateV2ChartEditorDetail>(
+        TEMPLATE_V2_CHART_EDITOR_EVENT,
+        {
+          detail: {
+            open: false,
+            slideId,
+            slideIndex: surfaceSlideIndex,
+          },
+        },
+      ),
+    );
+  }, [slideId, surfaceSlideIndex]);
+
   const deleteSelection = useCallback(() => {
     if (!selection) return;
     commitUi(deleteSelectionFromUi(currentUiRef.current, selection));
@@ -866,7 +882,14 @@ function TemplateV2KonvaSlideComponent({
     clearTableCellSelection();
     clearInlineEdit();
     setIconEditorSelection(null);
-  }, [clearInlineEdit, clearTableCellSelection, commitUi, selection]);
+    closeChartEditor();
+  }, [
+    clearInlineEdit,
+    clearTableCellSelection,
+    closeChartEditor,
+    commitUi,
+    selection,
+  ]);
 
   const createClipboardPayload = useCallback((): TemplateV2ClipboardPayload | null => {
     const clipboardComponent = componentForClipboardSelection(
@@ -4719,6 +4742,10 @@ function editorChartToRawChart(source: RawElement, chart: UnknownRecord) {
     ...source,
     ...chart,
     type: "chart",
+    position: source.position,
+    size: source.size,
+    rotation: source.rotation,
+    layout: source.layout,
     chart_type: chart.chartType ?? chart.chart_type ?? source.chart_type,
     series_colors: chart.seriesColors ?? chart.series_colors ?? source.series_colors,
     axis_color: chart.axisColor ?? chart.axis_color ?? source.axis_color,

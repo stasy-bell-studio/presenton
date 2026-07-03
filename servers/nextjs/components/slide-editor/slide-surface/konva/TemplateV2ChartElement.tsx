@@ -458,12 +458,39 @@ function RawDefaultPieChart({
   const labelFontSize = clamp(height * 0.038, 8, 28);
   const legendFontSize = clamp(height * 0.031, 8, 26);
   const legendDotRadius = clamp(legendFontSize * 0.6, 4, 15);
+  const legendItems = labels.map((label, index) => {
+    const textWidth = Math.max(
+      42,
+      Math.min(width * 0.24, label.length * legendFontSize * 0.62),
+    );
+    return {
+      label,
+      textWidth,
+      color: withHash(colors[index] ?? colors[0]) ?? "#7555F6",
+    };
+  });
+  const legendGap = clamp(width * 0.04, 10, 74);
+  const legendItemHeight = Math.max(legendDotRadius * 2, legendFontSize * 1.35);
+  const legendRowGap = clamp(legendFontSize * 0.8, 6, 20);
+  const legendRows: Array<typeof legendItems> = [];
+  for (let index = 0; index < legendItems.length; index += 3) {
+    legendRows.push(legendItems.slice(index, index + 3));
+  }
+  const legendStartY =
+    height -
+    clamp(height * 0.105, 24, 86) -
+    Math.max(0, legendRows.length - 1) * (legendItemHeight + legendRowGap);
   const radius = clamp(Math.min(width * 0.31, height * 0.24), 42, 290);
   const cx = width / 2;
+  const minCy = radius + titleFontSize + subtitleFontSize + 14;
+  const maxCy = Math.max(
+    minCy,
+    legendStartY - radius - clamp(height * 0.025, 8, 30),
+  );
   const cy = clamp(
     height * 0.52,
-    radius + titleFontSize + subtitleFontSize + 14,
-    height - radius - legendFontSize * 2.6,
+    minCy,
+    maxCy,
   );
   const sliceIndexes =
     labelCount === 3 ? [1, 0, 2] : Array.from({ length: labelCount }, (_, index) => index);
@@ -484,26 +511,6 @@ function RawDefaultPieChart({
   });
   const titleY = clamp(height * 0.09, 12, 76);
   const subtitleY = titleY + titleFontSize + 2;
-  const legendY = height - clamp(height * 0.105, 24, 86);
-  const legendItems = labels.map((label, index) => {
-    const textWidth = Math.max(
-      42,
-      Math.min(width * 0.24, label.length * legendFontSize * 0.62),
-    );
-    return {
-      label,
-      textWidth,
-      color: withHash(colors[index] ?? colors[0]) ?? "#7555F6",
-    };
-  });
-  const legendGap = clamp(width * 0.04, 10, 74);
-  const legendWidth =
-    legendItems.reduce(
-      (sum, item) => sum + legendDotRadius * 2 + 14 + item.textWidth,
-      0,
-    ) +
-    legendGap * Math.max(0, legendItems.length - 1);
-  let legendX = Math.max(0, (width - legendWidth) / 2);
 
   return (
     <Group listening={interactive}>
@@ -582,30 +589,43 @@ function RawDefaultPieChart({
           })
         : null}
 
-      {legendItems.map((item, index) => {
-        const currentX = legendX;
-        legendX += legendDotRadius * 2 + 14 + item.textWidth + legendGap;
-        return (
-          <Group key={`legend-${item.label}-${index}`} x={currentX} y={legendY}>
-            <Circle
-              x={legendDotRadius}
-              y={legendDotRadius}
-              radius={legendDotRadius}
-              fill={item.color}
-            />
-            <Text
-              x={legendDotRadius * 2 + 14}
-              y={0}
-              width={item.textWidth}
-              text={item.label}
-              fill="#252525"
-              fontFamily="Arial, Helvetica, sans-serif"
-              fontSize={legendFontSize}
-              fontStyle="bold"
-              wrap="none"
-            />
-          </Group>
-        );
+      {legendRows.flatMap((row, rowIndex) => {
+        const rowWidth =
+          row.reduce(
+            (sum, item) => sum + legendDotRadius * 2 + 14 + item.textWidth,
+            0,
+          ) + legendGap * Math.max(0, row.length - 1);
+        let legendX = Math.max(0, (width - rowWidth) / 2);
+        const legendY = legendStartY + rowIndex * (legendItemHeight + legendRowGap);
+        return row.map((item, index) => {
+          const currentX = legendX;
+          legendX += legendDotRadius * 2 + 14 + item.textWidth + legendGap;
+          return (
+            <Group
+              key={`legend-${item.label}-${rowIndex}-${index}`}
+              x={currentX}
+              y={legendY}
+            >
+              <Circle
+                x={legendDotRadius}
+                y={legendDotRadius}
+                radius={legendDotRadius}
+                fill={item.color}
+              />
+              <Text
+                x={legendDotRadius * 2 + 14}
+                y={0}
+                width={item.textWidth}
+                text={item.label}
+                fill="#252525"
+                fontFamily="Arial, Helvetica, sans-serif"
+                fontSize={legendFontSize}
+                fontStyle="bold"
+                wrap="none"
+              />
+            </Group>
+          );
+        });
       })}
     </Group>
   );
@@ -668,7 +688,7 @@ function RawDefaultBarChart({
   const yAxisTitle =
     readString(element.y_axis_title ?? element.yAxisTitle)?.trim() ?? "";
   const showGrid = readBoolean(element.grid) ?? true;
-  const maxTick = Math.max(200, Math.ceil(Math.max(1, ...scaleValues) / 50) * 50);
+  const maxTick = niceChartMax(Math.max(1, ...scaleValues));
   const tickStep = maxTick / 4;
   const ticks = Array.from({ length: 5 }, (_, index) => index * tickStep);
   const titleFontSize = clamp(height * 0.064, 9, 38);
@@ -978,7 +998,14 @@ function RawDefaultAreaChart({
   const axisTitleFontSize = clamp(height * 0.03, 6, 22);
   const lineStrokeWidth = clamp(height * 0.0042, 1, 3.5);
   const legendDotRadius = clamp(legendFontSize * 0.42, 3.5, 14);
-  const yTickSpace = showYAxis ? clamp(width * 0.06, 18, 78) : 0;
+  const yTickLabelWidth = showYAxis
+    ? Math.max(...ticks.map((tick) => axisTickLabel(tick).length)) *
+      tickFontSize *
+      0.74
+    : 0;
+  const yTickSpace = showYAxis
+    ? clamp(Math.max(width * 0.06, yTickLabelWidth + 8), 24, 86)
+    : 0;
   const yAxisTitleSpace = yAxisTitle ? axisTitleFontSize + 5 : 0;
   const xAxisTitleSpace = xAxisTitle ? axisTitleFontSize + 6 : 0;
   const leftPad = clamp(width * 0.13, 24, 190) + yTickSpace + yAxisTitleSpace;
@@ -1079,13 +1106,14 @@ function RawDefaultAreaChart({
                 key={tick}
                 x={yAxisTitleSpace}
                 y={y - tickFontSize / 2}
-                width={Math.max(1, yTickSpace - 18)}
+                width={Math.max(1, yTickSpace - 6)}
                 text={axisTickLabel(tick)}
                 fill="#747474"
                 fontFamily="Georgia, Times New Roman, serif"
                 fontSize={tickFontSize}
                 fontStyle="bold"
                 align="right"
+                wrap="none"
               />
             );
           })
@@ -1285,7 +1313,14 @@ function RawDefaultLineChart({
   const axisTitleFontSize = clamp(height * 0.03, 6, 22);
   const lineStrokeWidth = clamp(height * 0.0042, 1, 3.5);
   const legendDotRadius = clamp(legendFontSize * 0.42, 3.5, 14);
-  const yTickSpace = showYAxis ? clamp(width * 0.06, 18, 78) : 0;
+  const yTickLabelWidth = showYAxis
+    ? Math.max(...ticks.map((tick) => axisTickLabel(tick).length)) *
+      tickFontSize *
+      0.74
+    : 0;
+  const yTickSpace = showYAxis
+    ? clamp(Math.max(width * 0.06, yTickLabelWidth + 8), 24, 86)
+    : 0;
   const yAxisTitleSpace = yAxisTitle ? axisTitleFontSize + 5 : 0;
   const xAxisTitleSpace = xAxisTitle ? axisTitleFontSize + 6 : 0;
   const leftPad = clamp(width * 0.13, 24, 190) + yTickSpace + yAxisTitleSpace;
@@ -1381,13 +1416,14 @@ function RawDefaultLineChart({
                 key={tick}
                 x={yAxisTitleSpace}
                 y={y - tickFontSize / 2}
-                width={Math.max(1, yTickSpace - 18)}
+                width={Math.max(1, yTickSpace - 6)}
                 text={axisTickLabel(tick)}
                 fill="#747474"
                 fontFamily="Georgia, Times New Roman, serif"
                 fontSize={tickFontSize}
                 fontStyle="bold"
                 align="right"
+                wrap="none"
               />
             );
           })
@@ -1560,9 +1596,21 @@ export function rawChartType(value: unknown): ChartType {
 }
 
 function niceChartMax(value: number) {
-  if (value <= 10) return Math.max(1, Math.ceil(value));
-  if (value <= 100) return Math.ceil(value / 10) * 10;
-  return Math.ceil(value / 50) * 50;
+  const maxValue = Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (maxValue <= 0) return 1;
+
+  const roughStep = maxValue / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const normalizedStep = roughStep / magnitude;
+  const stepOptions =
+    magnitude >= 10
+      ? [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]
+      : [1, 2, 3, 4, 5, 6, 8, 10];
+  const niceStep =
+    stepOptions.find((option) => normalizedStep <= option) ??
+    stepOptions[stepOptions.length - 1];
+
+  return niceStep * magnitude * 4;
 }
 
 function axisTickLabel(value: number) {

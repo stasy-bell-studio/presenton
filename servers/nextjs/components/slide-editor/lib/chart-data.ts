@@ -60,11 +60,9 @@ export const CHART_SYSTEM_COLORS = [
 ];
 
 export function resolvedChartCategories(element: ChartElement): string[] {
-  const categories = (element.categories ?? [])
-    .map((category) => category.trim())
-    .filter(Boolean)
-    .slice(0, 24);
-  if (categories.length > 0) return categories;
+  if (element.categories && element.categories.length > 0) {
+    return element.categories.slice(0, 24);
+  }
 
   const seriesLength = Math.max(
     0,

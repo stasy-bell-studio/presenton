@@ -1,4 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Layer, Stage } from "react-konva";
 import {
   BarChart3,
@@ -381,7 +382,11 @@ function ChartSeriesColorControls({
   chart: ChartElement;
   onChange: (chart: ChartElement) => void;
 }) {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const [paletteAnchor, setPaletteAnchor] = useState<{
+    index: number;
+    rect: DOMRect;
+  } | null>(null);
+  const swatchRefs = useRef(new Map<number, HTMLButtonElement>());
   const targets = resolvedChartColorTargets(chart);
   const label =
     targets.length > 1
@@ -389,6 +394,9 @@ function ChartSeriesColorControls({
         ? "Slice colors"
         : "Series colors"
       : "Chart color";
+  const openTarget = paletteAnchor
+    ? targets.find((target) => target.index === paletteAnchor.index)
+    : null;
 
   return (
     <div className="space-y-2">
@@ -404,33 +412,75 @@ function ChartSeriesColorControls({
               type="button"
               aria-label={`Change ${target.label} color`}
               className="h-8 w-8 shrink-0 rounded-full border border-[#E6E6EA] shadow-sm"
+              ref={(node) => {
+                if (node) {
+                  swatchRefs.current.set(target.index, node);
+                } else {
+                  swatchRefs.current.delete(target.index);
+                }
+              }}
               style={{ backgroundColor: `#${target.color}` }}
               onClick={() =>
-                setOpenIndex((current) =>
-                  current === target.index ? null : target.index,
-                )
+                setPaletteAnchor((current) => {
+                  if (current?.index === target.index) return null;
+                  const anchor = swatchRefs.current.get(target.index);
+                  return anchor
+                    ? { index: target.index, rect: anchor.getBoundingClientRect() }
+                    : null;
+                })
               }
             />
-            {openIndex === target.index ? (
-              <ChartColorPaletteCard
-                value={target.color}
-                onChange={(color) =>
-                  onChange(updateChartColorTarget(chart, target.index, color))
-                }
-                onClose={() => setOpenIndex(null)}
-                style={{
-                  position: "absolute",
-                  right: 0,
-                  top: 42,
-                  zIndex: 30,
-                }}
-              />
-            ) : null}
           </div>
         ))}
       </div>
+      {openTarget && paletteAnchor && typeof document !== "undefined"
+        ? createPortal(
+            <ChartColorPaletteCard
+              value={openTarget.color}
+              onChange={(color) =>
+                onChange(updateChartColorTarget(chart, openTarget.index, color))
+              }
+              onClose={() => setPaletteAnchor(null)}
+              style={chartPalettePortalStyle(paletteAnchor.rect)}
+            />,
+            document.body,
+          )
+        : null}
     </div>
   );
+}
+
+function chartPalettePortalStyle(anchorRect: DOMRect) {
+  const width = 286;
+  const estimatedHeight = 286;
+  const margin = 12;
+  const gap = 8;
+  const viewportWidth =
+    typeof window === "undefined" ? anchorRect.right + width : window.innerWidth;
+  const viewportHeight =
+    typeof window === "undefined"
+      ? anchorRect.bottom + estimatedHeight + margin
+      : window.innerHeight;
+  const spaceBelow = viewportHeight - anchorRect.bottom - margin;
+  const spaceAbove = anchorRect.top - margin;
+  const shouldOpenAbove =
+    spaceBelow < estimatedHeight && spaceAbove > spaceBelow;
+  const preferredTop = shouldOpenAbove
+    ? anchorRect.top - estimatedHeight - gap
+    : anchorRect.bottom + gap;
+  const top = Math.max(
+    margin,
+    Math.min(preferredTop, viewportHeight - estimatedHeight - margin),
+  );
+
+  return {
+    position: "fixed" as const,
+    left: Math.max(12, Math.min(anchorRect.right - width, viewportWidth - width - 12)),
+    top,
+    maxHeight: Math.max(180, viewportHeight - top - margin),
+    overflowY: "auto" as const,
+    zIndex: 1000,
+  };
 }
 
 function PanelSection({
@@ -522,12 +572,10 @@ function ChartDataModal({
     nextSeries: ChartSeries[],
     nextSeriesColors = chart.series_colors ?? [],
   ) => {
-    const normalizedCategories = nextCategories
-      .map((category, index) => category.trim() || `Item ${index + 1}`)
-      .slice(0, 24);
+    const normalizedCategories = nextCategories.slice(0, 24);
     const normalized = nextSeries
-      .map((item, index) => ({
-        name: item.name.trim() || `Series ${index + 1}`,
+      .map((item) => ({
+        name: item.name,
         values: normalizeValues(item.values, normalizedCategories.length),
       }))
       .slice(0, 12);
@@ -782,6 +830,20 @@ function EditableDataTable({
         : seriesColors,
     );
   };
+  const deleteRow = (rowIndex: number) => {
+    if (safeCategories.length <= 1) return;
+
+    onUpdate(
+      safeCategories.filter((_, index) => index !== rowIndex),
+      safeSeries.map((item) => ({
+        ...item,
+        values: item.values.filter((_, index) => index !== rowIndex),
+      })),
+      usesPointColors
+        ? seriesColors.filter((_, index) => index !== rowIndex)
+        : seriesColors,
+    );
+  };
   const addSeries = () => {
     onUpdate(
       safeCategories,
@@ -904,7 +966,17 @@ function EditableDataTable({
                       />
                     </td>
                   ))}
-                  <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
+                  <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6] px-2">
+                    <button
+                      type="button"
+                      aria-label={`Delete ${category || `row ${rowIndex + 1}`}`}
+                      className="grid h-8 w-8 place-items-center rounded-lg text-[#8E8E98] transition hover:bg-white hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#8E8E98]"
+                      disabled={safeCategories.length <= 1}
+                      onClick={() => deleteRow(rowIndex)}
+                    >
+                      <Trash2 size={15} strokeWidth={2.2} />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
