@@ -10,11 +10,20 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
+  Ban,
   Bold,
+  Check,
   ChevronDown,
   Italic,
   Link,
+  List,
+  ListChecks,
+  ListOrdered,
+  Repeat2,
+  Search,
+  Settings,
   Underline,
+  XCircle,
 } from "lucide-react";
 import type { TextSlideElement } from "../state";
 import { withHash } from "../editorUtils";
@@ -39,16 +48,6 @@ import {
 import { DeferredColorInput } from "./DeferredColorInput";
 import { InlineToolbar } from "./InlineToolbar";
 
-const SYSTEM_FONT_FAMILIES = [
-  "Arial",
-  "Helvetica",
-  "Georgia",
-  "Times New Roman",
-];
-const FONT_FAMILIES = [
-  ...GOOGLE_FONT_OPTIONS.map(({ family }) => family),
-  ...SYSTEM_FONT_FAMILIES,
-];
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
 const HORIZONTAL_ALIGNMENT_ICONS = {
@@ -65,7 +64,8 @@ const MIN_LINE_HEIGHT = 0.8;
 const MAX_LINE_HEIGHT = 2.2;
 const DEFAULT_LINE_HEIGHT = 1.15;
 
-type TextToolbarPanel = "opacity" | "letterSpacing" | "lineHeight";
+type TextToolbarPanel = "settings";
+type FontPickerSource = "template" | "google";
 
 function clampFontSize(size: number) {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size));
@@ -84,9 +84,13 @@ function formatLineHeight(value: number) {
   return value.toFixed(2).replace(/\.?0+$/, "");
 }
 
-function formatLetterSpacing(value: number) {
-  const points = value / 100;
-  return `${points.toFixed(1).replace(/\.0$/, "")} pt`;
+function formatSettingsLetterSpacing(value: number) {
+  const pixels = value / 100;
+  return pixels.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatOpacity(value: number) {
+  return value.toFixed(1).replace(/\.0$/, "");
 }
 
 export function TextToolbar({
@@ -123,35 +127,8 @@ export function TextToolbar({
   const googleFontOptions = GOOGLE_FONT_OPTIONS.filter(
     ({ family }) => !templateFontFamilySet.has(family),
   );
-  const knownFontFamilySet = new Set([
-    ...templateFontFamilySet,
-    ...FONT_FAMILIES,
-  ]);
-  const customFontFamily = knownFontFamilySet.has(font.family)
-    ? null
-    : font.family;
   const [openPanel, setOpenPanel] = useState<TextToolbarPanel | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
-  const closePanelTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-  const clearScheduledPanelClose = () => {
-    if (closePanelTimeoutRef.current == null) return;
-    clearTimeout(closePanelTimeoutRef.current);
-    closePanelTimeoutRef.current = null;
-  };
-  const openHoverPanel = (panel: TextToolbarPanel) => {
-    clearScheduledPanelClose();
-    setOpenPanel(panel);
-  };
-  const schedulePanelClose = () => {
-    clearScheduledPanelClose();
-    closePanelTimeoutRef.current = setTimeout(() => {
-      setOpenPanel(null);
-      closePanelTimeoutRef.current = null;
-    }, 180);
-  };
-  useEffect(() => clearScheduledPanelClose, []);
   const updateFont = (fontPatch: Partial<Font>) => {
     onChange(
       index,
@@ -237,47 +214,12 @@ export function TextToolbar({
       <div style={textToolbarStyles.toolbar}>
         {extraControls}
         {extraControls ? <Divider /> : null}
-        <label style={textToolbarStyles.fontControl}>
-          <select
-            aria-label="Font family"
-            title="Font family"
-            value={font.family}
-            onChange={(event) => updateFontFamily(event.target.value)}
-            style={textToolbarStyles.fontSelect}
-          >
-            {customFontFamily ? (
-              <option value={customFontFamily}>{customFontFamily}</option>
-            ) : null}
-            {templateFonts.length > 0 ? (
-              <optgroup label="Template Fonts">
-                {templateFonts.map(({ family }) => (
-                  <option key={family} value={family}>
-                    {family}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            <optgroup label="Google Fonts">
-              {googleFontOptions.map(({ family }) => (
-                <option key={family} value={family}>
-                  {family}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="System Fonts">
-              {SYSTEM_FONT_FAMILIES.map((family) => (
-                <option key={family} value={family}>
-                  {family}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <ChevronDown
-            size={18}
-            aria-hidden="true"
-            style={textToolbarStyles.selectIcon}
-          />
-        </label>
+        <FontFamilyPicker
+          selectedFamily={font.family}
+          templateFonts={templateFonts}
+          googleFonts={googleFontOptions}
+          onSelect={updateFontFamily}
+        />
         <Divider />
         <div style={textToolbarStyles.fontSizeControl}>
           <input
@@ -370,7 +312,9 @@ export function TextToolbar({
             hoveredControl={hoveredControl}
             pressed={font.underline ?? false}
             setHoveredControl={setHoveredControl}
-            onClick={() => updateFont({ underline: !(font.underline ?? false) })}
+            onClick={() =>
+              updateFont({ underline: !(font.underline ?? false) })
+            }
           >
             <Underline size={18} strokeWidth={2.25} aria-hidden="true" />
           </ToolbarButton>
@@ -396,114 +340,6 @@ export function TextToolbar({
               aria-hidden="true"
             />
           </ToolbarButton>
-          <div
-            style={textToolbarStyles.metricControlWrap}
-            onMouseEnter={() => openHoverPanel("letterSpacing")}
-            onMouseLeave={schedulePanelClose}
-            onFocus={() => openHoverPanel("letterSpacing")}
-            onBlur={(event) => {
-              if (event.currentTarget.contains(event.relatedTarget)) return;
-              schedulePanelClose();
-            }}
-          >
-            <ToolbarButton
-              title="Letter spacing"
-              controlId="letter-spacing"
-              hoveredControl={hoveredControl}
-              pressed={openPanel === "letterSpacing" || letterSpacing !== 0}
-              setHoveredControl={setHoveredControl}
-              onClick={() => setOpenPanel("letterSpacing")}
-            >
-              <LetterSpacingIcon />
-            </ToolbarButton>
-            {openPanel === "letterSpacing" ? (
-              <TextMetricPanel
-                label="Letter spacing"
-                value={letterSpacing}
-                valueLabel={formatLetterSpacing(letterSpacing)}
-                min={MIN_LETTER_SPACING}
-                max={MAX_LETTER_SPACING}
-                step={10}
-                onChange={updateLetterSpacing}
-              />
-            ) : null}
-          </div>
-          <div
-            style={textToolbarStyles.metricControlWrap}
-            onMouseEnter={() => openHoverPanel("lineHeight")}
-            onMouseLeave={schedulePanelClose}
-            onFocus={() => openHoverPanel("lineHeight")}
-            onBlur={(event) => {
-              if (event.currentTarget.contains(event.relatedTarget)) return;
-              schedulePanelClose();
-            }}
-          >
-            <ToolbarButton
-              title="Line height"
-              controlId="line-height"
-              hoveredControl={hoveredControl}
-              pressed={
-                openPanel === "lineHeight" ||
-                lineHeight !== DEFAULT_LINE_HEIGHT
-              }
-              setHoveredControl={setHoveredControl}
-              onClick={() => setOpenPanel("lineHeight")}
-            >
-              <LineHeightIcon />
-            </ToolbarButton>
-            {openPanel === "lineHeight" ? (
-              <TextMetricPanel
-                label="Line height"
-                value={lineHeight}
-                valueLabel={formatLineHeight(lineHeight)}
-                min={MIN_LINE_HEIGHT}
-                max={MAX_LINE_HEIGHT}
-                step={0.05}
-                onChange={updateLineHeight}
-              />
-            ) : null}
-          </div>
-        </div>
-        <Divider />
-        <div
-          style={textToolbarStyles.opacityControlWrap}
-          onMouseEnter={() => openHoverPanel("opacity")}
-          onMouseLeave={schedulePanelClose}
-          onFocus={() => openHoverPanel("opacity")}
-          onBlur={(event) => {
-            if (event.currentTarget.contains(event.relatedTarget)) return;
-            schedulePanelClose();
-          }}
-        >
-          <ToolbarButton
-            title="Opacity"
-            controlId="opacity"
-            hoveredControl={hoveredControl}
-            pressed={openPanel === "opacity"}
-            setHoveredControl={setHoveredControl}
-            onClick={() =>
-              setOpenPanel((current) => (current === "opacity" ? null : "opacity"))
-            }
-          >
-            <OpacityIcon />
-          </ToolbarButton>
-          {openPanel === "opacity" ? (
-            <>
-              <span aria-hidden="true" style={textToolbarStyles.opacityBridge} />
-              <div style={textToolbarStyles.opacityPanel}>
-                <input
-                  aria-label="Text opacity"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={element.opacity ?? 1}
-                  onChange={(event) => updateOpacity(Number(event.target.value))}
-                  style={textToolbarStyles.opacityInput}
-                />
-              </div>
-            </>
-          ) : null}
         </div>
         <Divider />
         <ToolbarButton
@@ -514,6 +350,32 @@ export function TextToolbar({
         >
           <Link size={18} strokeWidth={2.4} aria-hidden="true" />
         </ToolbarButton>
+        <Divider />
+        <div style={textToolbarStyles.settingsControlWrap}>
+          <ToolbarButton
+            title="Settings"
+            controlId="settings"
+            hoveredControl={hoveredControl}
+            setHoveredControl={setHoveredControl}
+            onClick={() =>
+              setOpenPanel((current) =>
+                current === "settings" ? null : "settings",
+              )
+            }
+          >
+            <Settings size={18} strokeWidth={2.3} aria-hidden="true" />
+          </ToolbarButton>
+          {openPanel === "settings" ? (
+            <TextSettingsPanel
+              opacity={element.opacity ?? 1}
+              letterSpacing={letterSpacing}
+              lineHeight={lineHeight}
+              onOpacityChange={updateOpacity}
+              onLetterSpacingChange={updateLetterSpacing}
+              onLineHeightChange={updateLineHeight}
+            />
+          ) : null}
+        </div>
       </div>
     </InlineToolbar>
   );
@@ -558,6 +420,262 @@ function ToolbarButton({
   );
 }
 
+function FontFamilyPicker({
+  selectedFamily,
+  templateFonts,
+  googleFonts,
+  onSelect,
+}: {
+  selectedFamily: string;
+  templateFonts: TemplateFontOption[];
+  googleFonts: typeof GOOGLE_FONT_OPTIONS;
+  onSelect: (family: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState(selectedFamily);
+  const [searching, setSearching] = useState(false);
+  const [activeSource, setActiveSource] = useState<FontPickerSource>(() =>
+    templateFonts.some(({ family }) => family === selectedFamily)
+      ? "template"
+      : "google",
+  );
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuPanelRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery(selectedFamily);
+    setSearching(false);
+    setActiveSource(
+      templateFonts.some(({ family }) => family === selectedFamily)
+        ? "template"
+        : "google",
+    );
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 0);
+  }, [open, selectedFamily, templateFonts]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      const menuPanel = menuPanelRef.current;
+      if (menuPanel) {
+        const rect = menuPanel.getBoundingClientRect();
+        if (
+          event.clientX >= rect.left &&
+          event.clientX <= rect.right &&
+          event.clientY >= rect.top &&
+          event.clientY <= rect.bottom
+        ) {
+          return;
+        }
+      }
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [open]);
+
+  const selectFamily = (family: string) => {
+    onSelect(family);
+    setOpen(false);
+  };
+  const normalizedQuery = query.trim().toLowerCase();
+  const hasSearchQuery = searching && normalizedQuery.length > 0;
+  const templateFamilies = templateFonts.map(({ family }) => family);
+  const googleFamilies = googleFonts.map(({ family }) => family);
+  const activeFamilies =
+    activeSource === "template" && templateFamilies.length > 0
+      ? templateFamilies
+      : googleFamilies;
+  const searchFamilies = [...templateFamilies, ...googleFamilies].filter(
+    (family, familyIndex, families) => families.indexOf(family) === familyIndex,
+  );
+  const visibleFamilies = hasSearchQuery
+    ? searchFamilies.filter((family) =>
+        family.toLowerCase().includes(normalizedQuery),
+      )
+    : activeFamilies;
+  const activeTitle = hasSearchQuery
+    ? "All Fonts"
+    : activeSource === "template" && templateFamilies.length > 0
+      ? "Template Fonts"
+      : "Google Fonts";
+  const swapFontSource = () => {
+    setSearching(false);
+    setQuery(selectedFamily);
+    setActiveSource((current) => {
+      if (current === "template") return "google";
+      return templateFamilies.length > 0 ? "template" : "google";
+    });
+    window.setTimeout(() => {
+      searchInputRef.current?.focus();
+      searchInputRef.current?.select();
+    }, 0);
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      data-inline-edit-ignore="true"
+      style={textToolbarStyles.fontControl}
+      onMouseDown={(event) => {
+        const target = event.target;
+        if (
+          target instanceof HTMLElement &&
+          target.closest("[data-font-search-input='true']")
+        ) {
+          return;
+        }
+        event.preventDefault();
+      }}
+    >
+      <button
+        type="button"
+        aria-label="Font family"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title="Font family"
+        style={textToolbarStyles.fontTrigger}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") setOpen(false);
+        }}
+      >
+        <span style={textToolbarStyles.fontTriggerText}>{selectedFamily}</span>
+        <ChevronDown
+          size={18}
+          aria-hidden="true"
+          style={textToolbarStyles.selectIcon}
+        />
+      </button>
+      {open ? (
+        <div
+          ref={menuPanelRef}
+          role="listbox"
+          aria-label="Font family"
+          style={textToolbarStyles.fontMenu}
+          onWheel={(event) => event.stopPropagation()}
+          onScroll={(event) => event.stopPropagation()}
+        >
+          <div style={textToolbarStyles.fontSearchRow}>
+            <Search size={16} strokeWidth={2.2} aria-hidden="true" />
+            <input
+              ref={searchInputRef}
+              data-font-search-input="true"
+              aria-label="Search fonts"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSearching(true);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setOpen(false);
+                }
+              }}
+              style={textToolbarStyles.fontSearchInput}
+            />
+            <button
+              type="button"
+              aria-label="Clear font search"
+              title="Clear"
+              style={textToolbarStyles.fontSearchClear}
+              onClick={() => {
+                setQuery("");
+                setSearching(false);
+                searchInputRef.current?.focus();
+              }}
+            >
+              <XCircle size={15} strokeWidth={2.1} aria-hidden="true" />
+            </button>
+          </div>
+          <div aria-hidden="true" style={textToolbarStyles.fontMenuDivider} />
+          <FontMenuSection
+            title={activeTitle}
+            families={visibleFamilies}
+            selectedFamily={selectedFamily}
+            onSelect={selectFamily}
+            onSwap={swapFontSource}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FontMenuSection({
+  title,
+  families,
+  selectedFamily,
+  onSelect,
+  onSwap,
+}: {
+  title: string;
+  families: string[];
+  selectedFamily: string;
+  onSelect: (family: string) => void;
+  onSwap: () => void;
+}) {
+  return (
+    <div style={textToolbarStyles.fontMenuSection}>
+      <div style={textToolbarStyles.fontMenuHeading}>
+        <span>{title}</span>
+        <button
+          type="button"
+          aria-label="Swap font source"
+          title="Swap font source"
+          style={textToolbarStyles.fontSourceSwapButton}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={onSwap}
+        >
+          <Repeat2 size={14} strokeWidth={2.1} aria-hidden="true" />
+        </button>
+      </div>
+      <div style={textToolbarStyles.fontMenuOptions}>
+        {families.map((family) => {
+          const selected = family === selectedFamily;
+          return (
+            <button
+              key={family}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              title={family}
+              style={{
+                ...textToolbarStyles.fontMenuOption,
+                ...(selected ? textToolbarStyles.fontMenuOptionSelected : {}),
+              }}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onSelect(family)}
+            >
+              <span style={textToolbarStyles.fontMenuCheck}>
+                {selected ? (
+                  <Check size={14} strokeWidth={2.4} aria-hidden="true" />
+                ) : null}
+              </span>
+              <span style={textToolbarStyles.fontMenuOptionLabel}>
+                {family}
+              </span>
+              <span style={textToolbarStyles.fontMenuSample}>Aa</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Divider() {
   return <span aria-hidden="true" style={textToolbarStyles.divider} />;
 }
@@ -582,7 +700,78 @@ function LineHeightIcon() {
   );
 }
 
-function TextMetricPanel({
+function TextSettingsPanel({
+  opacity,
+  letterSpacing,
+  lineHeight,
+  onOpacityChange,
+  onLetterSpacingChange,
+  onLineHeightChange,
+}: {
+  opacity: number;
+  letterSpacing: number;
+  lineHeight: number;
+  onOpacityChange: (value: number) => void;
+  onLetterSpacingChange: (value: number) => void;
+  onLineHeightChange: (value: number) => void;
+}) {
+  return (
+    <div
+      data-inline-edit-ignore="true"
+      style={textToolbarStyles.settingsPanel}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
+      <SettingsSliderRow
+        label="Opacity"
+        icon={<OpacityIcon />}
+        value={opacity}
+        valueLabel={formatOpacity(opacity)}
+        min={0}
+        max={1}
+        step={0.05}
+        onChange={onOpacityChange}
+      />
+      <SettingsSliderRow
+        label="Letter spacing"
+        icon={<LetterSpacingIcon />}
+        value={letterSpacing}
+        valueLabel={formatSettingsLetterSpacing(letterSpacing)}
+        min={MIN_LETTER_SPACING}
+        max={MAX_LETTER_SPACING}
+        step={10}
+        onChange={onLetterSpacingChange}
+      />
+      <SettingsSliderRow
+        label="Line height"
+        icon={<LineHeightIcon />}
+        value={lineHeight}
+        valueLabel={formatLineHeight(lineHeight)}
+        min={MIN_LINE_HEIGHT}
+        max={MAX_LINE_HEIGHT}
+        step={0.05}
+        onChange={onLineHeightChange}
+      />
+      <div style={textToolbarStyles.settingsBulletTitle}>Bullet List</div>
+      <div style={textToolbarStyles.settingsBulletActions}>
+        <SettingsPanelButton label="Bullet list">
+          <List size={19} strokeWidth={2.2} aria-hidden="true" />
+        </SettingsPanelButton>
+        <SettingsPanelButton label="Numbered list">
+          <ListOrdered size={19} strokeWidth={2.2} aria-hidden="true" />
+        </SettingsPanelButton>
+        <SettingsPanelButton label="No list">
+          <Ban size={19} strokeWidth={2.1} aria-hidden="true" />
+        </SettingsPanelButton>
+        <SettingsPanelButton label="Checklist">
+          <ListChecks size={19} strokeWidth={2.2} aria-hidden="true" />
+        </SettingsPanelButton>
+      </div>
+    </div>
+  );
+}
+
+function SettingsSliderRow({
+  icon,
   label,
   value,
   valueLabel,
@@ -591,6 +780,7 @@ function TextMetricPanel({
   step,
   onChange,
 }: {
+  icon: ReactNode;
   label: string;
   value: number;
   valueLabel: string;
@@ -599,14 +789,32 @@ function TextMetricPanel({
   step: number;
   onChange: (value: number) => void;
 }) {
+  const progress =
+    max === min
+      ? 0
+      : ((clampMetric(value, min, max) - min) / (max - min)) * 100;
+
   return (
-    <>
-      <span aria-hidden="true" style={textToolbarStyles.metricBridge} />
-      <div style={textToolbarStyles.metricPanel}>
-        <div style={textToolbarStyles.metricPanelHeader}>
-          <span>{label}</span>
-          <span style={textToolbarStyles.metricValue}>{valueLabel}</span>
-        </div>
+    <label style={textToolbarStyles.settingsSliderRow}>
+      <span style={textToolbarStyles.settingsSliderHeader}>
+        <span style={textToolbarStyles.settingsSliderIcon}>{icon}</span>
+        <span style={textToolbarStyles.settingsValueBadge}>{valueLabel}</span>
+      </span>
+      <span style={textToolbarStyles.settingsSliderWrap}>
+        <span aria-hidden="true" style={textToolbarStyles.settingsSliderTrack}>
+          <span
+            style={{
+              ...textToolbarStyles.settingsSliderFill,
+              width: `${progress}%`,
+            }}
+          />
+          <span
+            style={{
+              ...textToolbarStyles.settingsSliderThumb,
+              left: `${progress}%`,
+            }}
+          />
+        </span>
         <input
           aria-label={label}
           type="range"
@@ -615,10 +823,30 @@ function TextMetricPanel({
           step={step}
           value={value}
           onChange={(event) => onChange(Number(event.target.value))}
-          style={textToolbarStyles.metricInput}
+          style={textToolbarStyles.settingsSliderInput}
         />
-      </div>
-    </>
+      </span>
+    </label>
+  );
+}
+
+function SettingsPanelButton({
+  children,
+  label,
+}: {
+  children: ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      style={textToolbarStyles.settingsBulletButton}
+      onMouseDown={(event) => event.preventDefault()}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -631,8 +859,8 @@ const textToolbarStyles = {
     display: "inline-flex",
     alignItems: "center",
     boxSizing: "border-box",
-    height: 36,
-    width: 580,
+    height: 40,
+    width: "auto",
     maxWidth: "calc(100vw - 32px)",
     padding: "0 10px",
     border: 0,
@@ -645,30 +873,193 @@ const textToolbarStyles = {
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
-    width: 111.2,
+    width: 126,
     height: 36,
     flex: "0 0 auto",
   },
-  fontSelect: {
+  fontTrigger: {
     width: "100%",
-    height: "100%",
-    appearance: "none",
+    height: 28,
     border: 0,
     outline: "none",
+    borderRadius: 4,
     background: "transparent",
     color: "#0B1220",
     fontFamily:
       "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
-    fontSize: 20,
+    fontSize: 14,
     fontWeight: 400,
     cursor: "pointer",
-    padding: "0 24px 0 0",
+    padding: "0 24px 0 8px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  fontTriggerText: {
+    display: "block",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   selectIcon: {
     position: "absolute",
-    right: 0,
-    pointerEvents: "none",
+    right: 6,
     color: "#0B1220",
+    pointerEvents: "none",
+  },
+  fontMenu: {
+    position: "absolute",
+    top: 44,
+    left: -8,
+    width: 242,
+    maxHeight: 360,
+    overflow: "hidden",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    padding: "10px 0 10px",
+    borderRadius: 6,
+    border: "1px solid #E6E7EB",
+    background: "#FFFFFF",
+    boxShadow: "0 18px 40px rgba(15, 23, 42, 0.14)",
+    color: "#151922",
+    zIndex: 30,
+  },
+  fontSearchRow: {
+    height: 36,
+    boxSizing: "border-box",
+    display: "grid",
+    gridTemplateColumns: "18px minmax(0, 1fr) 18px",
+    alignItems: "center",
+    gap: 6,
+    padding: "0 12px",
+    color: "#111827",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+  },
+  fontSearchInput: {
+    minWidth: 0,
+    height: 28,
+    border: 0,
+    outline: "none",
+    background: "transparent",
+    color: "#111827",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 14,
+    fontWeight: 400,
+    padding: 0,
+  },
+  fontSearchClear: {
+    width: 18,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: 0,
+    borderRadius: 999,
+    background: "transparent",
+    color: "#111827",
+    cursor: "pointer",
+    padding: 0,
+  },
+  fontMenuDivider: {
+    width: "100%",
+    height: 1,
+    background: "#ECEEF2",
+  },
+  fontMenuSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    minHeight: 0,
+    padding: "8px 10px 0",
+  },
+  fontMenuHeading: {
+    height: 26,
+    boxSizing: "border-box",
+    padding: "0 8px",
+    border: "1px solid #CBB6FF",
+    borderRadius: 4,
+    color: "#7C51F8",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 12,
+    fontWeight: 500,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  },
+  fontSourceSwapButton: {
+    width: 18,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: 0,
+    borderRadius: 4,
+    background: "transparent",
+    color: "currentColor",
+    cursor: "pointer",
+    padding: 0,
+  },
+  fontMenuOptions: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    maxHeight: 250,
+    minHeight: 0,
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+  },
+  fontMenuOption: {
+    width: "100%",
+    minHeight: 30,
+    border: 0,
+    borderRadius: 4,
+    background: "transparent",
+    color: "#151922",
+    cursor: "pointer",
+    display: "grid",
+    gridTemplateColumns: "22px minmax(0, 1fr) 24px",
+    alignItems: "center",
+    columnGap: 4,
+    padding: "0 8px 0 4px",
+    textAlign: "left",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 13,
+    fontWeight: 400,
+    lineHeight: 1,
+  },
+  fontMenuOptionSelected: {
+    background: "#F1F1F4",
+    color: "#111827",
+  },
+  fontMenuCheck: {
+    width: 22,
+    minWidth: 22,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "currentColor",
+  },
+  fontMenuOptionLabel: {
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  fontMenuSample: {
+    justifySelf: "end",
+    color: "#151922",
+    fontSize: 13,
+    lineHeight: 1,
   },
   fontSizeControl: {
     width: 70,
@@ -753,6 +1144,7 @@ const textToolbarStyles = {
     alignItems: "center",
     justifyContent: "center",
     border: 0,
+    outline: "none",
     borderRadius: 2,
     background: "transparent",
     color: "#05070A",
@@ -790,21 +1182,142 @@ const textToolbarStyles = {
     opacity: 0,
     cursor: "pointer",
   },
-  opacityControlWrap: {
+  settingsControlWrap: {
     position: "relative",
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     flex: "0 0 auto",
   },
-  opacityBridge: {
+  settingsPanel: {
     position: "absolute",
-    top: 22,
+    top: 52,
     right: -100,
-    width: 278,
-    height: 30,
-    background: "transparent",
-    pointerEvents: "auto",
+    width: 217,
+    minHeight: 230,
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 6,
+    border: "1px solid #E5E7EB",
+    background: "#FFFFFF",
+    boxShadow: "0 18px 44px rgba(15, 23, 42, 0.16)",
+    zIndex: 80,
+  },
+  settingsSliderRow: {
+    width: "100%",
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "column",
+    gap: 7,
+  },
+  settingsSliderHeader: {
+    width: "100%",
+    height: 24,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  settingsSliderIcon: {
+    width: 24,
+    height: 24,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#111827",
+  },
+  settingsSliderInput: {
+    position: "absolute",
+    inset: 0,
+    width: "100%",
+    height: "100%",
+    opacity: 0,
+    cursor: "pointer",
+    margin: 0,
+  },
+  settingsSliderWrap: {
+    position: "relative",
+    width: "100%",
+    height: 16,
+    display: "flex",
+    alignItems: "center",
+  },
+  settingsSliderTrack: {
+    position: "relative",
+    width: "100%",
+    height: 3,
+    borderRadius: 999,
+    background: "#ECEEF2",
+    overflow: "visible",
+  },
+  settingsSliderFill: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    height: 3,
+    borderRadius: 999,
+    background: "#7C51F8",
+  },
+  settingsSliderThumb: {
+    position: "absolute",
+    top: "50%",
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    background: "#FFFFFF",
+    boxShadow: "0 0 0 1px #E5E7EB, 0 1px 2px rgba(15, 23, 42, 0.12)",
+    transform: "translate(-50%, -50%)",
+    pointerEvents: "none",
+  },
+  settingsValueBadge: {
+    height: 24,
+    width: 42,
+    boxSizing: "border-box",
+    borderRadius: 999,
+    border: "1px solid #E5E7EB",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0 8px",
+    color: "#111827",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 12,
+    fontWeight: 400,
+    lineHeight: 1,
+    whiteSpace: "nowrap",
+  },
+  settingsBulletTitle: {
+    width: "100%",
+    color: "#151922",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 15,
+    fontWeight: 500,
+    lineHeight: 1.2,
+    marginTop: 3,
+  },
+  settingsBulletActions: {
+    width: "100%",
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 1fr)",
+    gap: 10,
+  },
+  settingsBulletButton: {
+    height: 36,
+    border: 0,
+    borderRadius: 4,
+    background: "#F4F4F7",
+    color: "#05070A",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    padding: 0,
   },
   opacityIcon: {
     display: "inline-block",
@@ -816,80 +1329,6 @@ const textToolbarStyles = {
     backgroundSize: "contain",
     flex: "0 0 auto",
     overflow: "hidden",
-  },
-  opacityPanel: {
-    position: "absolute",
-    top: 52,
-    right: -88,
-    width: 256,
-    height: 64,
-    boxSizing: "border-box",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: "0 20px",
-    borderRadius: 6,
-    border: 0,
-    background: "#FFFFFF",
-    boxShadow: "0 0 4px rgba(0, 0, 0, 0.15)",
-  },
-  opacityInput: {
-    width: "100%",
-    accentColor: "#7C51F8",
-    cursor: "pointer",
-  },
-  metricControlWrap: {
-    position: "relative",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flex: "0 0 auto",
-  },
-  metricBridge: {
-    position: "absolute",
-    top: 22,
-    right: -104,
-    width: 278,
-    height: 30,
-    background: "transparent",
-    pointerEvents: "auto",
-  },
-  metricPanel: {
-    position: "absolute",
-    top: 52,
-    right: -104,
-    width: 256,
-    minHeight: 76,
-    boxSizing: "border-box",
-    display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
-    gap: 12,
-    padding: "12px 18px",
-    borderRadius: 6,
-    border: 0,
-    background: "#FFFFFF",
-    boxShadow: "0 0 4px rgba(0, 0, 0, 0.15)",
-  },
-  metricPanelHeader: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    color: "#0B1220",
-    fontFamily:
-      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
-    fontSize: 13,
-    fontWeight: 600,
-  },
-  metricValue: {
-    color: "#6B7280",
-    fontWeight: 500,
-  },
-  metricInput: {
-    width: "100%",
-    accentColor: "#7C51F8",
-    cursor: "pointer",
   },
   textIcon: {
     display: "inline-flex",
