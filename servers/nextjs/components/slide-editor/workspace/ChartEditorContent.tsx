@@ -47,6 +47,9 @@ const DATA_MODAL_CHART_PREVIEW_WIDTH = 274;
 const DATA_MODAL_CHART_PREVIEW_HEIGHT =
   (DATA_MODAL_CHART_PREVIEW_WIDTH / SLIDE_W) * SLIDE_H;
 const DATA_MODAL_CHART_PREVIEW_SCALE = DATA_MODAL_CHART_PREVIEW_WIDTH / SLIDE_W;
+const DATA_MODAL_TOP_OFFSET = 88;
+const DATA_MODAL_VIEWPORT_PADDING = 24;
+const DATA_MODAL_MAX_HEIGHT = `calc(100dvh - ${DATA_MODAL_TOP_OFFSET + DATA_MODAL_VIEWPORT_PADDING * 2}px)`;
 const NOOP_CHART_PREVIEW_EVENTS = {
   draggable: false,
   onClick: () => false,
@@ -616,14 +619,15 @@ function ChartDataModal({
   return (
     <div
       data-inline-edit-ignore="true"
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/35 p-6 font-syne"
+      className="fixed inset-x-0 bottom-0 z-[120] flex items-center justify-center bg-black/35 p-6 font-syne"
+      style={{ top: DATA_MODAL_TOP_OFFSET }}
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div
         className="flex max-w-full flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_rgba(16,24,40,0.24)]"
         style={{
-          height: expanded ? "calc(100dvh - 48px)" : 650,
-          maxHeight: "calc(100dvh - 48px)",
+          height: expanded ? DATA_MODAL_MAX_HEIGHT : 650,
+          maxHeight: DATA_MODAL_MAX_HEIGHT,
           width: expanded ? "calc(100% - 48px)" : 1180,
         }}
       >
