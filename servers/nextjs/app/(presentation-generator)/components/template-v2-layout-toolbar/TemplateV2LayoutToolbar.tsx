@@ -3,18 +3,21 @@
 import { useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
-  AlignCenter,
   Box,
   ChevronDown,
-  Grid3X3,
+  ChevronUp,
+  Copy,
+  MoreVertical,
   PaintBucket,
   Plus,
+  PlusCircle,
   Scan,
   SlidersHorizontal,
   Sparkles,
   Square,
   Trash2,
   Ungroup,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -24,11 +27,22 @@ import {
   Panel,
 } from "@/components/slide-editor/inline/ShapeToolbar";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   addLayoutItemChanges,
   layoutItemStats,
   removeLastLayoutItemChanges,
 } from "../template-v2-layout/layoutItems";
 import { isFlowLayoutElement } from "../template-v2-layout/flowLayout";
+import {
+  canApplyComponentLayerAction,
+  type ComponentLayerAction,
+} from "../template-v2-layering/componentLayering";
 
 type RawRecord = Record<string, unknown>;
 type LayoutElementType =
@@ -37,17 +51,16 @@ type LayoutElementType =
   | "grid"
   | "list-view"
   | "grid-view";
-type LayoutAlignment = "flex-start" | "center" | "flex-end" | "stretch";
 type PanelId =
   | "horizontal-alignment"
   | "vertical-alignment"
-  | "spacing"
   | "items"
   | "fill"
   | "stroke"
   | "radius"
   | "padding"
   | "shadow"
+  | "component-menu"
   | null;
 
 export type TemplateV2LayoutToolbarBox = {
@@ -61,22 +74,55 @@ export type TemplateV2LayoutElement = RawRecord & {
   type: LayoutElementType;
 };
 
-type TemplateV2LayoutToolbarProps = {
-  box: TemplateV2LayoutToolbarBox;
-  element: TemplateV2LayoutElement;
-  onChange: (changes: RawRecord) => void;
-  position?: { left: number; top: number };
-  onUngroup?: () => void;
+type TemplateV2SelectionComponentActions = {
+  canUngroup: boolean;
+  componentIndex: number;
+  componentCount: number;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onLayerAction: (action: ComponentLayerAction) => void;
+  onUngroup: () => void;
 };
 
-const LAYOUT_ALIGNMENTS: Array<{
+type TemplateV2UngroupAction = {
+  canUngroup: boolean;
+  onUngroup: () => void;
+};
+
+type TemplateV2LayoutToolbarProps = {
+  box: TemplateV2LayoutToolbarBox;
+  element?: TemplateV2LayoutElement | null;
+  onChange?: (changes: RawRecord) => void;
+  position?: { left: number; top: number };
+  componentActions?: TemplateV2SelectionComponentActions | null;
+  ungroupAction?: TemplateV2UngroupAction | null;
+};
+
+const COMPONENT_LAYER_ACTIONS: Array<{
+  action: ComponentLayerAction;
   label: string;
-  value: LayoutAlignment;
+  shortcut: string;
 }> = [
-    { label: "Start", value: "flex-start" },
-    { label: "Center", value: "center" },
-    { label: "End", value: "flex-end" },
-    { label: "Stretch", value: "stretch" },
+    {
+      action: "bring-to-front",
+      label: "Bring to Front",
+      shortcut: "⌥⌘]",
+    },
+    {
+      action: "bring-forward",
+      label: "Bring Forward",
+      shortcut: "⌘]",
+    },
+    {
+      action: "send-backward",
+      label: "Send Backward",
+      shortcut: "⌘[",
+    },
+    {
+      action: "send-to-back",
+      label: "Send Back",
+      shortcut: "⌥⌘[",
+    },
   ];
 
 const HORIZONTAL_ALIGNMENTS = ["left", "center", "right"] as const;
@@ -128,7 +174,7 @@ function ControlButton({
       aria-pressed={open}
       onClick={onClick}
       className={cn(
-        "flex h-7 items-center justify-center gap-1.5 rounded-md border-0 bg-transparent px-2 text-xs font-medium text-[#191919] hover:bg-[#F8F8FA]",
+        "flex items-center justify-center gap-2 rounded-md border-0 bg-transparent px-2 text-sm font-manrope font-medium text-black hover:bg-[#F8F8FA]",
         open && "bg-[#F4F1FF] text-[#7C3AED]",
       )}
     >
@@ -215,234 +261,169 @@ function PanelControl({
   );
 }
 
+type LayoutControlsProps = {
+  element: TemplateV2LayoutElement;
+  onChange: (changes: RawRecord) => void;
+  onToggle: (panel: Exclude<PanelId, null>) => void;
+  openPanel: PanelId;
+};
+
+function FlowControls({
+  element,
+  onChange,
+  onToggle,
+  openPanel,
+}: LayoutControlsProps) {
+  return (
+    <>
+      <GapControl element={element} onChange={onChange} />
+      <Divider />
+      <ItemsControl
+        element={element}
+        onChange={onChange}
+        openPanel={openPanel}
+        onToggle={onToggle}
+      />
+    </>
+  );
+}
+
+function GapControl({
+  element,
+  onChange,
+}: {
+  element: TemplateV2LayoutElement;
+  onChange: (changes: RawRecord) => void;
+}) {
+  const value = readGapValue(element);
+  const commit = (nextValue: number) => {
+    const gap = Math.max(0, Math.round(nextValue * 10) / 10);
+    onChange({ gap, column_gap: gap, row_gap: gap });
+  };
+
+  return (
+    <label className="flex h-10 items-center gap-2 px-1 text-sm font-medium text-[#191919]">
+      <span>Gap</span>
+      <span className="flex h-8 items-center rounded-md bg-white">
+        <input
+          type="number"
+          min={0}
+          step={1}
+          aria-label="Gap"
+          value={formatGapValue(value)}
+          onChange={(event) => {
+            const nextValue = Number(event.target.value);
+            if (Number.isFinite(nextValue)) commit(nextValue);
+          }}
+          className="h-8 w-9 border-0 bg-transparent p-0 text-center text-sm font-medium outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+        <span className="flex h-7 w-4 flex-col items-center justify-center">
+          <button
+            type="button"
+            title="Increase gap"
+            aria-label="Increase gap"
+            onClick={() => commit(value + 1)}
+            className="grid h-3 w-4 place-items-center rounded-sm text-[#05070A] hover:bg-[#F8F8FA]"
+          >
+            <ChevronUp size={11} strokeWidth={2.4} aria-hidden />
+          </button>
+          <button
+            type="button"
+            title="Decrease gap"
+            aria-label="Decrease gap"
+            onClick={() => commit(value - 1)}
+            className="grid h-3 w-4 place-items-center rounded-sm text-[#05070A] hover:bg-[#F8F8FA]"
+          >
+            <ChevronDown size={11} strokeWidth={2.4} aria-hidden />
+          </button>
+        </span>
+      </span>
+    </label>
+  );
+}
+
 function ItemsControl({
   element,
   onChange,
   onToggle,
   openPanel,
-}: Omit<TemplateV2LayoutToolbarProps, "box"> & {
-  onToggle: (panel: Exclude<PanelId, null>) => void;
-  openPanel: PanelId;
-}) {
+}: LayoutControlsProps) {
   const { canAdd, canRemove, children } = layoutItemStats(element);
   const addItem = () => {
     if (!canAdd) return;
     onChange(addLayoutItemChanges(element));
+    onToggle("items");
   };
   const removeItem = () => {
     if (!canRemove) return;
     const changes = removeLastLayoutItemChanges(element);
     if (changes) onChange(changes);
+    onToggle("items");
   };
+  const open = openPanel === "items";
 
   return (
-    <PanelControl
-      id="items"
-      label="Items"
-      icon={<Plus size={15} aria-hidden />}
-      openPanel={openPanel}
-      onToggle={onToggle}
-      panelClassName="w-[230px] space-y-2 p-3"
-    >
-      <div className="flex items-center justify-between text-xs text-[#4B5563]">
-        <span>Count</span>
-        <span>{children.length}</span>
-      </div>
+    <div className="relative">
       <button
         type="button"
-        disabled={!canAdd}
-        onClick={addItem}
+        title="Items"
+        aria-label="Items"
+        aria-expanded={open}
+        onClick={() => onToggle("items")}
         className={cn(
-          "flex h-8 w-full items-center justify-center gap-2 rounded-md text-xs font-medium",
-          canAdd
-            ? "bg-[#F4F1FF] text-[#7A5AF8] hover:bg-[#ECE6FF]"
-            : "cursor-not-allowed bg-[#F3F4F6] text-[#9CA3AF]",
+          "grid h-8 w-8 place-items-center rounded-md border-0 bg-transparent text-[#05070A] hover:bg-[#F8F8FA]",
+          open && "bg-[#F4F1FF] text-[#7C3AED]",
         )}
       >
-        <Plus size={14} aria-hidden />
-        Add item
+        <PlusCircle size={20} strokeWidth={2.2} aria-hidden />
       </button>
-      <button
-        type="button"
-        disabled={!canRemove}
-        onClick={removeItem}
-        className={cn(
-          "flex h-8 w-full items-center justify-center gap-2 rounded-md text-xs font-medium",
-          canRemove
-            ? "bg-white text-[#991B1B] ring-1 ring-[#FECACA] hover:bg-[#FEF2F2]"
-            : "cursor-not-allowed bg-[#F3F4F6] text-[#9CA3AF]",
-        )}
-      >
-        <Trash2 size={14} aria-hidden />
-        Remove last
-      </button>
-    </PanelControl>
+      {open ? (
+        <Panel className="w-[245px] overflow-hidden p-0">
+          <button
+            type="button"
+            disabled={!canAdd}
+            onClick={addItem}
+            className={cn(
+              "flex h-[78px] w-full items-center gap-4 px-7 text-left text-[13px] font-medium text-[#191919] hover:bg-[#F8F8FA]",
+              !canAdd &&
+              "cursor-not-allowed text-[#A0A3AD] hover:bg-transparent",
+            )}
+          >
+            <Plus size={20} strokeWidth={2.2} aria-hidden />
+            <span>Add Item</span>
+          </button>
+          <div className="h-px bg-[#E7E8EC]" aria-hidden />
+          <button
+            type="button"
+            disabled={!canRemove}
+            onClick={removeItem}
+            className={cn(
+              "flex h-[78px] w-full items-center gap-4 px-7 text-left text-[13px] font-medium text-[#191919] hover:bg-[#F8F8FA]",
+              !canRemove &&
+              "cursor-not-allowed text-[#A0A3AD] hover:bg-transparent",
+            )}
+          >
+            <Trash2 size={20} strokeWidth={2.2} aria-hidden />
+            <span>Last Item</span>
+            <span className="ml-auto text-[11px] text-[#8A8D96]">
+              {children.length}
+            </span>
+          </button>
+        </Panel>
+      ) : null}
+    </div>
   );
 }
 
-function FlexControls({
-  element,
-  onChange,
-  onToggle,
-  openPanel,
-}: Omit<TemplateV2LayoutToolbarProps, "box"> & {
-  onToggle: (panel: Exclude<PanelId, null>) => void;
-  openPanel: PanelId;
-}) {
-  const direction = readString(element.direction, "row");
-  const alignItems = readString(element.align_items, "stretch");
-  const justifyContent = readString(element.justify_content, "flex-start");
-  const horizontal = direction === "row" ? justifyContent : alignItems;
-  const vertical = direction === "row" ? alignItems : justifyContent;
-
-  return (
-    <>
-      <SelectControl
-        id="horizontal-alignment"
-        label="Horizontal"
-        value={horizontal}
-        options={LAYOUT_ALIGNMENTS}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        onChange={(value) =>
-          onChange(
-            direction === "row"
-              ? { justify_content: value }
-              : { align_items: value },
-          )
-        }
-      />
-      <SelectControl
-        id="vertical-alignment"
-        label="Vertical"
-        value={vertical}
-        options={LAYOUT_ALIGNMENTS}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        onChange={(value) =>
-          onChange(
-            direction === "row"
-              ? { align_items: value }
-              : { justify_content: value },
-          )
-        }
-      />
-      <PanelControl
-        id="spacing"
-        label="Spacing"
-        icon={<SlidersHorizontal size={15} aria-hidden />}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        panelClassName="grid w-[280px] grid-cols-2 gap-2 p-3"
-      >
-        <NumberField
-          label="Gap"
-          value={readNumber(element.gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(gap) => onChange({ gap })}
-        />
-        <NumberField
-          label="Column"
-          value={readNumber(element.column_gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(column_gap) => onChange({ column_gap })}
-        />
-        <NumberField
-          label="Row"
-          value={readNumber(element.row_gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(row_gap) => onChange({ row_gap })}
-        />
-      </PanelControl>
-      <ItemsControl
-        element={element}
-        onChange={onChange}
-        openPanel={openPanel}
-        onToggle={onToggle}
-      />
-    </>
+function readGapValue(element: RawRecord) {
+  return readNumber(
+    element.gap,
+    readNumber(element.column_gap, readNumber(element.row_gap)),
   );
 }
 
-function GridControls({
-  element,
-  onChange,
-  onToggle,
-  openPanel,
-}: Omit<TemplateV2LayoutToolbarProps, "box"> & {
-  onToggle: (panel: Exclude<PanelId, null>) => void;
-  openPanel: PanelId;
-}) {
-  const alignItems = readString(element.align_items, "stretch");
-  const justifyItems = readString(element.justify_items, "stretch");
-
-  return (
-    <>
-      <SelectControl
-        id="horizontal-alignment"
-        label="Horizontal"
-        value={justifyItems}
-        options={LAYOUT_ALIGNMENTS}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        onChange={(value) => onChange({ justify_items: value })}
-      />
-      <SelectControl
-        id="vertical-alignment"
-        label="Vertical"
-        value={alignItems}
-        options={LAYOUT_ALIGNMENTS}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        onChange={(value) => onChange({ align_items: value })}
-      />
-      <PanelControl
-        id="spacing"
-        label="Spacing"
-        icon={<SlidersHorizontal size={15} aria-hidden />}
-        openPanel={openPanel}
-        onToggle={onToggle}
-        panelClassName="grid w-[280px] grid-cols-2 gap-2 p-3"
-      >
-        <NumberField
-          label="Gap"
-          value={readNumber(element.gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(gap) => onChange({ gap })}
-        />
-        <NumberField
-          label="Column"
-          value={readNumber(element.column_gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(column_gap) => onChange({ column_gap })}
-        />
-        <NumberField
-          label="Row"
-          value={readNumber(element.row_gap)}
-          min={0}
-          step={0.1}
-          suffix="px"
-          onCommit={(row_gap) => onChange({ row_gap })}
-        />
-      </PanelControl>
-      <ItemsControl
-        element={element}
-        onChange={onChange}
-        openPanel={openPanel}
-        onToggle={onToggle}
-      />
-    </>
-  );
+function formatGapValue(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function ContainerControls({
@@ -451,7 +432,10 @@ function ContainerControls({
   onChange,
   onToggle,
   openPanel,
-}: TemplateV2LayoutToolbarProps & {
+}: {
+  box: TemplateV2LayoutToolbarBox;
+  element: TemplateV2LayoutElement;
+  onChange: (changes: RawRecord) => void;
   onToggle: (panel: Exclude<PanelId, null>) => void;
   openPanel: PanelId;
 }) {
@@ -675,22 +659,154 @@ function ContainerControls({
   );
 }
 
+function ComponentMoreMenu({
+  actions,
+  onOpenChange,
+  openPanel,
+}: {
+  actions: TemplateV2SelectionComponentActions;
+  onOpenChange: (open: boolean) => void;
+  openPanel: PanelId;
+}) {
+  const open = openPanel === "component-menu";
+  const run = (callback: () => void) => callback();
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title="More"
+          aria-label="More"
+          className={cn(
+            "grid h-8 w-8 place-items-center rounded-[4px] border-0 bg-transparent font-manrope text-black hover:bg-[#F6F6F9]",
+            open && "bg-[#F6F6F9]",
+          )}
+        >
+          <MoreVertical
+            size={16}
+            className="text-black"
+            strokeWidth={1.33}
+            aria-hidden
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        sideOffset={12}
+        collisionPadding={8}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        className="z-[10001] box-border w-[206px] rounded-[12px] border border-[#EDEEEF] bg-white py-2 font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] shadow-[0_6px_18px_rgba(16,24,40,0.08)]"
+      >
+        <ToolbarMenuItem
+          strong
+          icon={Copy}
+          label="Duplicate"
+          onClick={() => run(actions.onDuplicate)}
+        />
+        {COMPONENT_LAYER_ACTIONS.map(({ action, label, shortcut }) => {
+          const disabled = !canApplyComponentLayerAction(
+            actions.componentIndex,
+            actions.componentCount,
+            action,
+          );
+          return (
+            <ToolbarMenuItem
+              key={action}
+              disabled={disabled}
+              label={label}
+              shortcut={shortcut}
+              onClick={() => run(() => actions.onLayerAction(action))}
+            />
+          );
+        })}
+        <DropdownMenuSeparator className="my-1 h-px bg-[#E7E8EC]" />
+        <ToolbarMenuItem
+          strong
+          icon={Trash2}
+          label="Delete Slide"
+          onClick={() => run(actions.onDelete)}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ToolbarMenuItem({
+  disabled,
+  icon: Icon = undefined,
+  label,
+  shortcut,
+  strong,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon?: LucideIcon;
+  label: string;
+  shortcut?: string;
+  strong?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      disabled={disabled}
+      onSelect={onClick}
+      style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+
+      className={cn(
+        "flex w-full cursor-default items-center gap-2 rounded-none px-4 py-2.5 text-left font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] outline-none hover:bg-[#F6F6F9] focus:bg-[#F6F6F9] focus:text-[#191919]",
+        strong && "text-black",
+        disabled &&
+        "cursor-not-allowed text-[#A0A3AD] hover:bg-transparent focus:bg-transparent data-[disabled]:opacity-100",
+      )}
+    >
+      {Icon ? <Icon size={16} strokeWidth={1.33} aria-hidden /> : null}
+      <span>{label}</span>
+      {shortcut ? (
+        <span
+          className={cn(
+            "ml-auto inline-flex px-1.5 py-1 items-center justify-center rounded-[6px] bg-[#F6F6F9]  font-manrope text-[14px] font-normal leading-none tracking-[0.14px] text-[#808080]",
+            disabled && "bg-[#F7F7FA] text-[#B0B3BB]",
+          )}
+        >
+          {shortcut}
+        </span>
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
+
 export function TemplateV2LayoutToolbar({
   box,
   element,
   onChange,
   position,
-  onUngroup,
+  componentActions,
+  ungroupAction: flowUngroupAction,
 }: TemplateV2LayoutToolbarProps) {
   const [openPanel, setOpenPanel] = useState<PanelId>(null);
-  const layoutType =
-    element.type === "list-view"
-      ? "flex"
-      : element.type === "grid-view"
-        ? "grid"
-        : element.type;
-  const estimatedWidth = (layoutType === "container" ? 700 : 440) +
-    (onUngroup ? 90 : 0);
+  const layoutType = element ? normalizedLayoutType(element) : null;
+  const hasFlowControls = Boolean(
+    element && onChange && (layoutType === "flex" || layoutType === "grid"),
+  );
+  const hasContainerControls = Boolean(
+    element && onChange && layoutType === "container",
+  );
+  const hasLayoutControls = hasFlowControls || hasContainerControls;
+  const ungroupAction = componentActions?.canUngroup
+    ? componentActions
+    : flowUngroupAction?.canUngroup
+      ? flowUngroupAction
+      : null;
+  if (!componentActions && !hasLayoutControls && !ungroupAction) return null;
+
+  const estimatedWidth = toolbarWidthEstimate({
+    componentActions,
+    hasUngroupAction: Boolean(ungroupAction),
+    hasContainerControls,
+    hasFlowControls,
+  });
   const left =
     position?.left ??
     Math.max(8, Math.min(box.x, STAGE_WIDTH - estimatedWidth - 8));
@@ -702,8 +818,11 @@ export function TemplateV2LayoutToolbar({
   const togglePanel = (panel: Exclude<PanelId, null>) => {
     setOpenPanel((current) => (current === panel ? null : panel));
   };
-  const TypeIcon =
-    layoutType === "grid" ? Grid3X3 : layoutType === "container" ? Box : AlignCenter;
+  const setPanelOpen = (panel: Exclude<PanelId, null>, open: boolean) => {
+    setOpenPanel((current) =>
+      open ? panel : current === panel ? null : current,
+    );
+  };
 
   const toolbar = (
     <div
@@ -711,46 +830,50 @@ export function TemplateV2LayoutToolbar({
       style={{ left, top }}
       onMouseDown={(event) => event.stopPropagation()}
       onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[10000] flex h-10 items-center rounded-md bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      className="fixed z-[10000] flex h-10 items-center rounded-[10px] bg-white px-2.5 text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
-      <span className="flex items-center gap-1.5 px-1 text-xs font-semibold">
-        <TypeIcon size={15} aria-hidden />
-        {capitalize(element.type)}
-      </span>
-      <Divider />
-      {onUngroup ? (
+      {ungroupAction ? (
         <>
-          <ControlButton title="Ungroup" onClick={onUngroup}>
-            <Ungroup size={15} aria-hidden />
+          <ControlButton title="Ungroup" onClick={ungroupAction.onUngroup}>
+
             <span>Ungroup</span>
           </ControlButton>
           <Divider />
         </>
       ) : null}
-
-      {layoutType === "flex" ? (
-        <FlexControls
+      {hasFlowControls && element && onChange ? (
+        <FlowControls
           element={element}
           onChange={onChange}
           openPanel={openPanel}
           onToggle={togglePanel}
         />
-      ) : layoutType === "grid" ? (
-        <GridControls
-          element={element}
-          onChange={onChange}
-          openPanel={openPanel}
-          onToggle={togglePanel}
-        />
-      ) : (
-        <ContainerControls
-          box={box}
-          element={element}
-          onChange={onChange}
-          openPanel={openPanel}
-          onToggle={togglePanel}
-        />
-      )}
+      ) : hasContainerControls && element && onChange ? (
+        <>
+          <span className="flex items-center gap-1.5 px-1 text-xs font-semibold">
+            <Box size={15} aria-hidden />
+            {capitalize(element.type)}
+          </span>
+          <Divider />
+          <ContainerControls
+            box={box}
+            element={element}
+            onChange={onChange}
+            openPanel={openPanel}
+            onToggle={togglePanel}
+          />
+        </>
+      ) : null}
+      {componentActions ? (
+        <>
+          {hasLayoutControls ? <Divider /> : null}
+          <ComponentMoreMenu
+            actions={componentActions}
+            openPanel={openPanel}
+            onOpenChange={(open) => setPanelOpen("component-menu", open)}
+          />
+        </>
+      ) : null}
     </div>
   );
 
@@ -759,11 +882,51 @@ export function TemplateV2LayoutToolbar({
     : toolbar;
 }
 
+function normalizedLayoutType(element: TemplateV2LayoutElement) {
+  if (element.type === "list-view") return "flex";
+  if (element.type === "grid-view") return "grid";
+  return element.type;
+}
+
+function toolbarWidthEstimate({
+  componentActions,
+  hasUngroupAction,
+  hasContainerControls,
+  hasFlowControls,
+}: {
+  componentActions?: TemplateV2SelectionComponentActions | null;
+  hasUngroupAction: boolean;
+  hasContainerControls: boolean;
+  hasFlowControls: boolean;
+}) {
+  if (hasContainerControls) {
+    return 700 + (componentActions ? 48 : 0);
+  }
+  return (
+    (hasUngroupAction ? 116 : 0) +
+    (hasFlowControls ? 130 : 0) +
+    (componentActions ? 48 : 0) +
+    28
+  );
+}
+
 export function isTemplateV2LayoutElement(
   element: RawRecord | null | undefined,
 ): element is TemplateV2LayoutElement {
   return (
     element?.type === "container" ||
+    isTemplateV2FlowLayoutElement(element)
+  );
+}
+
+export function isTemplateV2FlowLayoutElement(
+  element: RawRecord | null | undefined,
+): element is TemplateV2LayoutElement {
+  return (
+    element?.type === "flex" ||
+    element?.type === "grid" ||
+    element?.type === "list-view" ||
+    element?.type === "grid-view" ||
     Boolean(element && isFlowLayoutElement(element))
   );
 }

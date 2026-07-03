@@ -1,4 +1,5 @@
 import {
+  isTemplateV2FlowLayoutElement,
   isTemplateV2LayoutElement,
   type TemplateV2LayoutElement,
 } from "./TemplateV2LayoutToolbar";
@@ -28,16 +29,36 @@ export function findFirstComponentLayoutElement(
   elements: unknown[],
   parentPath: number[] = [],
 ): ComponentLayoutElementTarget | null {
+  return (
+    findFirstComponentLayoutElementBy(
+      elements,
+      parentPath,
+      isTemplateV2FlowLayoutElement,
+    ) ??
+    findFirstComponentLayoutElementBy(
+      elements,
+      parentPath,
+      isTemplateV2LayoutElement,
+    )
+  );
+}
+
+function findFirstComponentLayoutElementBy(
+  elements: unknown[],
+  parentPath: number[],
+  predicate: (element: RawRecord) => element is TemplateV2LayoutElement,
+): ComponentLayoutElementTarget | null {
   for (let index = 0; index < elements.length; index += 1) {
     const element = asRecord(elements[index]);
     if (!element) continue;
     const elementPath = [...parentPath, index];
-    if (isTemplateV2LayoutElement(element)) {
+    if (predicate(element)) {
       return { element, elementPath };
     }
-    const nested = findFirstComponentLayoutElement(
+    const nested = findFirstComponentLayoutElementBy(
       childElements(element),
       elementPath,
+      predicate,
     );
     if (nested) return nested;
   }

@@ -111,13 +111,18 @@ import {
   pasteTemplateV2ClipboardPayload,
   type TemplateV2ClipboardPayload,
 } from "./template-v2-clipboard/clipboard";
-import { TemplateV2ComponentToolbar } from "./template-v2-component-toolbar/TemplateV2ComponentToolbar";
 import { useTemplateV2Clipboard } from "./template-v2-clipboard/useTemplateV2Clipboard";
 import {
+  isTemplateV2FlowLayoutElement,
   isTemplateV2LayoutElement,
-  TemplateV2LayoutToolbar,
 } from "./template-v2-layout-toolbar/TemplateV2LayoutToolbar";
-import { findFirstComponentLayoutElement } from "./template-v2-layout-toolbar/layoutToolbarTarget";
+import { TemplateV2SelectionToolbar } from "./template-v2-layout-toolbar/TemplateV2SelectionToolbar";
+import {
+  getTemplateV2SelectionToolbarAnchorBox,
+  getTemplateV2SelectionToolbarPosition,
+  hasTemplateV2SelectionToolbar,
+} from "./template-v2-layout-toolbar/selectionToolbarPosition";
+import { getTemplateV2SelectionToolbarTarget } from "./template-v2-layout-toolbar/selectionToolbarTarget";
 import {
   isFlowLayoutElement,
   layoutFlowChildren,
@@ -174,11 +179,6 @@ const TEXT_AVERAGE_CHAR_EM = 0.5;
 const DECORATIVE_LINE_LENGTH = 80;
 const DECORATIVE_LINE_THICKNESS = 4;
 const MAX_HISTORY_ENTRIES = 50;
-const COMPONENT_TOOLBAR_WIDTH = 270;
-const LAYOUT_TOOLBAR_WIDTH = 700;
-const TOOLBAR_HEIGHT = 40;
-const TOOLBAR_GAP = 8;
-const TOOLBAR_MARGIN = 8;
 const SCROLL_DISMISS_THRESHOLD_PX = 300;
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
@@ -353,22 +353,18 @@ function TemplateV2KonvaSlideComponent({
   const selectedBox = selection
     ? absoluteBoxForSelection(uiDraft, selection)
     : null;
-  const layoutToolbarTarget = useMemo(() => {
-    if (selection?.kind !== "component" || !selectedComponent) return null;
-    const layoutRoot = findFirstComponentLayoutElement(
-      readArray(selectedComponent.elements),
-    );
-    if (!layoutRoot) return null;
-    const elementSelection: ElementSelection = {
-      kind: "element",
-      componentIndex: selection.componentIndex,
-      elementPath: layoutRoot.elementPath,
-    };
-    const box = absoluteBoxForSelection(uiDraft, elementSelection);
-    return box
-      ? { selection: elementSelection, element: layoutRoot.element, box }
-      : null;
-  }, [selection, selectedComponent, uiDraft]);
+  const layoutToolbarTarget = useMemo(
+    () =>
+      getTemplateV2SelectionToolbarTarget({
+        selection,
+        selectedBox,
+        selectedComponent,
+        selectedElement,
+        absoluteBoxForSelection: (targetSelection) =>
+          absoluteBoxForSelection(uiDraft, targetSelection),
+      }),
+    [selectedBox, selectedComponent, selectedElement, selection, uiDraft],
+  );
   const toolbarElement = useMemo(
     () => {
       if (!selectedElement || !selectedBox) return null;
@@ -394,9 +390,24 @@ function TemplateV2KonvaSlideComponent({
     () =>
       selection?.kind === "component" &&
       selectedComponent != null &&
-      componentChildCount(selectedComponent) > 1,
+      readArray(selectedComponent.elements).filter(isRecord).length > 1,
     [selectedComponent, selection],
   );
+  const canUngroupLayoutTargetComponent = useMemo(() => {
+    const componentIndex = layoutToolbarTarget?.selection.componentIndex;
+    if (
+      componentIndex == null ||
+      componentIndex < 0 ||
+      !layoutToolbarTarget ||
+      !isTemplateV2FlowLayoutElement(layoutToolbarTarget.element)
+    ) {
+      return false;
+    }
+    const component = asRecord(readArray(uiDraft.components)[componentIndex]);
+    return component
+      ? readArray(component.elements).filter(isRecord).length > 1
+      : false;
+  }, [layoutToolbarTarget, uiDraft.components]);
   const [, setToolbarViewportVersion] = useState(0);
   const hasDismissibleEditorUi = Boolean(
     selection ||
@@ -405,29 +416,22 @@ function TemplateV2KonvaSlideComponent({
     selectedTableCell ||
     editingTableCell,
   );
-  const hasFloatingToolbars = Boolean(
-    isEditMode &&
-    selection?.kind === "component" &&
-    (selectedBox || layoutToolbarTarget),
-  );
-  const componentToolbarPosition = selectedBox
-    ? stackedViewportToolbarPosition({
-      root: rootElement,
-      anchorBox: selectedBox,
-      index: 0,
-      total: layoutToolbarTarget ? 2 : 1,
-      toolbarWidth: COMPONENT_TOOLBAR_WIDTH,
-    })
-    : null;
-  const layoutToolbarPosition = layoutToolbarTarget
-    ? stackedViewportToolbarPosition({
-      root: rootElement,
-      anchorBox: selectedBox ?? layoutToolbarTarget.box,
-      index: selectedBox ? 1 : 0,
-      total: selectedBox ? 2 : 1,
-      toolbarWidth: LAYOUT_TOOLBAR_WIDTH,
-    })
-    : null;
+  const floatingToolbarAnchorBox = getTemplateV2SelectionToolbarAnchorBox({
+    layoutTarget: layoutToolbarTarget,
+    selectedBox,
+    selection,
+  });
+  const hasFloatingToolbar = hasTemplateV2SelectionToolbar({
+    anchorBox: floatingToolbarAnchorBox,
+    isEditMode,
+    layoutTarget: layoutToolbarTarget,
+    selection,
+  });
+  const selectionToolbarPosition = getTemplateV2SelectionToolbarPosition({
+    anchorBox: floatingToolbarAnchorBox,
+    layoutTarget: layoutToolbarTarget,
+    root: rootElement,
+  });
   const inlineEditBox = inlineEdit
     ? absoluteInlineEditBox(uiDraft, inlineEdit.selection, inlineEdit.frame)
     : null;
@@ -457,7 +461,7 @@ function TemplateV2KonvaSlideComponent({
   }, [clearInlineEdit, clearTableCellSelection, layout]);
 
   useEffect(() => {
-    if (!hasFloatingToolbars || typeof window === "undefined") return;
+    if (!hasFloatingToolbar || typeof window === "undefined") return;
     let frame = 0;
     const refreshToolbarPosition = () => {
       window.cancelAnimationFrame(frame);
@@ -471,7 +475,7 @@ function TemplateV2KonvaSlideComponent({
       window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", refreshToolbarPosition);
     };
-  }, [hasFloatingToolbars]);
+  }, [hasFloatingToolbar]);
 
   const isSurfaceActive = useCallback(
     () =>
@@ -895,6 +899,12 @@ function TemplateV2KonvaSlideComponent({
     [activateSurface, clearInlineEdit, clearTableCellSelection, commitUi],
   );
 
+  const duplicateSelection = useCallback(() => {
+    const payload = createClipboardPayload();
+    if (!payload) return;
+    pasteClipboardPayload(payload, 16);
+  }, [createClipboardPayload, pasteClipboardPayload]);
+
   useTemplateV2Clipboard({
     enabled: isEditMode,
     isSurfaceActive,
@@ -1029,6 +1039,29 @@ function TemplateV2KonvaSlideComponent({
   const applyLayoutElementChange = useCallback(
     (changes: Record<string, unknown>) => {
       if (!layoutToolbarTarget) return;
+      if (
+        layoutToolbarTarget.selection.componentIndex ===
+        ROOT_ELEMENTS_COMPONENT_INDEX
+      ) {
+        const updatedRoot = updateComponentLayoutElement(
+          rootElementsComponent(currentUiRef.current),
+          layoutToolbarTarget.selection.elementPath,
+          changes,
+          layoutToolbarTarget.box,
+          {
+            childrenBounds,
+            elementBox,
+            elementSize,
+            isManualPositioned,
+            normalizeLayoutChildren: elementWithNormalizedLayoutChildren,
+          },
+        );
+        commitUi({
+          ...currentUiRef.current,
+          elements: readArray(updatedRoot.elements),
+        });
+        return;
+      }
       updateComponent(layoutToolbarTarget.selection.componentIndex, (component) =>
         updateComponentLayoutElement(
           component,
@@ -1045,14 +1078,20 @@ function TemplateV2KonvaSlideComponent({
         ),
       );
     },
-    [layoutToolbarTarget, updateComponent],
+    [commitUi, layoutToolbarTarget, updateComponent],
   );
 
-  const ungroupSelectedComponent = useCallback(() => {
-    if (selection?.kind !== "component" || !canUngroupSelectedComponent) return;
+  const ungroupComponentAtIndex = useCallback((componentIndex: number) => {
+    if (componentIndex < 0) return;
+    const component = asRecord(
+      readArray(currentUiRef.current.components)[componentIndex],
+    );
+    if (!component || readArray(component.elements).filter(isRecord).length <= 1) {
+      return;
+    }
     const result = ungroupTemplateV2ComponentInUi(
       currentUiRef.current,
-      selection.componentIndex,
+      componentIndex,
       {
         childArrayInfo,
         componentBox,
@@ -1068,12 +1107,21 @@ function TemplateV2KonvaSlideComponent({
     clearTableCellSelection();
     setIconEditorSelection(null);
   }, [
-    canUngroupSelectedComponent,
     clearInlineEdit,
     clearTableCellSelection,
     commitUi,
-    selection,
   ]);
+
+  const ungroupSelectedComponent = useCallback(() => {
+    if (selection?.kind !== "component") return;
+    ungroupComponentAtIndex(selection.componentIndex);
+  }, [selection, ungroupComponentAtIndex]);
+
+  const ungroupLayoutTargetComponent = useCallback(() => {
+    const componentIndex = layoutToolbarTarget?.selection.componentIndex;
+    if (componentIndex == null || componentIndex < 0) return;
+    ungroupComponentAtIndex(componentIndex);
+  }, [layoutToolbarTarget, ungroupComponentAtIndex]);
 
   const reorderSelectedComponentLayer = useCallback(
     (action: ComponentLayerAction) => {
@@ -1493,35 +1541,23 @@ function TemplateV2KonvaSlideComponent({
           ) : null}
         </Layer>
       </Stage>
-      {isEditMode &&
-        selection?.kind === "component" &&
-        selectedBox ? (
-        <TemplateV2ComponentToolbar
-          box={selectedBox}
-          canUngroup={canUngroupSelectedComponent}
-          componentIndex={selection.componentIndex}
-          componentCount={components.length}
-          position={componentToolbarPosition ?? undefined}
-          slideWidth={STAGE_WIDTH}
-          onLayerAction={reorderSelectedComponentLayer}
-          onUngroup={ungroupSelectedComponent}
-        />
-      ) : null}
-      {isEditMode && layoutToolbarTarget ? (
-        <TemplateV2LayoutToolbar
-          key={keyForSelection(layoutToolbarTarget.selection)}
-          box={layoutToolbarTarget.box}
-          element={layoutToolbarTarget.element}
-          position={layoutToolbarPosition ?? undefined}
-          onUngroup={
-            canUngroupSelectedComponent &&
-              isFlowLayoutElement(layoutToolbarTarget.element)
-              ? ungroupSelectedComponent
-              : undefined
-          }
-          onChange={applyLayoutElementChange}
-        />
-      ) : null}
+      <TemplateV2SelectionToolbar
+        anchorBox={floatingToolbarAnchorBox}
+        canUngroupComponent={canUngroupSelectedComponent}
+        canUngroupLayoutTarget={canUngroupLayoutTargetComponent}
+        componentCount={components.length}
+        isEditMode={isEditMode}
+        layoutTarget={layoutToolbarTarget}
+        position={selectionToolbarPosition}
+        selection={selection}
+        selectionKey={keyForSelection(selection)}
+        onDeleteSelection={deleteSelection}
+        onDuplicateSelection={duplicateSelection}
+        onLayoutChange={applyLayoutElementChange}
+        onLayerAction={reorderSelectedComponentLayer}
+        onUngroupComponent={ungroupSelectedComponent}
+        onUngroupLayoutTarget={ungroupLayoutTargetComponent}
+      />
       {isEditMode &&
         selection?.kind === "element" &&
         selectedElement &&
@@ -1767,7 +1803,11 @@ function collectElementFontDescriptors(
   collectRunFontDescriptors(element.runs, baseFont, descriptors);
   collectTextListFontDescriptors(element.items, baseFont, descriptors);
   collectTableFontDescriptors(element.columns, baseFont, descriptors);
-  collectTableRowsFontDescriptors(element.rows, baseFont, descriptors);
+  if (Array.isArray(element.rows)) {
+    element.rows.forEach((row) =>
+      collectTableFontDescriptors(row, baseFont, descriptors),
+    );
+  }
 }
 
 function collectRunFontDescriptors(
@@ -1808,17 +1848,6 @@ function collectTextListFontDescriptors(
     }
     collectRunFontDescriptors(record.runs, fallback, descriptors);
   });
-}
-
-function collectTableRowsFontDescriptors(
-  value: unknown,
-  fallback: ReturnType<typeof rawFont>,
-  descriptors: Set<string>,
-) {
-  if (!Array.isArray(value)) return;
-  value.forEach((row) =>
-    collectTableFontDescriptors(row, fallback, descriptors),
-  );
 }
 
 function collectTableFontDescriptors(
@@ -4062,10 +4091,6 @@ function componentDisplayLabel(component: UnknownRecord | null, index: number) {
   );
 }
 
-function componentChildCount(component: UnknownRecord) {
-  return readArray(component.elements).filter(isRecord).length;
-}
-
 function elementPathForSelection(ui: RawUi, selection: ElementSelection) {
   const parts: string[] =
     selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX
@@ -4161,82 +4186,6 @@ function nullableBoxEqual(
 ) {
   if (previous == null || next == null) return previous == null && next == null;
   return boxEqual(previous, next);
-}
-
-function stackedToolbarPosition({
-  anchorBox,
-  bounds,
-  index,
-  total,
-  toolbarWidth,
-}: {
-  anchorBox: Box;
-  bounds?: Size;
-  index: number;
-  total: number;
-  toolbarWidth: number;
-}) {
-  const boundary = bounds ?? { width: STAGE_WIDTH, height: STAGE_HEIGHT };
-  const stackHeight = total * TOOLBAR_HEIGHT + (total - 1) * TOOLBAR_GAP;
-  const canFitAbove = anchorBox.y >= stackHeight + TOOLBAR_MARGIN;
-  const startTop = canFitAbove
-    ? anchorBox.y - stackHeight - TOOLBAR_GAP
-    : Math.min(
-      boundary.height - stackHeight - TOOLBAR_MARGIN,
-      anchorBox.y + anchorBox.height + TOOLBAR_GAP,
-    );
-  return {
-    left: Math.max(
-      TOOLBAR_MARGIN,
-      Math.min(anchorBox.x, boundary.width - toolbarWidth - TOOLBAR_MARGIN),
-    ),
-    top: Math.max(
-      TOOLBAR_MARGIN,
-      startTop + index * (TOOLBAR_HEIGHT + TOOLBAR_GAP),
-    ),
-  };
-}
-
-function stackedViewportToolbarPosition({
-  anchorBox,
-  index,
-  root,
-  total,
-  toolbarWidth,
-}: {
-  anchorBox: Box;
-  index: number;
-  root: HTMLElement | null;
-  total: number;
-  toolbarWidth: number;
-}) {
-  if (typeof window === "undefined" || !root) {
-    return stackedToolbarPosition({
-      anchorBox,
-      index,
-      total,
-      toolbarWidth,
-    });
-  }
-
-  const rect = root.getBoundingClientRect();
-  const scaleX = rect.width > 0 ? rect.width / STAGE_WIDTH : 1;
-  const scaleY = rect.height > 0 ? rect.height / STAGE_HEIGHT : 1;
-  return stackedToolbarPosition({
-    anchorBox: {
-      x: rect.left + anchorBox.x * scaleX,
-      y: rect.top + anchorBox.y * scaleY,
-      width: anchorBox.width * scaleX,
-      height: anchorBox.height * scaleY,
-    },
-    bounds: {
-      width: window.innerWidth,
-      height: window.innerHeight,
-    },
-    index,
-    total,
-    toolbarWidth,
-  });
 }
 
 function componentKey(component: RawComponent, index: number) {
