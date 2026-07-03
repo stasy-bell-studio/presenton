@@ -238,6 +238,7 @@ const DEFAULT_LINE_CHART_SOURCE = "presenton-default-line-chart";
 const DEFAULT_AREA_CHART_SOURCE = "presenton-default-area-chart";
 const DEFAULT_PIE_CHART_SOURCE = "presenton-default-pie-chart";
 const DEFAULT_CHART_INSERT_SIZE = { width: 2.5, height: 2.5 };
+const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
 
 const makeTextElement = ({
   text,
@@ -545,6 +546,73 @@ const makeChartElement = (chartType: ChartType): SlideElement => {
 const createChartInsertElements = (kind?: string): SlideElement[] => {
   const chartType = chartTypeFromPaletteId(kind);
   return chartType ? [makeChartElement(chartType)] : [];
+};
+
+const makeTableCell = (
+  text = "",
+  options: { bold?: boolean; fill?: string } = {},
+) => ({
+  color: options.fill ? { color: options.fill, opacity: 1 } : undefined,
+  font: {
+    family: "Inter",
+    size: 18,
+    color: "4B4B4B",
+    bold: Boolean(options.bold),
+    italic: false,
+    line_height: 1.2,
+    letter_spacing: 0,
+    wrap: "word" as const,
+  },
+  alignment: "left" as const,
+  runs: text
+    ? [
+        {
+          text,
+          font: {
+            family: "Inter",
+            size: 18,
+            color: "4B4B4B",
+            bold: Boolean(options.bold),
+            italic: false,
+            line_height: 1.2,
+            letter_spacing: 0,
+            wrap: "word" as const,
+          },
+        },
+      ]
+    : [],
+});
+
+const makeDefaultTableElement = (): SlideElement => ({
+  type: "table",
+  name: "Default Table",
+  position: { x: 0.95, y: 1.05 },
+  size: { width: 7.4, height: 2.6 },
+  font: {
+    family: "Inter",
+    size: 18,
+    color: "4B4B4B",
+    bold: false,
+    italic: false,
+    line_height: 1.2,
+    letter_spacing: 0,
+    wrap: "word",
+  },
+  columns: DEFAULT_TABLE_HEADERS.map((header) =>
+    makeTableCell(header, { bold: true, fill: "F5F5F7" }),
+  ),
+  rows: Array.from({ length: 3 }, () =>
+    DEFAULT_TABLE_HEADERS.map(() => makeTableCell()),
+  ),
+  min_columns: 2,
+  max_columns: 6,
+  min_rows: 1,
+  max_rows: 7,
+});
+
+const createTableInsertElements = (kind?: string): SlideElement[] => {
+  if (kind !== "simple-table") return [];
+  return [makeDefaultTableElement()];
 };
 
 
@@ -1841,7 +1909,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
   };
 
   const handleTableItemSelect = (item: PaletteItem) => {
-    // insertEditorElements(createTableInsertElementsContent(item.id), item.label);
+    insertEditorElements(createTableInsertElements(item.id), item.label);
   };
 
   const handleImageItemSelect = (item: PaletteItem) => {

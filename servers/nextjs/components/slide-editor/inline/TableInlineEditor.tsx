@@ -11,6 +11,11 @@ import {
   tableRowsAsStrings,
 } from "../lib/element-model";
 import type { Font, TableCell, TextRun } from "../lib/slide-schema";
+import {
+  layoutRichText,
+  type RenderTextFont,
+  type RenderTextRun,
+} from "../lib/template-v2-text";
 import { effectiveLineHeight } from "../lib/text-line-height";
 import {
   textRunsContent,
@@ -104,14 +109,36 @@ export function TableInlineEditor({
   const textFont = elementFont(textElement);
   const cellText = textRunsContent(textElement.runs);
   const textFontSizePx = textFont.size * (scale / TEMPLATE_V2_PX_PER_IN);
+  const editorTextWidth = Math.max(1, cellWidth - paddingX * 2);
   const editorLineHeight = effectiveLineHeight({
     text: cellText,
-    width: Math.max(1, cellWidth - paddingX * 2),
+    width: editorTextWidth,
     fontSize: textFontSizePx,
     lineHeight: textFont.lineHeight,
     fallback: 1.12,
     wrap: textFont.wrap,
   });
+  const editorRenderFont = resolvedFontToRenderFont(
+    textFont,
+    scale,
+    editorLineHeight,
+  );
+  const editorRenderRuns = textElement.runs.map((run) =>
+    textRunToRenderRun(run, textElement.font ?? font, scale, editorLineHeight),
+  );
+  const editorContentHeight = layoutRichText(
+    editorRenderRuns,
+    editorTextWidth,
+    editorRenderFont,
+    textElement.alignment?.horizontal ?? "left",
+    "top",
+    cellHeight,
+    textFont.wrap,
+  ).contentHeight;
+  const editorPaddingTop = Math.max(
+    paddingY,
+    (cellHeight - editorContentHeight) / 2,
+  );
   const closeAfterBlur = useCallback(() => {
     window.setTimeout(() => {
       const active = document.activeElement;
@@ -205,7 +232,7 @@ export function TableInlineEditor({
           width: cellWidth,
           height: cellHeight,
           pointerEvents: "auto",
-          padding: `${paddingY}px ${paddingX}px`,
+          padding: `${editorPaddingTop}px ${paddingX}px ${paddingY}px`,
           background: withHash(
             cell.color?.color ?? (isHeader ? "F7F7FA" : "FFFFFF"),
           ),
@@ -257,6 +284,40 @@ function tableCellFont(
     letter_spacing: cellFont.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont.ellipsis ?? tableFont.ellipsis,
+  };
+}
+
+function resolvedFontToRenderFont(
+  font: ReturnType<typeof elementFont>,
+  scale: number,
+  fallbackLineHeight: number,
+): RenderTextFont {
+  return {
+    family: font.family,
+    size: font.size * (scale / TEMPLATE_V2_PX_PER_IN),
+    color: font.color,
+    bold: Boolean(font.bold),
+    italic: Boolean(font.italic),
+    underline: Boolean(font.underline),
+    lineHeight: font.lineHeight ?? fallbackLineHeight,
+    letterSpacing: (font.letterSpacing ?? 0) * (scale / TEMPLATE_V2_PX_PER_IN),
+    wrap: font.wrap ?? "word",
+  };
+}
+
+function textRunToRenderRun(
+  run: TextRun,
+  fallbackFont: Font,
+  scale: number,
+  fallbackLineHeight: number,
+): RenderTextRun {
+  return {
+    text: run.text || " ",
+    font: resolvedFontToRenderFont(
+      elementFont({ font: { ...fallbackFont, ...(run.font ?? {}) } }),
+      scale,
+      fallbackLineHeight,
+    ),
   };
 }
 
