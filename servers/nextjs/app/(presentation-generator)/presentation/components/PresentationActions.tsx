@@ -31,8 +31,7 @@ import type {
   ChartType,
   SlideElement,
 } from "@/components/slide-editor/lib/slide-schema";
-import type { ElementPath } from "@/components/slide-editor/lib/element-path";
-import { createDefaultElementFromRegistry } from "@/components/slide-editor/registry";
+
 import { ChartEditorContent } from "@/components/slide-editor/workspace/ChartEditorContent";
 import {
   adaptTemplateV2ComponentToElement,
@@ -85,7 +84,7 @@ type UnknownRecord = Record<string, unknown>;
 
 type ChartEditorState = {
   chart: ChartElement;
-  path: ElementPath;
+  path: string;
   rootIndex: number;
   slideId?: string | number | null;
   slideIndex?: number | null;
@@ -548,11 +547,7 @@ const createChartInsertElements = (kind?: string): SlideElement[] => {
   return chartType ? [makeChartElement(chartType)] : [];
 };
 
-const createTableInsertElements = (kind?: string): SlideElement[] => {
-  return kind === "simple-table"
-    ? [createDefaultElementFromRegistry("table")]
-    : [];
-};
+
 
 const imageRadius = { tl: 0.08, tr: 0.08, bl: 0.08, br: 0.08 };
 
@@ -1846,7 +1841,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
   };
 
   const handleTableItemSelect = (item: PaletteItem) => {
-    insertEditorElements(createTableInsertElements(item.id), item.label);
+    // insertEditorElements(createTableInsertElementsContent(item.id), item.label);
   };
 
   const handleImageItemSelect = (item: PaletteItem) => {

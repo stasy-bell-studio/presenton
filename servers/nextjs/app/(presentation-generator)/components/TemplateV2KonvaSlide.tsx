@@ -59,7 +59,6 @@ import {
   rawFontRecordForEditor,
   rawFontToSource,
   rawRenderTextRuns,
-  rawSvgContent,
   rawTableCellText,
   rawTextContent,
   rawTextListItemText,
@@ -68,7 +67,6 @@ import {
   rawTextRunsForEditor,
   rawTextStyle,
   scaleRawTextMetrics,
-  setRawSvgContent,
   setRawTextContent,
   setRawTextListContent,
   setRawTextListRunsContent,
@@ -97,10 +95,7 @@ import {
   TemplateV2InlineEditor,
 } from "@/components/slide-editor/inline";
 import { ElementToolbar } from "@/components/slide-editor/workspace/ElementToolbar";
-import {
-  loadKonvaImage,
-  svgToDataUri,
-} from "@/components/slide-editor/slide-surface/konva/exportAssets";
+import { loadKonvaImage } from "@/components/slide-editor/slide-surface/konva/exportAssets";
 import {
   TemplateV2ChartElement as RawChartElement,
   rawChartType,
@@ -940,13 +935,6 @@ function TemplateV2KonvaSlideComponent({
           runs,
           frame,
           style: rawTextStyle(element),
-        });
-      } else if (type === "svg") {
-        startInlineEdit({
-          kind: "svg",
-          selection: elementSelection,
-          draft: rawSvgContent(element),
-          frame,
         });
       }
     },
@@ -2418,9 +2406,6 @@ function RawElementVisual({
   if (type === "image") {
     return <RawImageElement element={element} width={width} height={height} interactive={interactive} />;
   }
-  if (type === "svg") {
-    return <RawSvgElement element={element} width={width} height={height} interactive={interactive} />;
-  }
   if (type === "table") {
     return (
       <RawTableElement
@@ -2785,32 +2770,7 @@ function drawRoundedImageClip(
   context.closePath();
 }
 
-function RawSvgElement({
-  element,
-  width,
-  height,
-  interactive,
-}: {
-  element: RawElement;
-  width: number;
-  height: number;
-  interactive: boolean;
-}) {
-  const svg = readString(element.svg);
-  const data = readString(element.data);
-  return (
-    <RawImageElement
-      element={{
-        ...element,
-        data: svg ? svgToDataUri(svg) : data,
-        fit: element.fit ?? "contain",
-      }}
-      width={width}
-      height={height}
-      interactive={interactive}
-    />
-  );
-}
+
 
 function RawInfographicElement({
   element,
@@ -3244,7 +3204,7 @@ function elementWithNormalizedLayoutChildren(
 
 function shouldUseCenterOrigin(element: RawElement) {
   const type = readString(element.type);
-  return type === "image" || type === "svg";
+  return type === "image";
 }
 
 function layoutContainerChildren(
@@ -4443,9 +4403,6 @@ function elementWithInlineDraft(
       style ? applyTextStyle(next, style) : next,
       frame,
     );
-  }
-  if (kind === "svg") {
-    return preserveInlineEditFrame(setRawSvgContent(element, draft), frame);
   }
   return element;
 }

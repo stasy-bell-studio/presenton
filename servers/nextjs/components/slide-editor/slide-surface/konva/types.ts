@@ -1,6 +1,5 @@
 import type Konva from "konva";
 import type { SlideElement } from "../../lib/slide-schema";
-import type { ElementPath } from "../../lib/element-path";
 import { elementBox } from "../../lib/element-model";
 
 export const SELECTION_STROKE = "#7C51F8";
@@ -48,7 +47,7 @@ export type SurfaceInteractionPreview = {
 };
 
 export type SurfaceInteractionTarget = {
-  path: ElementPath;
+  path: string;
   rootIndexes: number[];
   preview?: SurfaceInteractionPreview;
 } | null;

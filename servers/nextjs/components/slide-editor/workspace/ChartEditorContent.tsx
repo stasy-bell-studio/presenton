@@ -24,7 +24,6 @@ import {
   resolvedChartCategories,
   updateChartColorTarget,
 } from "../lib/chart-data";
-import type { ElementPath } from "../lib/element-path";
 import {
   SLIDE_H,
   SLIDE_W,
@@ -65,7 +64,7 @@ export function ChartEditorContent({
   onClose,
 }: {
   chart: ChartElement;
-  chartPath?: ElementPath | null;
+  chartPath?: string | null;
   onChange: (chart: ChartElement) => void;
   onClose?: () => void;
 }) {
@@ -109,22 +108,20 @@ export function ChartEditorContent({
           <div className="grid grid-cols-2">
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${
-                tab === "data"
-                  ? "border-[#7C51F8] text-[#191919]"
-                  : "border-transparent text-[#191919]"
-              }`}
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "data"
+                ? "border-[#7C51F8] text-[#191919]"
+                : "border-transparent text-[#191919]"
+                }`}
               onClick={() => setTab("data")}
             >
               Data
             </button>
             <button
               type="button"
-              className={`h-12 border-b-2 text-[13px] font-medium transition ${
-                tab === "customize"
-                  ? "border-[#7C51F8] text-[#191919]"
-                  : "border-transparent text-[#191919]"
-              }`}
+              className={`h-12 border-b-2 text-[13px] font-medium transition ${tab === "customize"
+                ? "border-[#7C51F8] text-[#191919]"
+                : "border-transparent text-[#191919]"
+                }`}
               onClick={() => setTab("customize")}
             >
               Customize
@@ -511,7 +508,7 @@ function ChartDataModal({
   onClose,
 }: {
   chart: ChartElement;
-  chartPath: ElementPath;
+  chartPath: string;
   onChange: (chart: ChartElement) => void;
   onClose: () => void;
 }) {
@@ -542,15 +539,15 @@ function ChartDataModal({
     const colorCount =
       colorMode === "point"
         ? Math.min(
-            12,
-            Math.max(1, normalizedCategories.length, normalized[0]?.values.length ?? 0),
-          )
+          12,
+          Math.max(1, normalizedCategories.length, normalized[0]?.values.length ?? 0),
+        )
         : 1;
     const seriesColors = Array.from({ length: colorCount }, (_, index) =>
-        nextSeriesColors[index] ??
-        chart.series_colors?.[index] ??
-        (index === 0 ? chart.color : null) ??
-        DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
+      nextSeriesColors[index] ??
+      chart.series_colors?.[index] ??
+      (index === 0 ? chart.color : null) ??
+      DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
     );
 
     onChange({
@@ -699,7 +696,7 @@ function EditableDataTable({
   seriesColors,
 }: {
   categories: string[];
-  chartPath: ElementPath;
+  chartPath: string;
   colorMode: "point" | "series";
   onClear: () => void;
   onUpdate: (
@@ -715,11 +712,11 @@ function EditableDataTable({
     series.length > 0
       ? series
       : [
-          {
-            name: "Series 1",
-            values: normalizeValues([], safeCategories.length),
-          },
-        ];
+        {
+          name: "Series 1",
+          values: normalizeValues([], safeCategories.length),
+        },
+      ];
   const usesPointColors = colorMode === "point";
   const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
   const selectedSeriesIndex = Math.min(activeSeriesIndex, safeSeries.length - 1);
@@ -754,13 +751,13 @@ function EditableDataTable({
       safeSeries.map((item, index) =>
         index === seriesIndex
           ? {
-              ...item,
-              values: item.values.map((current, valueIndex) =>
-                valueIndex === rowIndex && Number.isFinite(numeric)
-                  ? numeric
-                  : current,
-              ),
-            }
+            ...item,
+            values: item.values.map((current, valueIndex) =>
+              valueIndex === rowIndex && Number.isFinite(numeric)
+                ? numeric
+                : current,
+            ),
+          }
           : item,
       ),
       seriesColors,
@@ -779,9 +776,9 @@ function EditableDataTable({
       })),
       usesPointColors
         ? [
-            ...seriesColors,
-            DEFAULT_CHART_COLORS[safeCategories.length % DEFAULT_CHART_COLORS.length],
-          ]
+          ...seriesColors,
+          DEFAULT_CHART_COLORS[safeCategories.length % DEFAULT_CHART_COLORS.length],
+        ]
         : seriesColors,
     );
   };
@@ -854,64 +851,64 @@ function EditableDataTable({
       <div className="relative rounded-b-[18px] bg-[#F3F4F6] pr-7 pb-6">
         <div className="max-h-[390px] overflow-auto">
           <table className="min-w-full border-collapse text-[16px] text-[#191919]">
-          <thead>
-            <tr>
-              <th className="sticky left-0 top-0 z-10 w-0 border-b border-[#E8E8EC] bg-[#F6F7F8]" />
-              <th className="sticky left-0 top-0 z-10 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8]" />
-              {safeSeries.map((item, seriesIndex) => (
-                <th
-                  key={`${chartPath}-series-${seriesIndex}`}
-                  className="min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8] px-4 py-3 text-center text-[18px] font-medium"
-                >
-                  <button
-                    type="button"
-                    className="w-full truncate text-center outline-none"
-                    onClick={() => setActiveSeriesIndex(seriesIndex)}
-                  >
-                    {item.name}
-                  </button>
-                </th>
-              ))}
-              <th className="sticky right-0 top-0 w-16 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
-            </tr>
-          </thead>
-          <tbody>
-            {safeCategories.map((category, rowIndex) => (
-              <tr key={`${chartPath}-row-${rowIndex}`}>
-                <td className="sticky left-0 relative w-0 border-b border-[#E8E8EC] bg-[#F6F7F8] text-center text-[#A9AAB4]">
-                  <span className="absolute -left-6 top-1/2 flex -translate-y-1/2 items-center justify-center">
-                    <GripVertical size={18} strokeWidth={2.3} />
-                  </span>
-                </td>
-                <td className="sticky left-0 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F7F8FA] px-4 py-3">
-                  <input
-                    className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-3"
-                    value={category}
-                    onChange={(event) =>
-                      updateCategory(rowIndex, event.target.value)
-                    }
-                  />
-                </td>
+            <thead>
+              <tr>
+                <th className="sticky left-0 top-0 z-10 w-0 border-b border-[#E8E8EC] bg-[#F6F7F8]" />
+                <th className="sticky left-0 top-0 z-10 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8]" />
                 {safeSeries.map((item, seriesIndex) => (
-                  <td
-                    key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
-                    className="border-b border-r border-[#E8E8EC] bg-white px-4 py-3"
+                  <th
+                    key={`${chartPath}-series-${seriesIndex}`}
+                    className="min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8] px-4 py-3 text-center text-[18px] font-medium"
                   >
+                    <button
+                      type="button"
+                      className="w-full truncate text-center outline-none"
+                      onClick={() => setActiveSeriesIndex(seriesIndex)}
+                    >
+                      {item.name}
+                    </button>
+                  </th>
+                ))}
+                <th className="sticky right-0 top-0 w-16 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
+              </tr>
+            </thead>
+            <tbody>
+              {safeCategories.map((category, rowIndex) => (
+                <tr key={`${chartPath}-row-${rowIndex}`}>
+                  <td className="sticky left-0 relative w-0 border-b border-[#E8E8EC] bg-[#F6F7F8] text-center text-[#A9AAB4]">
+                    <span className="absolute -left-6 top-1/2 flex -translate-y-1/2 items-center justify-center">
+                      <GripVertical size={18} strokeWidth={2.3} />
+                    </span>
+                  </td>
+                  <td className="sticky left-0 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F7F8FA] px-4 py-3">
                     <input
-                      className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-3"
-                      type="number"
-                      value={item.values[rowIndex] ?? 0}
+                      className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-3"
+                      value={category}
                       onChange={(event) =>
-                        updateValue(seriesIndex, rowIndex, event.target.value)
+                        updateCategory(rowIndex, event.target.value)
                       }
                     />
                   </td>
-                ))}
-                <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  {safeSeries.map((item, seriesIndex) => (
+                    <td
+                      key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
+                      className="border-b border-r border-[#E8E8EC] bg-white px-4 py-3"
+                    >
+                      <input
+                        className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-3"
+                        type="number"
+                        value={item.values[rowIndex] ?? 0}
+                        onChange={(event) =>
+                          updateValue(seriesIndex, rowIndex, event.target.value)
+                        }
+                      />
+                    </td>
+                  ))}
+                  <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="absolute bottom-0 right-0 top-0 w-7 rounded-r-[18px] bg-[#EDEEF0]" />
         <div className="absolute bottom-0 left-0 right-7 h-6 rounded-b-[18px] bg-[#EDEEF0]" />
@@ -992,9 +989,8 @@ function downloadChartData(element: ChartElement) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download = `${
-    (element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
-  }.csv`;
+  anchor.download = `${(element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
+    }.csv`;
   anchor.click();
   URL.revokeObjectURL(url);
 }
