@@ -4,7 +4,11 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from services.chat.schemas import OpenAIStrictSchemaModel, StrictSchemaModel
+from services.chat.schemas import (
+    OpenAIStrictSchemaModel,
+    SlideElementTableValue,
+    StrictSchemaModel,
+)
 
 
 class NoArgsInput(StrictSchemaModel):
@@ -112,10 +116,14 @@ class ChartUpdateInput(OpenAIStrictSchemaModel):
         return normalized
 
 
-class TableUpdateInput(StrictSchemaModel):
-    columns: list[Any] | None = Field(default=None, min_length=1, max_length=100)
-    headers: list[Any] | None = Field(default=None, min_length=1, max_length=100)
-    rows: list[list[Any]] = Field(min_length=1, max_length=100)
+class TableUpdateInput(OpenAIStrictSchemaModel):
+    columns: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    headers: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    rows: list[list[SlideElementTableValue]] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_columns_or_headers(self) -> "TableUpdateInput":

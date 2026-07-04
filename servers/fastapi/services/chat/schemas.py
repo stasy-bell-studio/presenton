@@ -206,10 +206,23 @@ class SlideElementChartInput(OpenAIStrictSchemaModel):
         return normalized
 
 
-class SlideElementTableInput(StrictSchemaModel):
-    columns: list[Any] | None = Field(default=None, min_length=1, max_length=100)
-    headers: list[Any] | None = Field(default=None, min_length=1, max_length=100)
-    rows: list[list[Any]] = Field(min_length=1, max_length=100)
+class SlideElementTableValueInput(StrictSchemaModel):
+    text: str = Field(min_length=0, max_length=5000)
+
+
+SlideElementTableValue = (
+    str | int | float | bool | None | SlideElementTableValueInput
+)
+
+
+class SlideElementTableInput(OpenAIStrictSchemaModel):
+    columns: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    headers: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    rows: list[list[SlideElementTableValue]] = Field(min_length=1, max_length=100)
 
     @model_validator(mode="after")
     def validate_columns_or_headers(self) -> "SlideElementTableInput":
