@@ -38,8 +38,7 @@ export function getTemplateV2SelectionToolbarTarget({
     selection?.kind === "element" &&
     selectedElement &&
     selectedBox &&
-    (isTemplateV2LayoutElement(selectedElement) ||
-      selectedElement.type === "line")
+    isTemplateV2LayoutElement(selectedElement)
   ) {
     return { selection, element: selectedElement as TemplateV2ToolbarElement, box: selectedBox };
   }

@@ -20,6 +20,11 @@ import type { TemplateFontOption } from "@/components/slide-editor/text/google-f
 import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
 import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
 import { TiptapInlineTextEditor } from "@/components/slide-editor/text/TiptapInlineTextEditor";
+import {
+  layoutRichText,
+  type RenderTextFont,
+  type RenderTextRun,
+} from "@/components/slide-editor/text/template-v2-text";
 
 const DEFAULT_TABLE_NAME = "Default Table";
 const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];

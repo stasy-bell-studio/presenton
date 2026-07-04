@@ -138,7 +138,7 @@ export function LineToolbar({
 
       <div className="relative">
         <ToolbarButton
-          title="Line width"
+          title="Line border"
           pressed={openPanel === "width"}
           onClick={() => togglePanel("width")}
         >
@@ -146,14 +146,28 @@ export function LineToolbar({
         </ToolbarButton>
         {openPanel === "width" ? (
           <Panel className="w-[220px] space-y-3 p-3">
+            <ColorField
+              label="Border color"
+              color={stroke.color}
+              onCommit={(color) => setStroke({ color })}
+            />
             <NumberField
-              label="Width"
+              label="Border width"
               value={stroke.width}
               min={0}
               max={8}
               step={0.25}
               suffix="pt"
               onCommit={(width) => setStroke({ width })}
+            />
+            <SliderField
+              label="Border opacity"
+              value={stroke.opacity ?? 1}
+              min={0}
+              max={1}
+              step={0.01}
+              formatValue={(value) => `${Math.round(value * 100)}%`}
+              onCommit={(opacity) => setStroke({ opacity })}
             />
           </Panel>
         ) : null}
