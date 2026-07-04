@@ -6,6 +6,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   AlignCenter,
   AlignLeft,
@@ -62,9 +63,20 @@ const MAX_LETTER_SPACING = 600;
 const MIN_LINE_HEIGHT = 0.8;
 const MAX_LINE_HEIGHT = 2.2;
 const DEFAULT_LINE_HEIGHT = 1.15;
+const TEXT_TOOLBAR_FALLBACK_WIDTH = 560;
+const TEXT_TOOLBAR_FALLBACK_HEIGHT = 44;
+const TEXT_TOOLBAR_EDGE_PADDING = 8;
+const TEXT_TOOLBAR_GAP = 8;
 
 type TextToolbarPanel = "settings";
 type FontPickerSource = "template" | "google";
+type ToolbarSurfaceRect = {
+  left: number;
+  top: number;
+  width: number;
+  scaleX: number;
+  scaleY: number;
+};
 
 function clampFontSize(size: number) {
   return Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, size));
@@ -95,6 +107,7 @@ function formatOpacity(value: number) {
 export function TextToolbar({
   element,
   index,
+  anchorBox,
   scale,
   listMarker,
   selectionRange,
@@ -104,6 +117,12 @@ export function TextToolbar({
 }: {
   element: TextSlideElement;
   index: number;
+  anchorBox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
   scale: number;
   listMarker?: Marker | null;
   selectionRange?: TextSelectionRange | null;
@@ -130,6 +149,22 @@ export function TextToolbar({
   );
   const [openPanel, setOpenPanel] = useState<TextToolbarPanel | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const toolbarRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [toolbarWidth, setToolbarWidth] = useState(
+    TEXT_TOOLBAR_FALLBACK_WIDTH,
+  );
+  const [toolbarHeight, setToolbarHeight] = useState(
+    TEXT_TOOLBAR_FALLBACK_HEIGHT,
+  );
+  const [surfaceRect, setSurfaceRect] = useState<ToolbarSurfaceRect>({
+    left: 0,
+    top: 0,
+    width: 0,
+    scaleX: 1,
+    scaleY: 1,
+  });
   const updateFont = (fontPatch: Partial<Font>) => {
     onChange(
       index,
@@ -210,14 +245,112 @@ export function TextToolbar({
     loadFontFamily(font.family);
   }, [font.family, loadFontFamily]);
 
-  return (
-    <div data-inline-edit-ignore="true"
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || typeof window === "undefined") return;
+    const anchor = anchorRef.current;
+    if (!anchor) return;
+    const surface = anchor.closest<HTMLElement>(
+      "[data-template-v2-konva-surface]",
+    );
+    const updateMeasurements = () => {
+      const toolbar = toolbarRef.current;
+      if (toolbar) {
+        const toolbarRect = toolbar.getBoundingClientRect();
+        const nextWidth = toolbarRect.width;
+        const nextHeight = toolbarRect.height;
+        if (Number.isFinite(nextWidth) && nextWidth > 0) {
+          setToolbarWidth(nextWidth);
+        }
+        if (Number.isFinite(nextHeight) && nextHeight > 0) {
+          setToolbarHeight(nextHeight);
+        }
+      }
+      if (surface) {
+        const nextSurfaceRect = surface.getBoundingClientRect();
+        const surfaceScaleX =
+          surface.offsetWidth > 0
+            ? nextSurfaceRect.width / surface.offsetWidth
+            : 1;
+        const surfaceScaleY =
+          surface.offsetHeight > 0
+            ? nextSurfaceRect.height / surface.offsetHeight
+            : 1;
+        setSurfaceRect({
+          left: nextSurfaceRect.left,
+          top: nextSurfaceRect.top,
+          width: nextSurfaceRect.width,
+          scaleX: Number.isFinite(surfaceScaleX) ? surfaceScaleX : 1,
+          scaleY: Number.isFinite(surfaceScaleY) ? surfaceScaleY : 1,
+        });
+      }
+    };
+    updateMeasurements();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateMeasurements);
+    if (observer) {
+      const toolbar = toolbarRef.current;
+      if (toolbar) observer.observe(toolbar);
+      if (surface) observer.observe(surface);
+    }
+    window.addEventListener("resize", updateMeasurements);
+    window.addEventListener("scroll", updateMeasurements, true);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", updateMeasurements);
+      window.removeEventListener("scroll", updateMeasurements, true);
+    };
+  }, [mounted]);
+
+  const viewportWidth =
+    typeof window === "undefined" ? surfaceRect.width : window.innerWidth;
+  const surfaceWidth = surfaceRect.width > 0 ? surfaceRect.width : viewportWidth;
+  const anchorX =
+    (anchorBox?.x ?? (element.position?.x ?? 0) * scale) * surfaceRect.scaleX;
+  const anchorY =
+    (anchorBox?.y ?? (element.position?.y ?? 0) * scale) * surfaceRect.scaleY;
+  const preferredToolbarLeft = surfaceRect.left + anchorX;
+  const minToolbarLeft = Math.max(
+    TEXT_TOOLBAR_EDGE_PADDING,
+    surfaceRect.left + TEXT_TOOLBAR_EDGE_PADDING,
+  );
+  const maxToolbarLeft = Math.max(
+    TEXT_TOOLBAR_EDGE_PADDING,
+    Math.min(
+      surfaceRect.left + surfaceWidth - toolbarWidth - TEXT_TOOLBAR_EDGE_PADDING,
+      viewportWidth - toolbarWidth - TEXT_TOOLBAR_EDGE_PADDING,
+    ),
+  );
+  const toolbarLeft = Math.max(
+    minToolbarLeft,
+    Math.min(preferredToolbarLeft, maxToolbarLeft),
+  );
+  const toolbarTop = Math.max(
+    TEXT_TOOLBAR_EDGE_PADDING,
+    surfaceRect.top + anchorY - toolbarHeight - TEXT_TOOLBAR_GAP,
+  );
+
+  const toolbarNode = (
+    <div
+      ref={toolbarRef}
+      data-inline-edit-ignore="true"
+      data-template-v2-floating-toolbar="true"
       style={{
-        ...inlineStyles.toolbar,
-        left: Math.max(8, (element.position?.x ?? 0) * scale),
-        top: Math.max(8, (element.position?.y ?? 0) * scale - 52),
+        position: "fixed",
+        zIndex: 10000,
+        left: toolbarLeft,
+        top: toolbarTop,
+        pointerEvents: "auto",
+        visibility: surfaceRect.width > 0 ? "visible" : "hidden",
       }}
-      onMouseDown={(event) => event.stopPropagation()}>
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+    >
       <div style={textToolbarStyles.toolbar}>
         <FontFamilyPicker
           selectedFamily={font.family}
@@ -386,6 +519,13 @@ export function TextToolbar({
       </div>
     </div>
   );
+
+  return (
+    <>
+      <span ref={anchorRef} data-inline-edit-ignore="true" />
+      {mounted ? createPortal(toolbarNode, document.body) : null}
+    </>
+  );
 }
 
 function ToolbarButton({
@@ -509,8 +649,8 @@ function FontFamilyPicker({
   );
   const visibleFamilies = hasSearchQuery
     ? searchFamilies.filter((family) =>
-        family.toLowerCase().includes(normalizedQuery),
-      )
+      family.toLowerCase().includes(normalizedQuery),
+    )
     : activeFamilies;
   const activeTitle = hasSearchQuery
     ? "All Fonts"

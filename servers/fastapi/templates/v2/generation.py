@@ -79,6 +79,9 @@ Convert the provided raw slide elements to components.
 
 # Chart Rules:
 - Represent every chart using a single `chart` element.
+- Chart coordinates are 1280x720 pixel units, never normalized 0-1 values.
+- Every standalone chart must have an explicit local `position` and `size`; use the chart's visual bounds, or if adding a new chart with no source bounds, use `position: {"x": 0, "y": 0}` and a size that fills the chart component.
+- Do not create tiny chart boxes. Explicit chart size must be at least 80px wide and 60px tall; prefer 640x300 or larger for primary charts.
 - Detect charts by comparing the raw PPTX JSON with the reference slide image.
 - When a chart is built from multiple raw elements, replace all elements that form the chart with one `chart` element.
 - Chart-related parts such as legends, gridlines, axes, labels, and data series must be included within the `chart` element.

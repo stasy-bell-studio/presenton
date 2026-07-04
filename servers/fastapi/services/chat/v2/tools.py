@@ -12,16 +12,19 @@ from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-foun
 
 from services.chat.v2.context_store import TemplateV2ContextStore
 from services.chat.v2.schemas import (
+    AddComponentInput,
+    AddSlideLayoutInput,
     DeleteComponentInput,
     GetEditableElementsInput,
     GetSlideLayoutInput,
     NoArgsInput,
     SearchTemplateContentInput,
     SwapComponentVariantInput,
+    SwapLayoutItemsInput,
     UngroupComponentInput,
     UpdateElementContentInput,
 )
-from templates.v2.models.layouts import SlideLayout
+from templates.v2.models.layouts import Component, SlideLayout
 
 LOGGER = logging.getLogger(__name__)
 
@@ -37,9 +40,12 @@ class TemplateV2ChatTools:
             "getSlideLayout": self._get_slide_layout,
             "searchTemplateContent": self._search_template_content,
             "getEditableElements": self._get_editable_elements,
+            "addSlideLayout": self._add_slide_layout,
+            "addComponent": self._add_component,
             "updateElementContent": self._update_element_content,
             "deleteComponent": self._delete_component,
             "ungroupComponent": self._ungroup_component,
+            "swapLayoutItems": self._swap_layout_items,
             "swapComponentVariant": self._swap_component_variant,
         }
 
@@ -85,12 +91,48 @@ class TemplateV2ChatTools:
                 strict=True,
             ),
             Tool(
+                name="addSlideLayout",
+                description=(
+                    "Add a new TemplateV2 slide layout by duplicating an existing "
+                    "layout. Use for requests to add/create/append a slide when no "
+                    "exact new layout generator exists. Before calling this, inspect "
+                    "and choose the source with getSlideLayout(includeFullJson=true) "
+                    "and plan the copied-content updates. After adding, inspect the "
+                    "new slide with getEditableElements and update copied placeholder "
+                    "text, charts, tables, or images with updateElementContent before "
+                    "treating the new slide as complete."
+                ),
+                schema=AddSlideLayoutInput,
+                strict=True,
+            ),
+            Tool(
+                name="addComponent",
+                description=(
+                    "Add a new canvas component to any TemplateV2 slide layout. Use "
+                    "this when the user asks to add a new chart, table, card, image, "
+                    "shape, text block, icon, or grouped visual that does not already "
+                    "exist in the current layout—or to replace an image/icon block with "
+                    "a real chart (delete the old component first, then add a chart "
+                    "component here). Never add a static chart picture; charts must be "
+                    "type chart with chart_type/chartType (pie, bar, line, donut, etc.), "
+                    "title, categories, and series[].values. The component JSON must "
+                    "include id, description, position, size, and a non-empty elements "
+                    "array."
+                ),
+                schema=AddComponentInput,
+                strict=True,
+            ),
+            Tool(
                 name="updateElementContent",
                 description=(
                     "Patch safe content fields only for one concrete element path: "
                     "text.runs via text, text-list.items via items, one table cell via "
-                    "tableCell, chart title/categories/series via chart, or image/icon "
-                    "data via text. Does not change geometry or create elements."
+                    "tableCell, a whole table via table {columns or headers, rows}, "
+                    "chart type/title/categories/series via chart, or image/icon data via "
+                    "text URL only. Chart series must use values arrays, not data arrays. "
+                    "Never use the text field on image elements for chart requests—use "
+                    "addComponent with a chart element instead. Does not change geometry "
+                    "or create elements."
                 ),
                 schema=UpdateElementContentInput,
                 strict=True,
@@ -127,6 +169,19 @@ class TemplateV2ChatTools:
                     "and size; replaces description/elements only."
                 ),
                 schema=SwapComponentVariantInput,
+                strict=True,
+            ),
+            Tool(
+                name="swapLayoutItems",
+                description=(
+                    "Swap two complete TemplateV2 layout items by concrete paths from "
+                    "getSlideLayout(includeFullJson=true), such as components[0] or "
+                    "components[0].elements[1].children[2]. Use for requests like "
+                    "swap the first and last card/element/component. Moves the whole "
+                    "item content together, including text runs, icons, and styling; "
+                    "do not use updateElementContent to fake swaps."
+                ),
+                schema=SwapLayoutItemsInput,
                 strict=True,
             ),
         ]
@@ -277,6 +332,76 @@ class TemplateV2ChatTools:
             "elements": editable,
         }
 
+    async def _add_slide_layout(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddSlideLayoutInput(**args)
+        insert_index, layout, layouts = await self._context.add_slide_layout(
+            source_slide_index=payload.source_slide_index,
+            insert_index=payload.insert_index,
+            layout_id=payload.layout_id,
+            description=payload.description,
+        )
+        return {
+            "added": True,
+            "slide_index": insert_index,
+            "slide_number": insert_index + 1,
+            "layout_id": layout.id,
+            "description": layout.description,
+            "slide_count": len(layouts.layouts),
+            "message": f"Added slide layout {insert_index + 1}.",
+        }
+
+    async def _add_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddComponentInput(**args)
+        layout = await self._context.get_slide_layout(payload.slide_index)
+        layout_dict = _model_dict(layout)
+        components = layout_dict.get("components")
+        if not isinstance(components, list):
+            raise ValueError("Slide layout has no components list.")
+
+        try:
+            parsed = dirtyjson.loads(payload.component)
+        except Exception:
+            parsed = json.loads(payload.component)
+        component_dict = json.loads(json.dumps(parsed, ensure_ascii=False))
+        if not isinstance(component_dict, dict):
+            raise ValueError("component must be a JSON object.")
+
+        used_ids = {
+            str(component.get("id"))
+            for component in components
+            if isinstance(component, dict) and component.get("id")
+        }
+        component_id = str(component_dict.get("id") or "").strip()
+        if not component_id or component_id in used_ids:
+            component_id = _unique_component_id(
+                _normalize_component_id(component_id or "component"),
+                used_ids,
+            )
+        component_dict["id"] = component_id
+        component = Component.model_validate(component_dict)
+        insert_index = (
+            len(components)
+            if payload.insert_index is None
+            else min(max(0, payload.insert_index), len(components))
+        )
+        components.insert(insert_index, component.model_dump(mode="json", exclude_none=True))
+
+        updated_layout = SlideLayout.model_validate(layout_dict)
+        await self._context.save_slide_layout(
+            slide_index=payload.slide_index,
+            layout=updated_layout,
+        )
+        return {
+            "added": True,
+            "slide_index": payload.slide_index,
+            "slide_number": payload.slide_index + 1,
+            "component_id": component.id,
+            "component_index": insert_index,
+            "message": (
+                f"Added component '{component.id}' to slide {payload.slide_index + 1}."
+            ),
+        }
+
     async def _update_element_content(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = UpdateElementContentInput(**args)
         layout = await self._context.get_slide_layout(payload.slide_index)
@@ -293,17 +418,22 @@ class TemplateV2ChatTools:
                 raise ValueError("items is required for text-list elements.")
             _update_text_list_element(element, payload.items)
         elif element_type == "table":
-            if payload.table_cell is None:
-                raise ValueError("tableCell is required for table elements.")
-            _update_table_cell(element, payload.table_cell.model_dump(by_alias=False))
+            if payload.table is not None:
+                _update_table_element(element, payload.table.model_dump())
+            elif payload.table_cell is not None:
+                _update_table_cell(element, payload.table_cell.model_dump(by_alias=False))
+            else:
+                raise ValueError("table or tableCell is required for table elements.")
         elif element_type == "chart":
             if payload.chart is None:
                 raise ValueError("chart is required for chart elements.")
             _update_chart_element(element, payload.chart.model_dump(exclude_none=True))
         elif element_type == "image":
-            if payload.text is None:
-                raise ValueError("text must contain the replacement image/icon data.")
-            element["data"] = payload.text
+            _apply_image_element_update(
+                element,
+                text=payload.text,
+                items=payload.items,
+            )
         else:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
 
@@ -481,6 +611,61 @@ class TemplateV2ChatTools:
             "message": (
                 f"Swapped component '{payload.component_id}' to variant "
                 f"'{variant.id}' on slide {payload.slide_index + 1}."
+            ),
+        }
+
+    async def _swap_layout_items(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = SwapLayoutItemsInput(**args)
+        if payload.first_path == payload.second_path:
+            raise ValueError("Cannot swap an item with itself.")
+        first_is_descendant = payload.first_path.startswith(f"{payload.second_path}.")
+        second_is_descendant = payload.second_path.startswith(f"{payload.first_path}.")
+        if first_is_descendant or second_is_descendant:
+            raise ValueError("Cannot swap an item with its own descendant.")
+
+        layout = await self._context.get_slide_layout(payload.slide_index)
+        layout_dict = _model_dict(layout)
+        first_parent, first_index = _resolve_layout_item_parent(
+            layout_dict,
+            payload.first_path,
+        )
+        second_parent, second_index = _resolve_layout_item_parent(
+            layout_dict,
+            payload.second_path,
+        )
+        first_item = first_parent[first_index]
+        second_item = second_parent[second_index]
+        if not isinstance(first_item, dict) or not isinstance(second_item, dict):
+            raise ValueError("Both swap targets must be layout objects.")
+
+        first_replacement = copy.deepcopy(second_item)
+        second_replacement = copy.deepcopy(first_item)
+        _preserve_slot_fields(
+            first_replacement,
+            first_item,
+            keep_id=_is_top_level_component_path(payload.first_path),
+        )
+        _preserve_slot_fields(
+            second_replacement,
+            second_item,
+            keep_id=_is_top_level_component_path(payload.second_path),
+        )
+        first_parent[first_index] = first_replacement
+        second_parent[second_index] = second_replacement
+
+        updated_layout = SlideLayout.model_validate(layout_dict)
+        await self._context.save_slide_layout(
+            slide_index=payload.slide_index,
+            layout=updated_layout,
+        )
+        return {
+            "swapped": True,
+            "slide_index": payload.slide_index,
+            "slide_number": payload.slide_index + 1,
+            "first_path": payload.first_path,
+            "second_path": payload.second_path,
+            "message": (
+                f"Swapped layout items on slide {payload.slide_index + 1}."
             ),
         }
 
@@ -833,6 +1018,71 @@ def _resolve_element_path(layout_dict: dict[str, Any], path: str) -> dict[str, A
     return current
 
 
+def _resolve_layout_item_parent(
+    layout_dict: dict[str, Any],
+    path: str,
+) -> tuple[list[Any], int]:
+    current: Any = layout_dict
+    segments = path.split(".")
+    if not segments:
+        raise ValueError("Layout item path is required.")
+
+    for segment in segments[:-1]:
+        if segment == "child":
+            if not isinstance(current, dict) or not isinstance(current.get("child"), dict):
+                raise ValueError(f"Invalid layout item path segment: {segment}")
+            current = current["child"]
+            continue
+
+        match = _PATH_SEGMENT_RE.match(segment)
+        if not match:
+            raise ValueError(f"Invalid layout item path segment: {segment}")
+        key = match.group("key")
+        index = int(match.group("index"))
+        if not isinstance(current, dict) or not isinstance(current.get(key), list):
+            raise ValueError(f"Invalid layout item path segment: {segment}")
+        values = current[key]
+        if index >= len(values) or not isinstance(values[index], dict):
+            raise ValueError(f"Invalid layout item path index: {segment}")
+        current = values[index]
+
+    match = _PATH_SEGMENT_RE.match(segments[-1])
+    if not match:
+        raise ValueError(f"Invalid layout item path segment: {segments[-1]}")
+    key = match.group("key")
+    index = int(match.group("index"))
+    if not isinstance(current, dict) or not isinstance(current.get(key), list):
+        raise ValueError(f"Invalid layout item path segment: {segments[-1]}")
+    values = current[key]
+    if index >= len(values):
+        raise ValueError(f"Invalid layout item path index: {segments[-1]}")
+    return values, index
+
+
+def _preserve_slot_fields(
+    target: dict[str, Any],
+    slot: dict[str, Any],
+    *,
+    keep_id: bool,
+) -> None:
+    for key in ("position", "size", "rotation"):
+        if key in slot:
+            target[key] = copy.deepcopy(slot[key])
+        else:
+            target.pop(key, None)
+    if keep_id:
+        target["id"] = slot.get("id")
+
+
+def _is_top_level_component_path(path: str) -> bool:
+    match = _PATH_SEGMENT_RE.match(path)
+    return bool(
+        match
+        and match.group("key") == "components"
+        and match.group(0) == path
+    )
+
+
 def _component_id_for_path(layout_dict: dict[str, Any], path: str) -> str | None:
     first = path.split(".", 1)[0]
     match = _PATH_SEGMENT_RE.match(first)
@@ -844,6 +1094,180 @@ def _component_id_for_path(layout_dict: dict[str, Any], path: str) -> str | None
         return None
     component = components[index]
     return str(component.get("id")) if isinstance(component, dict) else None
+
+
+def _looks_like_chart_request(value: str) -> bool:
+    if _looks_like_asset_reference(value):
+        return False
+    normalized = " ".join(value.casefold().split())
+    if not normalized:
+        return False
+    chart_phrases = (
+        "pie chart",
+        "bar chart",
+        "line chart",
+        "area chart",
+        "donut chart",
+        "column chart",
+        "stacked bar",
+        "stacked column",
+        "radial chart",
+        "chart with",
+        "chart showing",
+        "dummy metrics",
+        "dummy chart",
+    )
+    if any(phrase in normalized for phrase in chart_phrases):
+        return True
+    if "chart" not in normalized:
+        return False
+    return any(
+        token in normalized
+        for token in ("pie", "bar", "line", "donut", "metrics", "graph", "visualization")
+    )
+
+
+def _chart_request_on_image_error() -> ValueError:
+    return ValueError(
+        "Chart requests must use a chart element, not an image. If the target is an "
+        "image/icon, delete that component and addComponent with type chart "
+        "(chart_type/chartType pie|bar|line|donut, title, categories, series with "
+        "values). If the target is already chart, use updateElementContent with chart."
+    )
+
+
+def _looks_like_asset_reference(value: str) -> bool:
+    stripped = value.strip()
+    return stripped.startswith(
+        ("http://", "https://", "/app_data/", "/static/", "data:", "blob:")
+    )
+
+
+def _chart_update_has_content(chart: dict[str, Any] | None) -> bool:
+    if chart is None:
+        return False
+    if chart.get("title") is not None:
+        return True
+    if chart.get("categories") is not None:
+        return True
+    return chart.get("series") is not None
+
+
+def _resolve_image_update_payload(
+    text: str | None,
+    items: list[str] | None,
+) -> str | dict[str, Any] | None:
+    if text is not None:
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        return text
+    if isinstance(items, list) and len(items) == 1:
+        candidate = str(items[0] or "").strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _template_v2_asset_url(value: Any) -> str | None:
+    from utils.asset_directory_utils import normalize_slide_asset_url
+
+    if isinstance(value, str):
+        return normalize_slide_asset_url(value)
+    if not isinstance(value, dict):
+        return None
+
+    for key in (
+        "data",
+        "url",
+        "image_url",
+        "icon_url",
+        "__image_url__",
+        "__icon_url__",
+    ):
+        asset_url = value.get(key)
+        if isinstance(asset_url, str) and asset_url.strip():
+            return normalize_slide_asset_url(asset_url)
+    return None
+
+
+def _template_v2_asset_prompt(value: Any, *, is_icon: bool) -> str | None:
+    if not isinstance(value, dict):
+        return None
+
+    prompt_keys = (
+        ("icon_query", "__icon_query__", "query", "prompt")
+        if is_icon
+        else ("image_prompt", "__image_prompt__", "prompt", "query")
+    )
+    for key in prompt_keys:
+        prompt = value.get(key)
+        if isinstance(prompt, str) and prompt.strip():
+            return prompt
+    return None
+
+
+def _apply_image_element_value(element: dict[str, Any], value: Any) -> None:
+    asset_url = _template_v2_asset_url(value)
+    if not asset_url:
+        raise ValueError(
+            "Image/icon updates require `text` with an image or icon URL."
+        )
+    element["data"] = asset_url
+    prompt = _template_v2_asset_prompt(
+        value,
+        is_icon=element.get("is_icon") is True,
+    )
+    if prompt:
+        element["prompt"] = prompt
+
+
+def _apply_image_element_update(
+    element: dict[str, Any],
+    *,
+    text: str | None,
+    items: list[str] | None,
+) -> None:
+    payload = _resolve_image_update_payload(text, items)
+    if payload is None:
+        raise ValueError(
+            "Image/icon updates require `text` with an image or icon URL."
+        )
+    if isinstance(payload, str) and _looks_like_chart_request(payload):
+        raise _chart_request_on_image_error()
+    _apply_image_element_value(element, payload)
+
+
+def _content_update_requested_for_type(
+    element_type: str,
+    *,
+    text: str | None,
+    items: list[str] | None,
+    table_cell: dict[str, Any] | None,
+    table: dict[str, Any] | None,
+    chart: dict[str, Any] | None,
+) -> bool:
+    if element_type == "text":
+        return text is not None
+    if element_type == "text-list":
+        return items is not None
+    if element_type == "table":
+        return table is not None or table_cell is not None
+    if element_type == "chart":
+        return _chart_update_has_content(chart)
+    if element_type == "image":
+        return _resolve_image_update_payload(text, items) is not None
+    return any(
+        value is not None
+        for value in (text, items, table_cell, table, chart)
+    )
 
 
 def _update_text_element(element: dict[str, Any], text: str) -> None:
@@ -919,7 +1343,83 @@ def _update_table_cell(element: dict[str, Any], table_cell: dict[str, Any]) -> N
     )
 
 
+def _update_table_element(element: dict[str, Any], table: dict[str, Any]) -> None:
+    columns = table.get("columns") or table.get("headers")
+    rows = table.get("rows")
+    if not isinstance(columns, list) or not isinstance(rows, list):
+        raise ValueError("table update requires columns/headers and rows.")
+    if not all(isinstance(row, list) for row in rows):
+        raise ValueError("table rows must be lists.")
+
+    column_count = len(columns)
+    if column_count == 0:
+        raise ValueError("table must contain at least one column.")
+    if any(len(row) != column_count for row in rows):
+        raise ValueError("each table row must match the column count.")
+
+    min_columns = int(element.get("min_columns") or 0)
+    max_columns = int(element.get("max_columns") or max(column_count, 100))
+    min_rows = int(element.get("min_rows") or 0)
+    max_rows = int(element.get("max_rows") or max(len(rows), 100))
+    if column_count < min_columns or column_count > max_columns:
+        raise ValueError("table column count is outside this element's limits.")
+    if len(rows) < min_rows or len(rows) > max_rows:
+        raise ValueError("table row count is outside this element's limits.")
+
+    existing_columns = _dicts(element.get("columns"))
+    existing_rows = [
+        _dicts(row) for row in element.get("rows", []) if isinstance(row, list)
+    ]
+
+    element["columns"] = [
+        _replacement_table_cell(
+            value=value,
+            existing=existing_columns[index] if index < len(existing_columns) else None,
+        )
+        for index, value in enumerate(columns)
+    ]
+    element["rows"] = [
+        [
+            _replacement_table_cell(
+                value=value,
+                existing=(
+                    existing_rows[row_index][column_index]
+                    if row_index < len(existing_rows)
+                    and column_index < len(existing_rows[row_index])
+                    else None
+                ),
+            )
+            for column_index, value in enumerate(row)
+        ]
+        for row_index, row in enumerate(rows)
+    ]
+
+
+def _replacement_table_cell(value: Any, existing: dict[str, Any] | None) -> dict[str, Any]:
+    cell = copy.deepcopy(existing) if isinstance(existing, dict) else {}
+    cell["runs"] = _replacement_runs(
+        existing_runs=cell.get("runs"),
+        text=_table_value_text(value),
+        fallback_font=cell.get("font"),
+    )
+    return cell
+
+
+def _table_value_text(value: Any) -> str:
+    if isinstance(value, dict):
+        if isinstance(value.get("text"), str):
+            return value["text"]
+        runs = value.get("runs")
+        if isinstance(runs, list):
+            return _runs_text(runs)
+    if value is None:
+        return ""
+    return str(value)
+
+
 def _update_chart_element(element: dict[str, Any], chart: dict[str, Any]) -> None:
+    if "chart_type" in chart:
+        element["chart_type"] = chart["chart_type"]
     if "title" in chart:
         element["title"] = chart["title"]
     if "categories" in chart:

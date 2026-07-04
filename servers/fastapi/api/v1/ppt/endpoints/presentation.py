@@ -1215,7 +1215,6 @@ async def get_presentation(
     request: Request,
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    print(f"Export cookie header: {_build_export_cookie_header(request)}")
     presentation = await sql_session.get(PresentationModel, id)
     if not presentation:
         raise HTTPException(404, "Presentation not found")

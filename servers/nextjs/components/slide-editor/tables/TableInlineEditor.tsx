@@ -104,18 +104,41 @@ export function TableInlineEditor({
   const textFont = elementFont(textElement);
   const cellText = textRunsContent(textElement.runs);
   const textFontSizePx = textFont.size * (scale / TEMPLATE_V2_PX_PER_IN);
+  const editorTextWidth = Math.max(1, cellWidth - paddingX * 2);
   const editorLineHeight = effectiveLineHeight({
     text: cellText,
-    width: Math.max(1, cellWidth - paddingX * 2),
+    width: editorTextWidth,
     fontSize: textFontSizePx,
     lineHeight: textFont.lineHeight,
     fallback: 1.12,
     wrap: textFont.wrap,
   });
+  const editorRenderFont = resolvedFontToRenderFont(
+    textFont,
+    scale,
+    editorLineHeight,
+  );
+  const editorRenderRuns = textElement.runs.map((run) =>
+    textRunToRenderRun(run, textElement.font ?? font, scale, editorLineHeight),
+  );
+  const editorContentHeight = layoutRichText(
+    editorRenderRuns,
+    editorTextWidth,
+    editorRenderFont,
+    textElement.alignment?.horizontal ?? "left",
+    "top",
+    cellHeight,
+    textFont.wrap,
+  ).contentHeight;
+  const editorPaddingTop = Math.max(
+    paddingY,
+    (cellHeight - editorContentHeight) / 2,
+  );
   const closeAfterBlur = useCallback(() => {
     window.setTimeout(() => {
       const active = document.activeElement;
       if (active && editorRef.current?.contains(active)) return;
+      if (active?.closest?.("[data-inline-edit-ignore='true']")) return;
       onClose();
     }, 0);
   }, [onClose]);
@@ -138,10 +161,10 @@ export function TableInlineEditor({
       rows: element.rows.map((row, nextRowIndex) =>
         nextRowIndex === rowIndex - 1
           ? Array.from({ length: columnCount }, (_, nextColIndex) =>
-              nextColIndex === colIndex
-                ? nextCell
-                : row[nextColIndex] ?? { runs: [] },
-            )
+            nextColIndex === colIndex
+              ? nextCell
+              : row[nextColIndex] ?? { runs: [] },
+          )
           : row,
       ),
     });
@@ -191,7 +214,7 @@ export function TableInlineEditor({
       <TiptapInlineTextEditor
         baseFont={textElement.font ?? font}
         runs={textElement.runs}
-        onBlurOutside={onClose}
+        onBlurOutside={closeAfterBlur}
         onCommitShortcut={onClose}
         onEscape={onClose}
         onRunsChange={updateCellRuns}
@@ -204,7 +227,7 @@ export function TableInlineEditor({
           width: cellWidth,
           height: cellHeight,
           pointerEvents: "auto",
-          padding: `${paddingY}px ${paddingX}px`,
+          padding: `${editorPaddingTop}px ${paddingX}px ${paddingY}px`,
           background: withHash(
             cell.color?.color ?? (isHeader ? "F7F7FA" : "FFFFFF"),
           ),
@@ -256,6 +279,40 @@ function tableCellFont(
     letter_spacing: cellFont.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont.ellipsis ?? tableFont.ellipsis,
+  };
+}
+
+function resolvedFontToRenderFont(
+  font: ReturnType<typeof elementFont>,
+  scale: number,
+  fallbackLineHeight: number,
+): RenderTextFont {
+  return {
+    family: font.family,
+    size: font.size * (scale / TEMPLATE_V2_PX_PER_IN),
+    color: font.color,
+    bold: Boolean(font.bold),
+    italic: Boolean(font.italic),
+    underline: Boolean(font.underline),
+    lineHeight: font.lineHeight ?? fallbackLineHeight,
+    letterSpacing: (font.letterSpacing ?? 0) * (scale / TEMPLATE_V2_PX_PER_IN),
+    wrap: font.wrap ?? "word",
+  };
+}
+
+function textRunToRenderRun(
+  run: TextRun,
+  fallbackFont: Font,
+  scale: number,
+  fallbackLineHeight: number,
+): RenderTextRun {
+  return {
+    text: run.text || " ",
+    font: resolvedFontToRenderFont(
+      elementFont({ font: { ...fallbackFont, ...(run.font ?? {}) } }),
+      scale,
+      fallbackLineHeight,
+    ),
   };
 }
 

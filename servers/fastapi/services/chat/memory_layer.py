@@ -38,6 +38,18 @@ MAX_SCHEMA_ERRORS = 10
 # Keep URL runtime fields during validation because many slide schemas require them.
 # Speaker note is handled separately and should not affect JSON-schema checks.
 RUNTIME_CONTENT_FIELDS = {"__speaker_note__"}
+DEFAULT_INSERT_BOXES = {
+    "chart": {
+        "position": {"x": 128.0, "y": 108.0},
+        "size": {"width": 1024.0, "height": 460.0},
+        "min_size": {"width": 320.0, "height": 180.0},
+    },
+    "table": {
+        "position": {"x": 128.0, "y": 120.0},
+        "size": {"width": 1024.0, "height": 410.0},
+        "min_size": {"width": 420.0, "height": 160.0},
+    },
+}
 THEMES_STORAGE_KEY = "presentation_custom_themes"
 CHAT_BUILTIN_THEMES: list[dict[str, Any]] = [
     {
@@ -883,14 +895,20 @@ class PresentationChatMemoryLayer:
         text: str | None = None,
         items: list[str] | None = None,
         table_cell: dict[str, Any] | None = None,
+        table: dict[str, Any] | None = None,
         chart: dict[str, Any] | None = None,
         position: dict[str, Any] | None = None,
         size: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from services.chat.v2.tools import (
+            _apply_image_element_value,
             _component_id_for_path,
+            _content_update_requested_for_type,
+            _looks_like_asset_reference,
             _resolve_element_path,
+            _resolve_image_update_payload,
             _update_chart_element,
+            _update_table_element,
             _update_table_cell,
             _update_text_element,
             _update_text_list_element,
@@ -909,8 +927,13 @@ class PresentationChatMemoryLayer:
         ui = copy.deepcopy(ui)
         element = _resolve_element_path(ui, element_path)
         element_type = str(element.get("type") or "")
-        content_update_requested = any(
-            value is not None for value in (text, items, table_cell, chart)
+        content_update_requested = _content_update_requested_for_type(
+            element_type,
+            text=text,
+            items=items,
+            table_cell=table_cell,
+            table=table,
+            chart=chart,
         )
 
         if content_update_requested and element_type == "text":
@@ -922,17 +945,33 @@ class PresentationChatMemoryLayer:
                 raise ValueError("items is required for text-list elements.")
             _update_text_list_element(element, items)
         elif content_update_requested and element_type == "table":
-            if table_cell is None:
-                raise ValueError("tableCell is required for table elements.")
-            _update_table_cell(element, table_cell)
+            if table is not None:
+                _update_table_element(element, table)
+            elif table_cell is not None:
+                _update_table_cell(element, table_cell)
+            else:
+                raise ValueError("table or tableCell is required for table elements.")
         elif content_update_requested and element_type == "chart":
             if chart is None:
                 raise ValueError("chart is required for chart elements.")
             _update_chart_element(element, chart)
         elif content_update_requested and element_type == "image":
-            if text is None:
-                raise ValueError("text must contain the replacement image/icon data.")
-            element["data"] = text
+            payload = _resolve_image_update_payload(text, items)
+            if payload is None:
+                raise ValueError(
+                    "Image/icon updates require `text` with a URL returned by "
+                    "generateAssets, generateImage, or generateIcon."
+                )
+            if isinstance(payload, str) and not _looks_like_asset_reference(payload):
+                generated_url = await (
+                    self.generate_icon(payload)
+                    if element.get("is_icon") is True
+                    else self.generate_image(payload)
+                )
+                element["data"] = generated_url
+                element["prompt"] = payload.strip()
+            else:
+                _apply_image_element_value(element, payload)
         elif content_update_requested:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
 
@@ -1131,6 +1170,7 @@ class PresentationChatMemoryLayer:
         # `runs` for text elements. Keep them consistent so an added block is
         # actually visible regardless of which field the model populated.
         self._sync_ui_text_fields(new_component)
+        self._normalize_added_visual_block(new_component)
 
         position = (
             len(components)
@@ -1176,6 +1216,62 @@ class PresentationChatMemoryLayer:
         elif isinstance(node, list):
             for value in node:
                 PresentationChatMemoryLayer._sync_ui_text_fields(value)
+
+    @staticmethod
+    def _normalize_added_visual_block(component: dict[str, Any]) -> None:
+        kind = PresentationChatMemoryLayer._insert_visual_kind(component)
+        if kind is None:
+            return
+        defaults = DEFAULT_INSERT_BOXES[kind]
+        min_size = defaults["min_size"]
+        if PresentationChatMemoryLayer._box_too_small(
+            component.get("size"),
+            min_size,
+        ):
+            component["position"] = copy.deepcopy(defaults["position"])
+            component["size"] = copy.deepcopy(defaults["size"])
+
+        component_size = component.get("size")
+        if not isinstance(component_size, dict):
+            return
+        for element in component.get("elements", []):
+            if not isinstance(element, dict) or element.get("type") != kind:
+                continue
+            if PresentationChatMemoryLayer._box_too_small(
+                element.get("size"),
+                min_size,
+            ):
+                element["position"] = {"x": 0, "y": 0}
+                element["size"] = {
+                    "width": float(component_size["width"]),
+                    "height": float(component_size["height"]),
+                }
+
+    @staticmethod
+    def _insert_visual_kind(component: dict[str, Any]) -> str | None:
+        elements = component.get("elements")
+        if not isinstance(elements, list):
+            return None
+        types = {
+            element.get("type")
+            for element in elements
+            if isinstance(element, dict)
+        }
+        if "chart" in types:
+            return "chart"
+        if "table" in types:
+            return "table"
+        return None
+
+    @staticmethod
+    def _box_too_small(size: Any, min_size: dict[str, float]) -> bool:
+        if not isinstance(size, dict):
+            return True
+        width = size.get("width")
+        height = size.get("height")
+        if not isinstance(width, (int, float)) or not isinstance(height, (int, float)):
+            return True
+        return width < min_size["width"] or height < min_size["height"]
 
     @staticmethod
     def _remove_element_at_path(ui: dict[str, Any], path: str) -> bool:

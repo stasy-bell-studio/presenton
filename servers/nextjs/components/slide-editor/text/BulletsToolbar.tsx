@@ -11,6 +11,7 @@ import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
 export function BulletsToolbar({
   element,
   index,
+  anchorBox,
   scale,
   selectionRange,
   templateFonts,
@@ -18,6 +19,12 @@ export function BulletsToolbar({
 }: {
   element: BulletsSlideElement;
   index: number;
+  anchorBox?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
   scale: number;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
@@ -56,6 +63,7 @@ export function BulletsToolbar({
     <TextToolbar
       element={textElement}
       index={index}
+      anchorBox={anchorBox}
       scale={scale}
       listMarker={marker}
       selectionRange={selectionRange}

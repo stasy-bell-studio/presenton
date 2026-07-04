@@ -91,11 +91,14 @@ class TemplateV2ChatService(PresentationChatService):
         arguments: str | None,
     ) -> dict[str, Any] | None:
         if tool_name not in {
+            "addSlideLayout",
+            "addComponent",
             "getSlideLayout",
             "getEditableElements",
             "updateElementContent",
             "deleteComponent",
             "ungroupComponent",
+            "swapLayoutItems",
             "swapComponentVariant",
         }:
             return None
@@ -118,11 +121,14 @@ class TemplateV2ChatService(PresentationChatService):
         tool_result: dict[str, Any],
     ) -> dict[str, Any] | None:
         if tool_name not in {
+            "addSlideLayout",
+            "addComponent",
             "getSlideLayout",
             "getEditableElements",
             "updateElementContent",
             "deleteComponent",
             "ungroupComponent",
+            "swapLayoutItems",
             "swapComponentVariant",
         }:
             return None
@@ -148,7 +154,12 @@ class TemplateV2ChatService(PresentationChatService):
         if isinstance(component_id, str) and component_id:
             focus_payload["component_id"] = component_id
 
-        element_path = payload.get("element_path") or payload.get("elementPath")
+        element_path = (
+            payload.get("element_path")
+            or payload.get("elementPath")
+            or payload.get("first_path")
+            or payload.get("firstPath")
+        )
         if isinstance(element_path, str) and element_path:
             focus_payload["element_path"] = element_path
 
@@ -158,12 +169,15 @@ class TemplateV2ChatService(PresentationChatService):
     def _tool_start_message(tool_name: str) -> str:
         labels = {
             "getTemplateSummary": "Reading template structure",
+            "addSlideLayout": "Adding a template slide",
+            "addComponent": "Adding a template component",
             "getSlideLayout": "Opening the requested template slide",
             "searchTemplateContent": "Searching template content",
             "getEditableElements": "Finding editable elements",
             "updateElementContent": "Updating template content",
             "deleteComponent": "Deleting the template component",
             "ungroupComponent": "Separating component elements",
+            "swapLayoutItems": "Swapping template items",
             "swapComponentVariant": "Swapping component variant",
         }
         return labels.get(tool_name, f"Running {tool_name}")

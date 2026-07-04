@@ -166,6 +166,36 @@ def test_element_models_match_export_schema_changes():
         )
 
 
+def test_chart_rejects_tiny_explicit_size():
+    with pytest.raises(ValidationError, match="chart size"):
+        Chart.model_validate(
+            {
+                "type": "chart",
+                "decorative": False,
+                "name": "model_chart",
+                "chart_type": "bar",
+                "position": {"x": 0.25, "y": 0.2},
+                "size": {"width": 0.6, "height": 0.5},
+                "categories": ["GPT OSS 20B", "GPT OSS 120B"],
+                "series": [{"name": "Score", "values": [20, 120]}],
+            }
+        )
+
+    chart = Chart.model_validate(
+        {
+            "type": "chart",
+            "decorative": False,
+            "name": "model_chart",
+            "chart_type": "bar",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 640, "height": 300},
+            "categories": ["GPT OSS 20B", "GPT OSS 120B"],
+            "series": [{"name": "Score", "values": [20, 120]}],
+        }
+    )
+    assert chart.size.width == 640
+
+
 def test_raw_layout_accepts_reference_converter_element_models():
     layout = RawSlideLayout.model_validate(
         {

@@ -252,10 +252,14 @@ class ChatTools:
                 description=(
                     "Update the visible content of one element in a rendered slide's ui "
                     "layout, using an elementPath from getSlideElements: text.runs via "
-                    "text, text-list.items via items, one table cell via tableCell, chart "
-                    "title/categories/series via chart, image/icon data via text, or "
-                    "position/size for move/resize requests. This changes what the user "
-                    "sees. Respect any max/min limits reported by getSlideElements."
+                    "text, text-list.items via items, one table cell via tableCell, a "
+                    "whole table via table {columns or headers, rows}, chart "
+                    "title/categories/series via chart, image/icon URLs via text (from "
+                    "generateAssets, generateImage, or generateIcon), or position/size "
+                    "for move/resize requests. Chart series must use values arrays, not "
+                    "data arrays. This changes what the user sees. Respect any max/min "
+                    "limits reported by getSlideElements. Never delete a table/chart just "
+                    "because a data update failed; retry with the correct payload shape."
                 ),
                 schema=UpdateSlideElementInput,
                 strict=True,
@@ -299,7 +303,10 @@ class ChatTools:
                     "the component as a JSON-serialized object with id, description, "
                     "position, size and a non-empty elements array. Mirror the shape of an "
                     "existing component from getSlideElements(includeFullJson=true) so the "
-                    "new block matches the slide's styling."
+                    "new block matches the slide's styling. Coordinates use 1280 x 720 "
+                    "stage pixels, not normalized 0-1 values. For charts and tables, "
+                    "use a visible block around position {x:128,y:120} and size "
+                    "{width:1024,height:400+}; never create tiny 0.x-sized chart/table blocks."
                 ),
                 schema=AddSlideComponentInput,
                 strict=True,
@@ -579,6 +586,11 @@ class ChatTools:
             table_cell=(
                 payload.table_cell.model_dump(by_alias=False)
                 if payload.table_cell is not None
+                else None
+            ),
+            table=(
+                payload.table.model_dump()
+                if payload.table is not None
                 else None
             ),
             chart=(

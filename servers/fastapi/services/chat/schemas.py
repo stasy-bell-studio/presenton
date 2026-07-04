@@ -177,6 +177,16 @@ class SlideElementChartSeriesInput(StrictSchemaModel):
     name: str = Field(min_length=1, max_length=200)
     values: list[float] = Field(min_length=1, max_length=100)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_data_alias(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        if "values" not in normalized and "data" in normalized:
+            normalized["values"] = normalized.pop("data")
+        return normalized
+
 
 class SlideElementChartInput(OpenAIStrictSchemaModel):
     title: str | None = Field(..., min_length=0, max_length=500)
@@ -184,6 +194,41 @@ class SlideElementChartInput(OpenAIStrictSchemaModel):
     series: list[SlideElementChartSeriesInput] | None = Field(
         ..., min_length=1, max_length=20
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_chart_type(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        normalized.pop("type", None)
+        normalized.pop("chart_type", None)
+        return normalized
+
+
+class SlideElementTableValueInput(StrictSchemaModel):
+    text: str = Field(min_length=0, max_length=5000)
+
+
+SlideElementTableValue = (
+    str | int | float | bool | None | SlideElementTableValueInput
+)
+
+
+class SlideElementTableInput(OpenAIStrictSchemaModel):
+    columns: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    headers: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    rows: list[list[SlideElementTableValue]] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_columns_or_headers(self) -> "SlideElementTableInput":
+        if self.columns is None and self.headers is None:
+            raise ValueError("columns or headers is required.")
+        return self
 
 
 class SlideElementPositionInput(StrictSchemaModel):
@@ -229,6 +274,10 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
         ...,
         description="Chart title/categories/series update.",
     )
+    table: SlideElementTableInput | None = Field(
+        ...,
+        description="Whole table update with columns/headers and rows.",
+    )
     position: SlideElementPositionInput | None = Field(
         ...,
         description="Optional element position update for move requests.",
@@ -239,6 +288,22 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_common_llm_payloads(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        if "chart" not in normalized and any(
+            key in normalized for key in ("title", "categories", "series")
+        ):
+            normalized["chart"] = {
+                key: normalized.pop(key)
+                for key in ("title", "categories", "series")
+                if key in normalized
+            }
+        return normalized
 
 
 class UpdateSlideComponentInput(OpenAIStrictSchemaModel):
@@ -278,8 +343,9 @@ class AddSlideComponentInput(OpenAIStrictSchemaModel):
         max_length=200000,
         description=(
             "A JSON-serialized component object to add to the slide: "
-            '{"id": "...", "description": "...", "position": {"x": 0.9, "y": 0.9}, '
-            '"size": {"width": 6.0, "height": 1.2}, "elements": [ ... ]}. '
+            '{"id": "...", "description": "...", "position": {"x": 128, "y": 120}, '
+            '"size": {"width": 1024, "height": 410}, "elements": [ ... ]}. '
+            "Use 1280 x 720 stage pixels, not normalized 0-1 values. "
             "Copy the shape of an existing component from getSlideElements(includeFullJson=true)."
         ),
     )

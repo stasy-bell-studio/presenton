@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Optional, TypeAlias, Union, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 def _validate_min_max(
@@ -301,6 +301,14 @@ class Chart(BaseModel):
     # Schema
     decorative: bool
     name: str
+
+    @model_validator(mode="after")
+    def _size_must_be_visible_when_explicit(self) -> "Chart":
+        if self.size is None:
+            return self
+        if self.size.width < 80 or self.size.height < 60:
+            raise ValueError("chart size must be at least 80x60 px")
+        return self
 
 
 class InfographicType(str, Enum):

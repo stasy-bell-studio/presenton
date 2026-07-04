@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
-from services.chat.schemas import OpenAIStrictSchemaModel, StrictSchemaModel
+from services.chat.schemas import (
+    OpenAIStrictSchemaModel,
+    SlideElementTableValue,
+    StrictSchemaModel,
+)
 
 
 class NoArgsInput(StrictSchemaModel):
@@ -25,6 +29,60 @@ class SearchTemplateContentInput(StrictSchemaModel):
 
 class GetEditableElementsInput(StrictSchemaModel):
     slide_index: int = Field(alias="slideIndex", ge=0, le=1000)
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+class AddSlideLayoutInput(OpenAIStrictSchemaModel):
+    source_slide_index: int | None = Field(
+        ...,
+        alias="sourceSlideIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based slide layout to duplicate. Use null to duplicate the last layout.",
+    )
+    insert_index: int | None = Field(
+        ...,
+        alias="insertIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based insert position. Use null to append.",
+    )
+    layout_id: str | None = Field(
+        ...,
+        alias="layoutId",
+        min_length=1,
+        max_length=120,
+        description="Optional id for the new layout.",
+    )
+    description: str | None = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Optional description for the new layout.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+class AddComponentInput(OpenAIStrictSchemaModel):
+    slide_index: int = Field(..., alias="slideIndex", ge=0, le=1000)
+    component: str = Field(
+        ...,
+        min_length=2,
+        max_length=200000,
+        description=(
+            "A JSON-serialized TemplateV2 component object with id, description, "
+            "position, size, and non-empty elements."
+        ),
+    )
+    insert_index: int | None = Field(
+        ...,
+        alias="insertIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based component insert position. Use null to append.",
+    )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
@@ -53,11 +111,58 @@ class ChartSeriesInput(StrictSchemaModel):
     name: str = Field(min_length=1, max_length=200)
     values: list[float] = Field(min_length=1, max_length=100)
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_data_alias(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        if "values" not in normalized and "data" in normalized:
+            normalized["values"] = normalized.pop("data")
+        return normalized
+
 
 class ChartUpdateInput(OpenAIStrictSchemaModel):
+    chart_type: Literal[
+        "bar",
+        "line",
+        "area",
+        "pie",
+        "donut",
+        "column",
+        "stacked_bar",
+        "stacked_column",
+    ] | None = Field(..., alias="chartType")
     title: str | None = Field(..., min_length=0, max_length=500)
     categories: list[str] | None = Field(..., min_length=1, max_length=100)
     series: list[ChartSeriesInput] | None = Field(..., min_length=1, max_length=20)
+
+    @model_validator(mode="before")
+    @classmethod
+    def drop_chart_type(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        normalized.pop("type", None)
+        if "chartType" not in normalized and "chart_type" in normalized:
+            normalized["chartType"] = normalized.pop("chart_type")
+        return normalized
+
+
+class TableUpdateInput(OpenAIStrictSchemaModel):
+    columns: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    headers: list[SlideElementTableValue] | None = Field(
+        ..., min_length=1, max_length=100
+    )
+    rows: list[list[SlideElementTableValue]] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_columns_or_headers(self) -> "TableUpdateInput":
+        if self.columns is None and self.headers is None:
+            raise ValueError("columns or headers is required.")
+        return self
 
 
 class UpdateElementContentInput(OpenAIStrictSchemaModel):
@@ -92,8 +197,29 @@ class UpdateElementContentInput(OpenAIStrictSchemaModel):
         ...,
         description="Chart title/categories/series update.",
     )
+    table: TableUpdateInput | None = Field(
+        ...,
+        description="Whole table update with columns/headers and rows.",
+    )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_common_llm_payloads(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        if "chart" not in normalized and any(
+            key in normalized
+            for key in ("chartType", "chart_type", "title", "categories", "series")
+        ):
+            normalized["chart"] = {
+                key: normalized.pop(key)
+                for key in ("chartType", "chart_type", "title", "categories", "series")
+                if key in normalized
+            }
+        return normalized
 
 
 class DeleteComponentInput(StrictSchemaModel):
@@ -107,6 +233,14 @@ class UngroupComponentInput(StrictSchemaModel):
     slide_index: int = Field(alias="slideIndex", ge=0, le=1000)
     component_id: str = Field(alias="componentId", min_length=1, max_length=120)
     reason: str = Field(min_length=20, max_length=500)
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+class SwapLayoutItemsInput(StrictSchemaModel):
+    slide_index: int = Field(alias="slideIndex", ge=0, le=1000)
+    first_path: str = Field(alias="firstPath", min_length=1, max_length=500)
+    second_path: str = Field(alias="secondPath", min_length=1, max_length=500)
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
