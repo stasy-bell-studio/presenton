@@ -91,6 +91,7 @@ class TemplateV2ChatService(PresentationChatService):
         arguments: str | None,
     ) -> dict[str, Any] | None:
         if tool_name not in {
+            "addSlideLayout",
             "getSlideLayout",
             "getEditableElements",
             "updateElementContent",
@@ -119,6 +120,7 @@ class TemplateV2ChatService(PresentationChatService):
         tool_result: dict[str, Any],
     ) -> dict[str, Any] | None:
         if tool_name not in {
+            "addSlideLayout",
             "getSlideLayout",
             "getEditableElements",
             "updateElementContent",
@@ -165,6 +167,7 @@ class TemplateV2ChatService(PresentationChatService):
     def _tool_start_message(tool_name: str) -> str:
         labels = {
             "getTemplateSummary": "Reading template structure",
+            "addSlideLayout": "Adding a template slide",
             "getSlideLayout": "Opening the requested template slide",
             "searchTemplateContent": "Searching template content",
             "getEditableElements": "Finding editable elements",

@@ -29,6 +29,38 @@ class GetEditableElementsInput(StrictSchemaModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
+class AddSlideLayoutInput(OpenAIStrictSchemaModel):
+    source_slide_index: int | None = Field(
+        ...,
+        alias="sourceSlideIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based slide layout to duplicate. Use null to duplicate the last layout.",
+    )
+    insert_index: int | None = Field(
+        ...,
+        alias="insertIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based insert position. Use null to append.",
+    )
+    layout_id: str | None = Field(
+        ...,
+        alias="layoutId",
+        min_length=1,
+        max_length=120,
+        description="Optional id for the new layout.",
+    )
+    description: str | None = Field(
+        ...,
+        min_length=1,
+        max_length=500,
+        description="Optional description for the new layout.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
 class TableCellUpdateInput(StrictSchemaModel):
     section: Literal["columns", "rows"]
     column_index: int = Field(alias="columnIndex", ge=0, le=100)

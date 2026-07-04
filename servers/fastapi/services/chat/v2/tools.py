@@ -12,6 +12,7 @@ from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-foun
 
 from services.chat.v2.context_store import TemplateV2ContextStore
 from services.chat.v2.schemas import (
+    AddSlideLayoutInput,
     DeleteComponentInput,
     GetEditableElementsInput,
     GetSlideLayoutInput,
@@ -38,6 +39,7 @@ class TemplateV2ChatTools:
             "getSlideLayout": self._get_slide_layout,
             "searchTemplateContent": self._search_template_content,
             "getEditableElements": self._get_editable_elements,
+            "addSlideLayout": self._add_slide_layout,
             "updateElementContent": self._update_element_content,
             "deleteComponent": self._delete_component,
             "ungroupComponent": self._ungroup_component,
@@ -84,6 +86,18 @@ class TemplateV2ChatTools:
                     "updateElementContent. Paths are concrete and safe to pass back."
                 ),
                 schema=GetEditableElementsInput,
+                strict=True,
+            ),
+            Tool(
+                name="addSlideLayout",
+                description=(
+                    "Add a new TemplateV2 slide layout by duplicating an existing "
+                    "layout. Use for requests to add/create/append a slide when no "
+                    "exact new layout generator exists. After adding, inspect the new "
+                    "slide with getEditableElements and update copied placeholder text, "
+                    "charts, tables, or images with updateElementContent."
+                ),
+                schema=AddSlideLayoutInput,
                 strict=True,
             ),
             Tool(
@@ -293,6 +307,24 @@ class TemplateV2ChatTools:
             "layout_id": layout.id,
             "count": len(editable),
             "elements": editable,
+        }
+
+    async def _add_slide_layout(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddSlideLayoutInput(**args)
+        insert_index, layout, layouts = await self._context.add_slide_layout(
+            source_slide_index=payload.source_slide_index,
+            insert_index=payload.insert_index,
+            layout_id=payload.layout_id,
+            description=payload.description,
+        )
+        return {
+            "added": True,
+            "slide_index": insert_index,
+            "slide_number": insert_index + 1,
+            "layout_id": layout.id,
+            "description": layout.description,
+            "slide_count": len(layouts.layouts),
+            "message": f"Added slide layout {insert_index + 1}.",
         }
 
     async def _update_element_content(self, args: dict[str, Any]) -> dict[str, Any]:

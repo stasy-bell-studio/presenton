@@ -27,6 +27,8 @@ CHAT_ROUTER = APIRouter(prefix="/chat", tags=["Chat"])
 
 
 def _resolve_chat_mode(message: str) -> str:
+    if "UI context: the user is editing a rendered TemplateV2 presentation" in message:
+        return "presentation"
     if "UI context: the user is editing the outline draft" in message:
         return "outline"
     return "presentation"

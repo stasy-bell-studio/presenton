@@ -149,6 +149,40 @@ def test_template_v2_tool_updates_text_content_and_persists_layout():
     assert session.commit_count == 1
 
 
+def test_template_v2_tool_adds_slide_layout_from_existing_layout():
+    template = _template()
+    session = _FakeTemplateSession(template)
+    tools = TemplateV2ChatTools(TemplateV2ContextStore(session, template.id))
+
+    result = _run(
+        tools.execute_tool_call(
+            AssistantToolCall(
+                id="call_1",
+                name="addSlideLayout",
+                arguments=json.dumps(
+                    {
+                        "sourceSlideIndex": 0,
+                        "insertIndex": None,
+                        "layoutId": "demand-gen-kpis",
+                        "description": "Demand Gen KPIs and Metrics Outlook slide.",
+                    }
+                ),
+            )
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["slide_index"] == 1
+    assert result["result"]["layout_id"] == "demand-gen-kpis"
+    assert len(template.layouts["layouts"]) == 2
+    assert template.layouts["layouts"][1]["id"] == "demand-gen-kpis"
+    assert (
+        template.layouts["layouts"][1]["description"]
+        == "Demand Gen KPIs and Metrics Outlook slide."
+    )
+    assert session.commit_count == 1
+
+
 def test_template_v2_tool_accepts_chart_and_whole_table_payloads():
     template = _template()
     template.layouts["layouts"][0]["components"].extend(

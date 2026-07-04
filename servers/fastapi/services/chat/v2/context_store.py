@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import uuid
 from typing import Any
@@ -67,6 +68,55 @@ class TemplateV2ContextStore:
         await self._sql_session.refresh(template)
         self._template_cache = template
         return updated_layouts
+
+    async def add_slide_layout(
+        self,
+        *,
+        source_slide_index: int | None,
+        insert_index: int | None,
+        layout_id: str | None,
+        description: str | None,
+    ) -> tuple[int, SlideLayout, SlideLayouts]:
+        template = await self.get_template()
+        layouts = await self.get_slide_layouts()
+        if not layouts.layouts:
+            raise ValueError("Template has no layouts to duplicate.")
+
+        source_index = (
+            len(layouts.layouts) - 1
+            if source_slide_index is None
+            else source_slide_index
+        )
+        if source_index < 0 or source_index >= len(layouts.layouts):
+            raise ValueError(f"Invalid source slide index: {source_index}")
+
+        patched = list(layouts.layouts)
+        new_layout = copy.deepcopy(patched[source_index])
+        used_ids = {layout.id for layout in patched}
+        base_id = (layout_id or f"{new_layout.id}_copy").strip()
+        candidate_id = base_id
+        suffix = 2
+        while candidate_id in used_ids:
+            candidate_id = f"{base_id}_{suffix}"
+            suffix += 1
+        new_layout.id = candidate_id
+        if description:
+            new_layout.description = description
+
+        target_index = (
+            len(patched)
+            if insert_index is None
+            else min(max(0, insert_index), len(patched))
+        )
+        patched.insert(target_index, new_layout)
+        updated_layouts = SlideLayouts(layouts=patched)
+
+        template.layouts = updated_layouts.model_dump(mode="json", exclude_none=True)
+        self._sql_session.add(template)
+        await self._sql_session.commit()
+        await self._sql_session.refresh(template)
+        self._template_cache = template
+        return target_index, new_layout, updated_layouts
 
     async def get_merged_components(self) -> MergedComponents | None:
         template = await self.get_template()

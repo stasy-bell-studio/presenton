@@ -3,6 +3,7 @@
 import {
   ChevronDown,
   ChevronRight,
+  FileText,
   Image as ImageIcon,
   Link as LinkIcon,
   Loader2,
@@ -17,6 +18,7 @@ import {
 import React, {
   ChangeEvent,
   ClipboardEvent,
+  DragEvent,
   FormEvent,
   KeyboardEvent,
   ReactNode,
@@ -28,6 +30,7 @@ import React, {
 import { notify } from "@/components/ui/sonner";
 import MarkdownRenderer from "@/components/MarkDownRender";
 import { ImagesApi } from "../../services/api/images";
+import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { PresentationChatApi } from "../../services/api/chat";
 import type {
   ChatConversationSummary,
@@ -268,11 +271,19 @@ type PastedChatImage = {
   id: string;
   name: string;
   url: string;
+  file?: File;
+  extractedText?: string;
 };
 
 type ChatLink = {
   id: string;
   url: string;
+};
+
+type ChatDocumentAttachment = {
+  id: string;
+  name: string;
+  content: string;
 };
 
 type ChatProps = {
@@ -363,6 +374,10 @@ const createMessageId = () => {
 
 const URL_PATTERN =
   /(https?:\/\/[^\s<>"']+\.[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/gi;
+const IMAGE_READ_INTENT_PATTERN =
+  /\b(read|extract|parse|analy[sz]e|summari[sz]e|ocr|text|table|chart|data|numbers?|metrics?)\b/i;
+const IMAGE_EXTENSION_PATTERN = /\.(jpe?g|png|gif|bmp|tiff?|webp)$/i;
+const ATTACHMENT_CONTENT_LIMIT = 12000;
 
 function pullLinksFromText(text: string) {
   const links: ChatLink[] = [];
@@ -385,6 +400,55 @@ function appendInputText(previous: string, next: string) {
   if (!previous) return next.trimStart();
   if (/\s$/.test(previous) || /^\s/.test(next)) return `${previous}${next}`;
   return `${previous} ${next}`;
+}
+
+function isImageFile(file: File) {
+  return (
+    file.type.startsWith("image/") || IMAGE_EXTENSION_PATTERN.test(file.name)
+  );
+}
+
+function shouldReadAttachedImages(message: string) {
+  return IMAGE_READ_INTENT_PATTERN.test(message);
+}
+
+function trimAttachmentContent(content: string) {
+  if (content.length <= ATTACHMENT_CONTENT_LIMIT) return content;
+  return `${content.slice(0, ATTACHMENT_CONTENT_LIMIT)}\n[Attachment truncated]`;
+}
+
+function hasDraggedFiles(event: DragEvent<HTMLElement>) {
+  return (
+    Array.from(event.dataTransfer.types ?? []).includes("Files") ||
+    event.dataTransfer.files.length > 0 ||
+    Array.from(event.dataTransfer.items ?? []).some(
+      (item) => item.kind === "file"
+    )
+  );
+}
+
+function getDroppedFileUri(event: DragEvent<HTMLElement>) {
+  if (!Array.from(event.dataTransfer.types ?? []).includes("text/uri-list")) {
+    return "";
+  }
+  return event.dataTransfer.getData("text/uri-list");
+}
+
+async function readDecomposedFile(filePath: string) {
+  if (typeof window !== "undefined" && window.electron?.readFile) {
+    const result = await window.electron.readFile(filePath);
+    return typeof result === "string" ? result : result?.content || "";
+  }
+
+  const response = await fetch("/api/read-file", {
+    method: "POST",
+    body: JSON.stringify({ filePath }),
+  });
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result?.error || "Failed to read document.");
+  }
+  return result?.content || "";
 }
 
 const conversationStorageKey = (scope: string, resourceId: string) =>
@@ -414,6 +478,7 @@ const TOOL_LABELS: Record<string, string> = {
   deleteSlide: "Slide remover",
   setPresentationTheme: "Theme applier",
   getTemplateSummary: "Template reader",
+  addSlideLayout: "Template slide adder",
   getSlideLayout: "Template slide reader",
   searchTemplateContent: "Template search",
   getEditableElements: "Element finder",
@@ -438,6 +503,7 @@ const MUTATING_TOOLS = new Set([
   "saveSlide",
   "deleteSlide",
   "setPresentationTheme",
+  "addSlideLayout",
   "updateElementContent",
   "deleteComponent",
   "ungroupComponent",
@@ -454,6 +520,7 @@ const MUTATING_TOOLS = new Set([
 const SLIDE_FOCUS_TOOLS = new Set([
   "saveSlide",
   "deleteSlide",
+  "addSlideLayout",
   "updateElementContent",
   "deleteComponent",
   "ungroupComponent",
@@ -704,6 +771,7 @@ const humanActivityForTool = (
     case "updateElementContent":
     case "updateSlideElement":
     case "updateSlideComponent":
+    case "addSlideLayout":
     case "saveSlide":
       return isDone ? "Applied the change." : "Applying the change.";
     case "deleteComponent":
@@ -768,13 +836,18 @@ const Chat = ({
   >(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [pastedImages, setPastedImages] = useState<PastedChatImage[]>([]);
+  const [attachedDocuments, setAttachedDocuments] = useState<
+    ChatDocumentAttachment[]
+  >([]);
   const [chatLinks, setChatLinks] = useState<ChatLink[]>([]);
   const [isUploadingPastedImage, setIsUploadingPastedImage] = useState(false);
+  const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
   const [expandedActivityByMessage, setExpandedActivityByMessage] = useState<
     Record<string, boolean>
   >({});
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const lastFollowedTraceRef = useRef<string | null>(null);
@@ -800,8 +873,10 @@ const Chat = ({
     setActiveAssistantMessageId(null);
     setErrorMessage(null);
     setPastedImages([]);
+    setAttachedDocuments([]);
     setChatLinks([]);
     setIsUploadingPastedImage(false);
+    setIsDraggingAttachment(false);
     setExpandedActivityByMessage({});
 
     if (!activeResourceId) {
@@ -1006,7 +1081,11 @@ const Chat = ({
     [emitAgentSlideFocus, schedulePendingSlideFocus]
   );
 
-  const buildBackendMessage = (message: string) => {
+  const buildBackendMessage = (
+    message: string,
+    images = pastedImages,
+    documents = attachedDocuments
+  ) => {
     const contextLines: string[] = [];
 
     if (variant === "outline") {
@@ -1016,7 +1095,7 @@ const Chat = ({
     }
     if (variant === "template-v2") {
       contextLines.push(
-        "UI context: the user is editing a TemplateV2 reusable template. Use TemplateV2 tools only; do not use v1 presentation slide tools or regenerate whole slides."
+        "UI context: the user is editing a rendered TemplateV2 presentation. Visible tools in this UI are deck/slide tools and rendered slide UI tools: getPresentationOutline, searchSlides, getSlideAtIndex, getAvailableLayouts, getContentSchemaFromLayoutId, saveSlide, deleteSlide, getSlideElements, updateSlideElement, updateSlideComponent, deleteSlideComponent, deleteSlideElement, addSlideComponent, generateAssets. Hidden/unavailable in this UI: getOutlineDraft, addOutline, updateOutline, deleteOutline, moveOutline, and reusable-template-only tools. For deck-level requests like adding/removing/reordering slides, use saveSlide/deleteSlide. For visible edits inside an existing slide, inspect the slide UI with getSlideElements and use the rendered slide element/component tools. Do not ask for template IDs or layout IDs unless no visible tool can infer a reasonable default."
       );
     }
 
@@ -1052,12 +1131,36 @@ const Chat = ({
       );
     }
 
-    if (pastedImages.length > 0) {
+    if (images.length > 0) {
       contextLines.push(
         [
-          "UI context: the user pasted image(s) into chat for this request. If they ask to add or replace an image, use updateElementContent on an image element with the exact pasted image URL.",
-          ...pastedImages.map(
-            (image, index) => `Pasted image ${index + 1}: ${image.url}`
+          "UI context: the user attached image(s) to chat for this request. If they ask to add or replace an image, use updateElementContent on an image element with the exact image URL. If extracted text is provided, use it only for requests that ask to read or analyze the image.",
+          ...images.map(
+            (image, index) =>
+              [
+                `Image ${index + 1} (${image.name}): ${image.url}`,
+                image.extractedText
+                  ? `Extracted image text ${index + 1}:\n${trimAttachmentContent(
+                      image.extractedText
+                    )}`
+                  : "",
+              ]
+                .filter(Boolean)
+                .join("\n")
+          ),
+        ].join("\n")
+      );
+    }
+
+    if (variant === "template-v2" && documents.length > 0) {
+      contextLines.push(
+        [
+          "UI context: the user attached parsed document(s) to this TemplateV2 chat request. Use this content when the user asks to read, extract, summarize, or build chart/data content from attachments.",
+          ...documents.map(
+            (document, index) =>
+              `Document ${index + 1} (${document.name}):\n${trimAttachmentContent(
+                document.content
+              )}`
           ),
         ].join("\n")
       );
@@ -1083,6 +1186,7 @@ const Chat = ({
     setMessages([]);
     setInput("");
     setPastedImages([]);
+    setAttachedDocuments([]);
     setChatLinks([]);
     setConversationId(null);
     setActiveMutationToolCount(0);
@@ -1229,12 +1333,120 @@ const Chat = ({
     abortControllerRef.current?.abort();
   };
 
+  const processTemplateV2Files = async (files: File[]) => {
+    if (files.length === 0 || isSending || isHistoryLoading) {
+      return;
+    }
+    if (variant !== "template-v2") {
+      notify.info("Attachments are available in Template V2 chat.");
+      return;
+    }
+
+    const imageFiles = files.filter(isImageFile);
+    const documentFiles = files.filter((file) => !isImageFile(file));
+
+    setIsUploadingPastedImage(true);
+    try {
+      if (imageFiles.length > 0) {
+        const uploads = await Promise.all(
+          imageFiles.map((file) => ImagesApi.uploadImage(file))
+        );
+        const nextImages = uploads.flatMap((upload, index) => {
+          const file = imageFiles[index];
+          const url = upload.file_url || upload.path;
+          if (!file || !url) return [];
+          return [
+            {
+              id: upload.id || createMessageId(),
+              name: file.name || `Image ${index + 1}`,
+              url,
+              file,
+            },
+          ];
+        });
+        if (nextImages.length === 0) {
+          throw new Error("Image upload did not return a URL.");
+        }
+        setPastedImages((previous) => [...previous, ...nextImages]);
+      }
+
+      if (documentFiles.length > 0) {
+        const paths = (await PresentationGenerationApi.uploadDoc(
+          documentFiles
+        )) as string[];
+        const decomposed = (await PresentationGenerationApi.decomposeDocuments(
+          paths,
+          null
+        )) as { name: string; file_path: string }[];
+        const documents = await Promise.all(
+          decomposed.map(async (item) => ({
+            id: createMessageId(),
+            name: item.name,
+            content: await readDecomposedFile(item.file_path),
+          }))
+        );
+        setAttachedDocuments((previous) => [...previous, ...documents]);
+      }
+
+      notify.success(
+        "Attachment ready",
+        `${files.length} file${files.length === 1 ? "" : "s"} attached.`
+      );
+    } catch (error) {
+      notify.error(
+        "Could not attach file",
+        error instanceof Error ? error.message : "Upload failed."
+      );
+    } finally {
+      setIsUploadingPastedImage(false);
+    }
+  };
+
+  const extractImageTextContext = async (images: PastedChatImage[]) => {
+    const imagesToRead = images.filter(
+      (image) => image.file && !image.extractedText
+    );
+    if (imagesToRead.length === 0) {
+      return images;
+    }
+
+    setIsUploadingPastedImage(true);
+    try {
+      const paths = (await PresentationGenerationApi.uploadDoc(
+        imagesToRead.map((image) => image.file!)
+      )) as string[];
+      const decomposed = (await PresentationGenerationApi.decomposeDocuments(
+        paths,
+        null
+      )) as { name: string; file_path: string }[];
+      const extracted = await Promise.all(
+        decomposed.map((item) => readDecomposedFile(item.file_path))
+      );
+      const extractedById = new Map(
+        imagesToRead.map((image, index) => [image.id, extracted[index] || ""])
+      );
+      const nextImages = images.map((image) => ({
+        ...image,
+        extractedText: extractedById.get(image.id) || image.extractedText,
+      }));
+      setPastedImages(nextImages);
+      return nextImages;
+    } finally {
+      setIsUploadingPastedImage(false);
+    }
+  };
+
   const submitMessage = async (rawMessage: string) => {
     const trimmedMessage = rawMessage.trim();
-    const hasAttachedContext = pastedImages.length > 0 || chatLinks.length > 0;
+    const hasAttachedContext =
+      pastedImages.length > 0 ||
+      attachedDocuments.length > 0 ||
+      chatLinks.length > 0;
     const outboundMessage =
       trimmedMessage ||
-      (chatLinks.length > 0
+      (attachedDocuments.length > 0
+        ? "Use the attached document."
+        : chatLinks.length > 0
         ? "Use the provided link."
         : "Use the pasted image.");
 
@@ -1253,6 +1465,24 @@ const Chat = ({
         `The ${resourceLabel} is not ready yet.`
       );
       return;
+    }
+
+    let imagesForMessage = pastedImages;
+    if (
+      variant === "template-v2" &&
+      pastedImages.length > 0 &&
+      shouldReadAttachedImages(outboundMessage)
+    ) {
+      // ponytail: keyword heuristic, replace with explicit user-controlled "read image" mode if it misclassifies.
+      try {
+        imagesForMessage = await extractImageTextContext(pastedImages);
+      } catch (error) {
+        notify.error(
+          "Could not read image",
+          error instanceof Error ? error.message : "Image processing failed."
+        );
+        return;
+      }
     }
 
     const userMessage: ChatMessage = {
@@ -1292,7 +1522,11 @@ const Chat = ({
       const response = await chatAdapter.streamMessage(
         {
           resourceId: activeResourceId,
-          message: buildBackendMessage(outboundMessage),
+          message: buildBackendMessage(
+            outboundMessage,
+            imagesForMessage,
+            attachedDocuments
+          ),
           conversation_id: conversationId ?? undefined,
         },
         {
@@ -1373,6 +1607,7 @@ const Chat = ({
         Array.isArray(response.tool_calls) ? response.tool_calls : []
       );
       setPastedImages([]);
+      setAttachedDocuments([]);
       setChatLinks([]);
     } catch (error) {
       if (isAbortError(error)) {
@@ -1462,10 +1697,16 @@ const Chat = ({
     addChatLinks(links);
   };
 
+  const handleAttachmentInputChange = (
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = "";
+    void processTemplateV2Files(files);
+  };
+
   const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData.files).filter((file) =>
-      file.type.startsWith("image/")
-    );
+    const files = Array.from(event.clipboardData.files);
     if (isSending || isHistoryLoading) {
       return;
     }
@@ -1473,14 +1714,26 @@ const Chat = ({
     const pastedText = event.clipboardData.getData("text");
     const { cleanText, links } = pullLinksFromText(pastedText);
 
-    if (files.length === 0 && links.length > 0) {
+    if (variant === "template-v2" && files.length > 0) {
+      event.preventDefault();
+      addChatLinks(links);
+      if (cleanText) {
+        setInput((previous) => appendInputText(previous, cleanText));
+      }
+      void processTemplateV2Files(files);
+      return;
+    }
+
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+
+    if (imageFiles.length === 0 && links.length > 0) {
       event.preventDefault();
       setInput((previous) => appendInputText(previous, cleanText));
       addChatLinks(links);
       return;
     }
 
-    if (files.length === 0) {
+    if (imageFiles.length === 0) {
       return;
     }
 
@@ -1491,12 +1744,15 @@ const Chat = ({
     }
     setIsUploadingPastedImage(true);
     try {
-      const uploads = await Promise.all(files.map((file) => ImagesApi.uploadImage(file)));
+      const uploads = await Promise.all(
+        imageFiles.map((file) => ImagesApi.uploadImage(file))
+      );
       const nextImages = uploads
         .map((upload, index) => ({
           id: upload.id || createMessageId(),
-          name: files[index]?.name || `Pasted image ${index + 1}`,
+          name: imageFiles[index]?.name || `Pasted image ${index + 1}`,
           url: upload.file_url || upload.path,
+          file: imageFiles[index],
         }))
         .filter((image) => image.url);
       if (nextImages.length === 0) {
@@ -1528,6 +1784,39 @@ const Chat = ({
     setInput(prompt);
     setErrorMessage(null);
     inputRef.current?.focus();
+  };
+
+  const handleDragOver = (event: DragEvent<HTMLElement>) => {
+    if (variant !== "template-v2") return;
+    if (!hasDraggedFiles(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDraggingAttachment(true);
+  };
+
+  const handleDragLeave = (event: DragEvent<HTMLElement>) => {
+    if (variant !== "template-v2") return;
+    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+      setIsDraggingAttachment(false);
+    }
+  };
+
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
+    if (variant !== "template-v2") return;
+    const files = Array.from(event.dataTransfer.files);
+    const fileUri = getDroppedFileUri(event);
+    if (files.length === 0 && !hasDraggedFiles(event) && !fileUri.startsWith("file:")) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDraggingAttachment(false);
+    if (files.length === 0) {
+      notify.warning("Drop unavailable", "Use the attach button for this file.");
+      return;
+    }
+    void processTemplateV2Files(files);
   };
 
   const isOutlineVariant = variant === "outline";
@@ -1778,11 +2067,30 @@ const Chat = ({
 
       <form
         onSubmit={handleSubmit}
-        className="mx-4 mb-4 rounded-[8px] border border-[#F4F4F4] bg-white px-2.5 py-3"
+        onDragEnterCapture={handleDragOver}
+        onDragOverCapture={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDropCapture={handleDrop}
+        className={cn(
+          "mx-4 mb-4 rounded-[8px] border bg-white px-2.5 py-3 transition-colors",
+          isDraggingAttachment
+            ? "border-[#7A5AF8] bg-[#F7F5FF]"
+            : "border-[#F4F4F4]"
+        )}
         style={{
           boxShadow: "0 4px 14px 0 rgba(0, 0, 0, 0.04)",
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*,.pdf,.txt,.md,.doc,.docx,.docm,.odt,.rtf,.ppt,.pptx,.pptm,.odp,.xls,.xlsx,.xlsm,.ods,.csv,.tsv"
+          className="hidden"
+          onChange={handleAttachmentInputChange}
+          aria-hidden="true"
+          tabIndex={-1}
+        />
         {(chatSlideReference || chatTargetReference) && (
           <div className="mb-2 flex max-w-full items-center gap-1.5">
             {chatSlideReference && (
@@ -1819,7 +2127,10 @@ const Chat = ({
             )}
           </div>
         )}
-        {(pastedImages.length > 0 || chatLinks.length > 0 || isUploadingPastedImage) && (
+        {(pastedImages.length > 0 ||
+          attachedDocuments.length > 0 ||
+          chatLinks.length > 0 ||
+          isUploadingPastedImage) && (
           <div className="mb-2 flex max-w-full flex-wrap items-center gap-1.5">
             {chatLinks.map((link) => (
               <span
@@ -1865,10 +2176,32 @@ const Chat = ({
                 </button>
               </span>
             ))}
+            {attachedDocuments.map((document) => (
+              <span
+                key={document.id}
+                className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-[8px] border border-[#EDEEEF] bg-[#F9FAFB] px-2 py-1 text-xs font-medium text-[#344054]"
+              >
+                <FileText className="h-3 w-3 shrink-0" aria-hidden="true" />
+                <span className="truncate">{document.name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttachedDocuments((previous) =>
+                      previous.filter((item) => item.id !== document.id)
+                    )
+                  }
+                  className="rounded-full p-0.5 text-[#667085] transition-colors hover:bg-[#E4E7EC]"
+                  aria-label="Remove attached document"
+                  title="Remove attached document"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
             {isUploadingPastedImage && (
               <span className="inline-flex items-center gap-1.5 rounded-[8px] border border-[#EDEEEF] bg-[#F9FAFB] px-2 py-1 text-xs font-medium text-[#667085]">
                 <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                Uploading image
+                Processing attachment
               </span>
             )}
           </div>
@@ -1883,6 +2216,9 @@ const Chat = ({
           disabled={isSending || isHistoryLoading}
           onChange={handleInputChange}
           onPaste={handlePaste}
+          onDragEnterCapture={handleDragOver}
+          onDragOverCapture={handleDragOver}
+          onDropCapture={handleDrop}
           onKeyDown={handleKeyDown}
           placeholder={
             isOutlineVariant
@@ -1897,10 +2233,15 @@ const Chat = ({
           <div className="flex items-center gap-2 border border-[#EDEEEF] bg-white px-3 py-1 rounded-[64px]">
             <button
               type="button"
-              disabled
-              className="inline-flex h-[28px] items-center rounded-[64px] disabled:opacity-50"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={!isTemplateV2Variant || isSending || isHistoryLoading}
+              className="inline-flex h-[28px] items-center rounded-[64px] disabled:cursor-not-allowed disabled:opacity-50"
               aria-label="Attach files"
-              title="Attachments are not supported yet"
+              title={
+                isTemplateV2Variant
+                  ? "Attach files"
+                  : "Attachments are available in Template V2 chat"
+              }
             >
               <Plus className="h-3 w-3 text-black" />
             </button>
@@ -2011,7 +2352,10 @@ const Chat = ({
               <button
                 type="submit"
                 disabled={
-                  (!input.trim() && pastedImages.length === 0 && chatLinks.length === 0) ||
+                  (!input.trim() &&
+                    pastedImages.length === 0 &&
+                    attachedDocuments.length === 0 &&
+                    chatLinks.length === 0) ||
                   isHistoryLoading ||
                   isUploadingPastedImage
                 }

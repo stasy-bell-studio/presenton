@@ -560,6 +560,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           <div className="w-full max-w-[370px] h-full shrink-0 self-start sticky top-0">
             <PresentationActions
               presentationId={presentation_id}
+              variant={isTemplateV2Presentation ? "template-v2" : "presentation"}
               currentSlide={selectedSlide}
               presentationData={presentationData}
               onPresentationChanged={handlePresentationChanged}
