@@ -12,6 +12,7 @@ from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-foun
 
 from services.chat.v2.context_store import TemplateV2ContextStore
 from services.chat.v2.schemas import (
+    AddComponentInput,
     AddSlideLayoutInput,
     DeleteComponentInput,
     GetEditableElementsInput,
@@ -23,7 +24,7 @@ from services.chat.v2.schemas import (
     UngroupComponentInput,
     UpdateElementContentInput,
 )
-from templates.v2.models.layouts import SlideLayout
+from templates.v2.models.layouts import Component, SlideLayout
 
 LOGGER = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class TemplateV2ChatTools:
             "searchTemplateContent": self._search_template_content,
             "getEditableElements": self._get_editable_elements,
             "addSlideLayout": self._add_slide_layout,
+            "addComponent": self._add_component,
             "updateElementContent": self._update_element_content,
             "deleteComponent": self._delete_component,
             "ungroupComponent": self._ungroup_component,
@@ -93,11 +95,29 @@ class TemplateV2ChatTools:
                 description=(
                     "Add a new TemplateV2 slide layout by duplicating an existing "
                     "layout. Use for requests to add/create/append a slide when no "
-                    "exact new layout generator exists. After adding, inspect the new "
-                    "slide with getEditableElements and update copied placeholder text, "
-                    "charts, tables, or images with updateElementContent."
+                    "exact new layout generator exists. Before calling this, inspect "
+                    "and choose the source with getSlideLayout(includeFullJson=true) "
+                    "and plan the copied-content updates. After adding, inspect the "
+                    "new slide with getEditableElements and update copied placeholder "
+                    "text, charts, tables, or images with updateElementContent before "
+                    "treating the new slide as complete."
                 ),
                 schema=AddSlideLayoutInput,
+                strict=True,
+            ),
+            Tool(
+                name="addComponent",
+                description=(
+                    "Add a new canvas component to any TemplateV2 slide layout. Use "
+                    "this when the user asks to add a new chart, table, card, image, "
+                    "shape, text block, icon, or grouped visual that does not already "
+                    "exist in the current layout. The component JSON must include id, "
+                    "description, position, size, and a non-empty elements array. "
+                    "Charts support chart_type/chartType values including pie and "
+                    "donut; do not say a slide layout is not chart-capable when this "
+                    "tool can add a chart component."
+                ),
+                schema=AddComponentInput,
                 strict=True,
             ),
             Tool(
@@ -106,7 +126,7 @@ class TemplateV2ChatTools:
                     "Patch safe content fields only for one concrete element path: "
                     "text.runs via text, text-list.items via items, one table cell via "
                     "tableCell, a whole table via table {columns or headers, rows}, "
-                    "chart title/categories/series via chart, or image/icon data via "
+                    "chart type/title/categories/series via chart, or image/icon data via "
                     "text. Chart series must use values arrays, not data arrays. Does "
                     "not change geometry or create elements. Never delete a table/chart "
                     "just because a data update failed; retry with the correct payload."
@@ -325,6 +345,58 @@ class TemplateV2ChatTools:
             "description": layout.description,
             "slide_count": len(layouts.layouts),
             "message": f"Added slide layout {insert_index + 1}.",
+        }
+
+    async def _add_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddComponentInput(**args)
+        layout = await self._context.get_slide_layout(payload.slide_index)
+        layout_dict = _model_dict(layout)
+        components = layout_dict.get("components")
+        if not isinstance(components, list):
+            raise ValueError("Slide layout has no components list.")
+
+        try:
+            parsed = dirtyjson.loads(payload.component)
+        except Exception:
+            parsed = json.loads(payload.component)
+        component_dict = json.loads(json.dumps(parsed, ensure_ascii=False))
+        if not isinstance(component_dict, dict):
+            raise ValueError("component must be a JSON object.")
+
+        used_ids = {
+            str(component.get("id"))
+            for component in components
+            if isinstance(component, dict) and component.get("id")
+        }
+        component_id = str(component_dict.get("id") or "").strip()
+        if not component_id or component_id in used_ids:
+            component_id = _unique_component_id(
+                _normalize_component_id(component_id or "component"),
+                used_ids,
+            )
+        component_dict["id"] = component_id
+        component = Component.model_validate(component_dict)
+        insert_index = (
+            len(components)
+            if payload.insert_index is None
+            else min(max(0, payload.insert_index), len(components))
+        )
+        components.insert(insert_index, component.model_dump(mode="json", exclude_none=True))
+
+        updated_layout = SlideLayout.model_validate(layout_dict)
+        await self._context.save_slide_layout(
+            slide_index=payload.slide_index,
+            layout=updated_layout,
+        )
+        return {
+            "added": True,
+            "slide_index": payload.slide_index,
+            "slide_number": payload.slide_index + 1,
+            "component_id": component.id,
+            "component_index": insert_index,
+            "message": (
+                f"Added component '{component.id}' to slide {payload.slide_index + 1}."
+            ),
         }
 
     async def _update_element_content(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -1167,6 +1239,8 @@ def _table_value_text(value: Any) -> str:
 
 
 def _update_chart_element(element: dict[str, Any], chart: dict[str, Any]) -> None:
+    if "chart_type" in chart:
+        element["chart_type"] = chart["chart_type"]
     if "title" in chart:
         element["title"] = chart["title"]
     if "categories" in chart:

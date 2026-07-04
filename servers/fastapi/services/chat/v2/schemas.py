@@ -65,6 +65,28 @@ class AddSlideLayoutInput(OpenAIStrictSchemaModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
+class AddComponentInput(OpenAIStrictSchemaModel):
+    slide_index: int = Field(..., alias="slideIndex", ge=0, le=1000)
+    component: str = Field(
+        ...,
+        min_length=2,
+        max_length=200000,
+        description=(
+            "A JSON-serialized TemplateV2 component object with id, description, "
+            "position, size, and non-empty elements."
+        ),
+    )
+    insert_index: int | None = Field(
+        ...,
+        alias="insertIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based component insert position. Use null to append.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
 class TableCellUpdateInput(StrictSchemaModel):
     section: Literal["columns", "rows"]
     column_index: int = Field(alias="columnIndex", ge=0, le=100)
@@ -101,6 +123,16 @@ class ChartSeriesInput(StrictSchemaModel):
 
 
 class ChartUpdateInput(OpenAIStrictSchemaModel):
+    chart_type: Literal[
+        "bar",
+        "line",
+        "area",
+        "pie",
+        "donut",
+        "column",
+        "stacked_bar",
+        "stacked_column",
+    ] | None = Field(..., alias="chartType")
     title: str | None = Field(..., min_length=0, max_length=500)
     categories: list[str] | None = Field(..., min_length=1, max_length=100)
     series: list[ChartSeriesInput] | None = Field(..., min_length=1, max_length=20)
@@ -112,7 +144,8 @@ class ChartUpdateInput(OpenAIStrictSchemaModel):
             return value
         normalized = dict(value)
         normalized.pop("type", None)
-        normalized.pop("chart_type", None)
+        if "chartType" not in normalized and "chart_type" in normalized:
+            normalized["chartType"] = normalized.pop("chart_type")
         return normalized
 
 
@@ -178,11 +211,12 @@ class UpdateElementContentInput(OpenAIStrictSchemaModel):
             return value
         normalized = dict(value)
         if "chart" not in normalized and any(
-            key in normalized for key in ("title", "categories", "series")
+            key in normalized
+            for key in ("chartType", "chart_type", "title", "categories", "series")
         ):
             normalized["chart"] = {
                 key: normalized.pop(key)
-                for key in ("title", "categories", "series")
+                for key in ("chartType", "chart_type", "title", "categories", "series")
                 if key in normalized
             }
         return normalized

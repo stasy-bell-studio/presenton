@@ -1,7 +1,7 @@
 import asyncio
 import json
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -9,6 +9,7 @@ from llmai.shared import AssistantToolCall  # type: ignore[import-not-found]
 
 from models.sql.template_v2 import TemplateV2
 from services.chat.v2.context_store import TemplateV2ContextStore
+from services.chat.v2.prompts import build_template_v2_system_prompt
 from services.chat.v2.service import TemplateV2ChatService
 from services.chat.v2.tools import TemplateV2ChatTools
 
@@ -114,6 +115,32 @@ def test_template_v2_context_store_rejects_missing_template():
     assert exc_info.value.status_code == 404
 
 
+def test_template_v2_prompt_requires_inspect_choose_add_update_for_new_slides():
+    prompt = build_template_v2_system_prompt(
+        template_context="",
+        chat_memory_context="",
+    )
+    add_tool = next(
+        tool
+        for tool in TemplateV2ChatTools(Mock()).get_tool_definitions()
+        if tool.name == "addSlideLayout"
+    )
+    add_component_tool = next(
+        tool
+        for tool in TemplateV2ChatTools(Mock()).get_tool_definitions()
+        if tool.name == "addComponent"
+    )
+
+    assert "Follow these steps in order, every time" in prompt
+    assert "getSlideLayout with includeFullJson=true" in prompt
+    assert "calling addSlideLayout and stopping there is never enough" in prompt
+    assert "create a new component with addComponent" in prompt
+    assert "Pie and donut charts are supported" in prompt
+    assert "Before calling this, inspect" in add_tool.description
+    assert "before treating the new slide as complete" in add_tool.description
+    assert "Charts support chart_type/chartType values including pie" in add_component_tool.description
+
+
 def test_template_v2_tool_updates_text_content_and_persists_layout():
     template = _template()
     session = _FakeTemplateSession(template)
@@ -183,6 +210,59 @@ def test_template_v2_tool_adds_slide_layout_from_existing_layout():
     assert session.commit_count == 1
 
 
+def test_template_v2_tool_adds_pie_chart_component_to_any_layout():
+    template = _template()
+    session = _FakeTemplateSession(template)
+    tools = TemplateV2ChatTools(TemplateV2ContextStore(session, template.id))
+
+    result = _run(
+        tools.execute_tool_call(
+            AssistantToolCall(
+                id="call_1",
+                name="addComponent",
+                arguments=json.dumps(
+                    {
+                        "slideIndex": 0,
+                        "component": json.dumps(
+                            {
+                                "id": "market-share-pie",
+                                "description": "Market share pie chart block.",
+                                "position": {"x": 140, "y": 120},
+                                "size": {"width": 520, "height": 360},
+                                "elements": [
+                                    {
+                                        "type": "chart",
+                                        "position": {"x": 0, "y": 0},
+                                        "size": {"width": 520, "height": 360},
+                                        "chart_type": "pie",
+                                        "title": "Market Share",
+                                        "categories": ["Product A", "Product B"],
+                                        "series": [
+                                            {"name": "Share", "values": [62, 38]}
+                                        ],
+                                        "decorative": False,
+                                        "name": "Market share pie chart",
+                                    }
+                                ],
+                            }
+                        ),
+                        "insertIndex": None,
+                    }
+                ),
+            )
+        )
+    )
+
+    component = template.layouts["layouts"][0]["components"][2]
+    chart = component["elements"][0]
+    assert result["ok"] is True
+    assert result["result"]["component_id"] == "market-share-pie"
+    assert component["id"] == "market-share-pie"
+    assert chart["chart_type"] == "pie"
+    assert chart["series"][0]["values"] == [62.0, 38.0]
+    assert session.commit_count == 1
+
+
 def test_template_v2_tool_accepts_chart_and_whole_table_payloads():
     template = _template()
     template.layouts["layouts"][0]["components"].extend(
@@ -241,6 +321,7 @@ def test_template_v2_tool_accepts_chart_and_whole_table_payloads():
                         "elementPath": "components[2].elements[0]",
                         "chart": {
                             "type": "bar",
+                            "chartType": "pie",
                             "title": "GHG Emissions 2024-2025",
                             "categories": ["CO2", "CH4", "N2O"],
                             "series": [
@@ -280,6 +361,7 @@ def test_template_v2_tool_accepts_chart_and_whole_table_payloads():
     table = template.layouts["layouts"][0]["components"][3]["elements"][0]
     assert chart_result["ok"] is True
     assert table_result["ok"] is True
+    assert chart["chart_type"] == "pie"
     assert chart["series"][1]["values"] == [36.7, 2.3, 0.84]
     assert [cell["runs"][0]["text"] for cell in table["columns"]] == [
         "Metric",
