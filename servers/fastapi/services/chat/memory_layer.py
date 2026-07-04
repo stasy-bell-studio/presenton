@@ -901,8 +901,12 @@ class PresentationChatMemoryLayer:
         size: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from services.chat.v2.tools import (
+            _apply_image_element_value,
             _component_id_for_path,
+            _content_update_requested_for_type,
+            _looks_like_asset_reference,
             _resolve_element_path,
+            _resolve_image_update_payload,
             _update_chart_element,
             _update_table_element,
             _update_table_cell,
@@ -923,8 +927,13 @@ class PresentationChatMemoryLayer:
         ui = copy.deepcopy(ui)
         element = _resolve_element_path(ui, element_path)
         element_type = str(element.get("type") or "")
-        content_update_requested = any(
-            value is not None for value in (text, items, table_cell, table, chart)
+        content_update_requested = _content_update_requested_for_type(
+            element_type,
+            text=text,
+            items=items,
+            table_cell=table_cell,
+            table=table,
+            chart=chart,
         )
 
         if content_update_requested and element_type == "text":
@@ -947,9 +956,22 @@ class PresentationChatMemoryLayer:
                 raise ValueError("chart is required for chart elements.")
             _update_chart_element(element, chart)
         elif content_update_requested and element_type == "image":
-            if text is None:
-                raise ValueError("text must contain the replacement image/icon data.")
-            element["data"] = text
+            payload = _resolve_image_update_payload(text, items)
+            if payload is None:
+                raise ValueError(
+                    "Image/icon updates require `text` with a URL returned by "
+                    "generateAssets, generateImage, or generateIcon."
+                )
+            if isinstance(payload, str) and not _looks_like_asset_reference(payload):
+                generated_url = await (
+                    self.generate_icon(payload)
+                    if element.get("is_icon") is True
+                    else self.generate_image(payload)
+                )
+                element["data"] = generated_url
+                element["prompt"] = payload.strip()
+            else:
+                _apply_image_element_value(element, payload)
         elif content_update_requested:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
 

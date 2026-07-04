@@ -254,12 +254,12 @@ class ChatTools:
                     "layout, using an elementPath from getSlideElements: text.runs via "
                     "text, text-list.items via items, one table cell via tableCell, a "
                     "whole table via table {columns or headers, rows}, chart "
-                    "title/categories/series via chart, image/icon data via text, or "
-                    "position/size for move/resize requests. Chart series must use "
-                    "values arrays, not data arrays. This changes what the user sees. "
-                    "Respect any max/min limits reported by getSlideElements. Never "
-                    "delete a table/chart just because a data update failed; retry with "
-                    "the correct payload shape."
+                    "title/categories/series via chart, image/icon URLs via text (from "
+                    "generateAssets, generateImage, or generateIcon), or position/size "
+                    "for move/resize requests. Chart series must use values arrays, not "
+                    "data arrays. This changes what the user sees. Respect any max/min "
+                    "limits reported by getSlideElements. Never delete a table/chart just "
+                    "because a data update failed; retry with the correct payload shape."
                 ),
                 schema=UpdateSlideElementInput,
                 strict=True,

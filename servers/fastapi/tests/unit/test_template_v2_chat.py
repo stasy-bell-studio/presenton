@@ -138,7 +138,8 @@ def test_template_v2_prompt_requires_inspect_choose_add_update_for_new_slides():
     assert "Pie and donut charts are supported" in prompt
     assert "Before calling this, inspect" in add_tool.description
     assert "before treating the new slide as complete" in add_tool.description
-    assert "Charts support chart_type/chartType values including pie" in add_component_tool.description
+    assert "chart_type/chartType" in add_component_tool.description
+    assert "pie" in add_component_tool.description
 
 
 def test_template_v2_tool_updates_text_content_and_persists_layout():
@@ -261,6 +262,59 @@ def test_template_v2_tool_adds_pie_chart_component_to_any_layout():
     assert chart["chart_type"] == "pie"
     assert chart["series"][0]["values"] == [62.0, 38.0]
     assert session.commit_count == 1
+
+
+def test_template_v2_tool_rejects_chart_request_on_image_element():
+    template = _template()
+    template.layouts["layouts"][0]["components"].append(
+        {
+            "id": "hero-visual",
+            "description": "Large radial visual block.",
+            "position": {"x": 140, "y": 120},
+            "size": {"width": 520, "height": 360},
+            "elements": [
+                {
+                    "type": "image",
+                    "decorative": False,
+                    "name": "Radial visual",
+                    "data": "/static/images/placeholder.jpg",
+                    "is_icon": False,
+                }
+            ],
+        }
+    )
+    session = _FakeTemplateSession(template)
+    tools = TemplateV2ChatTools(TemplateV2ContextStore(session, template.id))
+
+    result = _run(
+        tools.execute_tool_call(
+            AssistantToolCall(
+                id="call_1",
+                name="updateElementContent",
+                arguments=json.dumps(
+                    {
+                        "slideIndex": 0,
+                        "elementPath": "components[2].elements[0]",
+                        "text": "Pie chart with dummy climate metrics",
+                    }
+                ),
+            )
+        )
+    )
+
+    assert result["ok"] is False
+    assert "chart element" in str(result["error"]).lower()
+    assert session.commit_count == 0
+
+
+def test_template_v2_prompt_forbids_chart_images():
+    prompt = build_template_v2_system_prompt(
+        template_context="",
+        chat_memory_context="",
+    )
+
+    assert "never generate" in prompt.lower() or "not static pictures" in prompt.lower()
+    assert "chart image" in prompt.lower()
 
 
 def test_template_v2_tool_accepts_chart_and_whole_table_payloads():

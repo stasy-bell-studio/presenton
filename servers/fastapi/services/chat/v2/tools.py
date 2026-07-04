@@ -111,11 +111,13 @@ class TemplateV2ChatTools:
                     "Add a new canvas component to any TemplateV2 slide layout. Use "
                     "this when the user asks to add a new chart, table, card, image, "
                     "shape, text block, icon, or grouped visual that does not already "
-                    "exist in the current layout. The component JSON must include id, "
-                    "description, position, size, and a non-empty elements array. "
-                    "Charts support chart_type/chartType values including pie and "
-                    "donut; do not say a slide layout is not chart-capable when this "
-                    "tool can add a chart component."
+                    "exist in the current layout—or to replace an image/icon block with "
+                    "a real chart (delete the old component first, then add a chart "
+                    "component here). Never add a static chart picture; charts must be "
+                    "type chart with chart_type/chartType (pie, bar, line, donut, etc.), "
+                    "title, categories, and series[].values. The component JSON must "
+                    "include id, description, position, size, and a non-empty elements "
+                    "array."
                 ),
                 schema=AddComponentInput,
                 strict=True,
@@ -127,9 +129,10 @@ class TemplateV2ChatTools:
                     "text.runs via text, text-list.items via items, one table cell via "
                     "tableCell, a whole table via table {columns or headers, rows}, "
                     "chart type/title/categories/series via chart, or image/icon data via "
-                    "text. Chart series must use values arrays, not data arrays. Does "
-                    "not change geometry or create elements. Never delete a table/chart "
-                    "just because a data update failed; retry with the correct payload."
+                    "text URL only. Chart series must use values arrays, not data arrays. "
+                    "Never use the text field on image elements for chart requests—use "
+                    "addComponent with a chart element instead. Does not change geometry "
+                    "or create elements."
                 ),
                 schema=UpdateElementContentInput,
                 strict=True,
@@ -426,9 +429,11 @@ class TemplateV2ChatTools:
                 raise ValueError("chart is required for chart elements.")
             _update_chart_element(element, payload.chart.model_dump(exclude_none=True))
         elif element_type == "image":
-            if payload.text is None:
-                raise ValueError("text must contain the replacement image/icon data.")
-            element["data"] = payload.text
+            _apply_image_element_update(
+                element,
+                text=payload.text,
+                items=payload.items,
+            )
         else:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
 
@@ -1089,6 +1094,180 @@ def _component_id_for_path(layout_dict: dict[str, Any], path: str) -> str | None
         return None
     component = components[index]
     return str(component.get("id")) if isinstance(component, dict) else None
+
+
+def _looks_like_chart_request(value: str) -> bool:
+    if _looks_like_asset_reference(value):
+        return False
+    normalized = " ".join(value.casefold().split())
+    if not normalized:
+        return False
+    chart_phrases = (
+        "pie chart",
+        "bar chart",
+        "line chart",
+        "area chart",
+        "donut chart",
+        "column chart",
+        "stacked bar",
+        "stacked column",
+        "radial chart",
+        "chart with",
+        "chart showing",
+        "dummy metrics",
+        "dummy chart",
+    )
+    if any(phrase in normalized for phrase in chart_phrases):
+        return True
+    if "chart" not in normalized:
+        return False
+    return any(
+        token in normalized
+        for token in ("pie", "bar", "line", "donut", "metrics", "graph", "visualization")
+    )
+
+
+def _chart_request_on_image_error() -> ValueError:
+    return ValueError(
+        "Chart requests must use a chart element, not an image. If the target is an "
+        "image/icon, delete that component and addComponent with type chart "
+        "(chart_type/chartType pie|bar|line|donut, title, categories, series with "
+        "values). If the target is already chart, use updateElementContent with chart."
+    )
+
+
+def _looks_like_asset_reference(value: str) -> bool:
+    stripped = value.strip()
+    return stripped.startswith(
+        ("http://", "https://", "/app_data/", "/static/", "data:", "blob:")
+    )
+
+
+def _chart_update_has_content(chart: dict[str, Any] | None) -> bool:
+    if chart is None:
+        return False
+    if chart.get("title") is not None:
+        return True
+    if chart.get("categories") is not None:
+        return True
+    return chart.get("series") is not None
+
+
+def _resolve_image_update_payload(
+    text: str | None,
+    items: list[str] | None,
+) -> str | dict[str, Any] | None:
+    if text is not None:
+        stripped = text.strip()
+        if not stripped:
+            return None
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+            except json.JSONDecodeError:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        return text
+    if isinstance(items, list) and len(items) == 1:
+        candidate = str(items[0] or "").strip()
+        if candidate:
+            return candidate
+    return None
+
+
+def _template_v2_asset_url(value: Any) -> str | None:
+    from utils.asset_directory_utils import normalize_slide_asset_url
+
+    if isinstance(value, str):
+        return normalize_slide_asset_url(value)
+    if not isinstance(value, dict):
+        return None
+
+    for key in (
+        "data",
+        "url",
+        "image_url",
+        "icon_url",
+        "__image_url__",
+        "__icon_url__",
+    ):
+        asset_url = value.get(key)
+        if isinstance(asset_url, str) and asset_url.strip():
+            return normalize_slide_asset_url(asset_url)
+    return None
+
+
+def _template_v2_asset_prompt(value: Any, *, is_icon: bool) -> str | None:
+    if not isinstance(value, dict):
+        return None
+
+    prompt_keys = (
+        ("icon_query", "__icon_query__", "query", "prompt")
+        if is_icon
+        else ("image_prompt", "__image_prompt__", "prompt", "query")
+    )
+    for key in prompt_keys:
+        prompt = value.get(key)
+        if isinstance(prompt, str) and prompt.strip():
+            return prompt
+    return None
+
+
+def _apply_image_element_value(element: dict[str, Any], value: Any) -> None:
+    asset_url = _template_v2_asset_url(value)
+    if not asset_url:
+        raise ValueError(
+            "Image/icon updates require `text` with an image or icon URL."
+        )
+    element["data"] = asset_url
+    prompt = _template_v2_asset_prompt(
+        value,
+        is_icon=element.get("is_icon") is True,
+    )
+    if prompt:
+        element["prompt"] = prompt
+
+
+def _apply_image_element_update(
+    element: dict[str, Any],
+    *,
+    text: str | None,
+    items: list[str] | None,
+) -> None:
+    payload = _resolve_image_update_payload(text, items)
+    if payload is None:
+        raise ValueError(
+            "Image/icon updates require `text` with an image or icon URL."
+        )
+    if isinstance(payload, str) and _looks_like_chart_request(payload):
+        raise _chart_request_on_image_error()
+    _apply_image_element_value(element, payload)
+
+
+def _content_update_requested_for_type(
+    element_type: str,
+    *,
+    text: str | None,
+    items: list[str] | None,
+    table_cell: dict[str, Any] | None,
+    table: dict[str, Any] | None,
+    chart: dict[str, Any] | None,
+) -> bool:
+    if element_type == "text":
+        return text is not None
+    if element_type == "text-list":
+        return items is not None
+    if element_type == "table":
+        return table is not None or table_cell is not None
+    if element_type == "chart":
+        return _chart_update_has_content(chart)
+    if element_type == "image":
+        return _resolve_image_update_payload(text, items) is not None
+    return any(
+        value is not None
+        for value in (text, items, table_cell, table, chart)
+    )
 
 
 def _update_text_element(element: dict[str, Any], text: str) -> None:

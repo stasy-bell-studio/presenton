@@ -148,6 +148,100 @@ def test_update_slide_element_edits_ui_text():
     assert session.commit_count == 1
 
 
+def _slide_with_image():
+    slide = _slide()
+    slide.ui["components"].append(
+        {
+            "id": "visual",
+            "description": "Hero image component.",
+            "position": {"x": 0, "y": 120},
+            "size": {"width": 100, "height": 80},
+            "elements": [
+                {
+                    "type": "image",
+                    "decorative": False,
+                    "name": "Hero image",
+                    "data": "/static/images/placeholder.jpg",
+                    "is_icon": False,
+                }
+            ],
+        }
+    )
+    return slide
+
+
+def test_update_slide_element_moves_image_without_content_fields():
+    slide = _slide_with_image()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateSlideElement",
+        {
+            "index": 0,
+            "elementPath": "components[2].elements[0]",
+            "text": None,
+            "items": None,
+            "tableCell": None,
+            "chart": None,
+            "table": None,
+            "position": {"x": 12, "y": 34},
+            "size": None,
+        },
+    )
+
+    image = slide.ui["components"][2]["elements"][0]
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert image["position"] == {"x": 12.0, "y": 34.0}
+    assert image["data"] == "/static/images/placeholder.jpg"
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_sets_image_url_from_text():
+    slide = _slide_with_image()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateSlideElement",
+        {
+            "index": 0,
+            "elementPath": "components[2].elements[0]",
+            "text": "/app_data/images/glacier.png",
+        },
+    )
+
+    image = slide.ui["components"][2]["elements"][0]
+    assert result["ok"] is True
+    assert image["data"].endswith("/app_data/images/glacier.png")
+    assert session.commit_count == 1
+
+
+@patch.object(PresentationChatMemoryLayer, "generate_image", new_callable=AsyncMock)
+def test_update_slide_element_generates_image_from_prompt(mock_generate_image):
+    mock_generate_image.return_value = "/app_data/images/generated.png"
+    slide = _slide_with_image()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateSlideElement",
+        {
+            "index": 0,
+            "elementPath": "components[2].elements[0]",
+            "text": "Melting glacier aerial photo",
+        },
+    )
+
+    image = slide.ui["components"][2]["elements"][0]
+    assert result["ok"] is True
+    assert image["data"] == "/app_data/images/generated.png"
+    assert image["prompt"] == "Melting glacier aerial photo"
+    mock_generate_image.assert_awaited_once_with("Melting glacier aerial photo")
+    assert session.commit_count == 1
+
+
 def test_update_slide_element_edits_ui_size():
     slide = _slide()
     tools, session = _tools(slide)
