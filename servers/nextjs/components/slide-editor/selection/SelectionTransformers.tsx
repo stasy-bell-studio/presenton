@@ -7,13 +7,25 @@ import { Transformer } from "react-konva";
 const CORNER_HANDLE_SIZE = 14;
 const EDGE_HANDLE_LENGTH = 28;
 const EDGE_HANDLE_THICKNESS = 9;
-const ROTATION_HANDLE_SIZE = 44;
+const ROTATION_HANDLE_SIZE = 28;
+const ROTATION_HANDLE_INSET = 6;
+const ROTATION_ICON_SCALE = 1.2;
 const ROTATION_ICON_PATH =
   "M11.0835 5.83331C11.0835 6.87166 10.7756 7.8867 10.1987 8.75006C9.62184 9.61341 8.8019 10.2863 7.84259 10.6837C6.88327 11.081 5.82767 11.185 4.80927 10.9824C3.79087 10.7799 2.85541 10.2798 2.12119 9.54562C1.38696 8.8114 0.886948 7.87594 0.684376 6.85754C0.481803 5.83914 0.585771 4.78354 0.983131 3.82422C1.38049 2.86491 2.0534 2.04498 2.91675 1.4681C3.78011 0.89122 4.79515 0.583313 5.8335 0.583313C7.3035 0.583313 8.70933 1.16665 9.76516 2.18165L11.0835 3.49998";
 const SHADOW_EVENT_NAMESPACE = ".presentonSelectionShadows";
 let rotationIconPath: Path2D | null = null;
 
 type SelectionKind = "component" | "multi-component" | "element" | null;
+
+type RotationAnchorPlacement = {
+  angle: number;
+  offset: number;
+};
+
+const DEFAULT_ROTATION_ANCHOR_PLACEMENT: RotationAnchorPlacement = {
+  angle: 45,
+  offset: -(ROTATION_HANDLE_SIZE / 2 + ROTATION_HANDLE_INSET),
+};
 
 type TemplateV2SelectionTransformersProps = {
   nodeRefs: RefObject<Map<string, Konva.Node>>;
@@ -37,8 +49,8 @@ function drawRotationHandle(context: Konva.Context, shape: Konva.Shape) {
   context.setAttr("lineWidth", 1.16667);
   context.setAttr("lineCap", "round");
   context.setAttr("lineJoin", "round");
-  context.translate(center - 9, center - 9);
-  context.scale(1.5, 1.5);
+  context.translate(center - 7, center - 7);
+  context.scale(ROTATION_ICON_SCALE, ROTATION_ICON_SCALE);
   if (!rotationIconPath && typeof Path2D !== "undefined") {
     rotationIconPath = new Path2D(ROTATION_ICON_PATH);
   }
@@ -77,10 +89,10 @@ function styleAnchor(anchor: Konva.Rect) {
     stroke: "#E5E7EB",
     strokeWidth: 1,
     shadowColor: "#101828",
-    shadowBlur: isRotationHandle ? 8 : 4,
+    shadowBlur: isRotationHandle ? 5 : 4,
     shadowOffsetX: 0,
-    shadowOffsetY: isRotationHandle ? 4 : 2,
-    shadowOpacity: isRotationHandle ? 0.18 : 0.13,
+    shadowOffsetY: isRotationHandle ? 2 : 2,
+    shadowOpacity: isRotationHandle ? 0.16 : 0.13,
     shadowForStrokeEnabled: false,
     perfectDrawEnabled: false,
   });
@@ -137,6 +149,46 @@ function setTransformerShadowsEnabled(
   transformers[0]?.getLayer()?.batchDraw();
 }
 
+function rotationAnchorPlacementForNode(
+  node: Konva.Node | null | undefined,
+): RotationAnchorPlacement {
+  if (!node) return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
+
+  const width = Math.abs(node.width() * node.scaleX());
+  const height = Math.abs(node.height() * node.scaleY());
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
+  }
+
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const inset = ROTATION_HANDLE_SIZE / 2 + ROTATION_HANDLE_INSET;
+  const targetX = width > inset * 2 ? width - inset : width / 2;
+  const targetY = height > inset * 2 ? inset : height / 2;
+  const dx = targetX - centerX;
+  const dy = targetY - centerY;
+  const distanceToTarget = Math.hypot(dx, dy);
+  if (distanceToTarget < 0.5) return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
+
+  const dirX = dx / distanceToTarget;
+  const dirY = dy / distanceToTarget;
+  let distanceToEdge = Infinity;
+  if (dirY < 0) distanceToEdge = Math.min(distanceToEdge, -centerY / dirY);
+  else if (dirY > 0) {
+    distanceToEdge = Math.min(distanceToEdge, (height - centerY) / dirY);
+  }
+  if (dirX < 0) distanceToEdge = Math.min(distanceToEdge, -centerX / dirX);
+  else if (dirX > 0) {
+    distanceToEdge = Math.min(distanceToEdge, (width - centerX) / dirX);
+  }
+  if (!Number.isFinite(distanceToEdge)) return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
+
+  return {
+    angle: (Math.atan2(dirX, -dirY) * 180) / Math.PI,
+    offset: distanceToTarget - distanceToEdge,
+  };
+}
+
 export function TemplateV2SelectionTransformers({
   nodeRefs,
   parentComponentKey,
@@ -147,6 +199,11 @@ export function TemplateV2SelectionTransformers({
 }: TemplateV2SelectionTransformersProps) {
   const selectedTransformerRef = useRef<Konva.Transformer | null>(null);
   const contextTransformerRef = useRef<Konva.Transformer | null>(null);
+  const selectedNode = selectedKey ? nodeRefs.current?.get(selectedKey) : null;
+  const rotationAnchorPlacement =
+    selectionKind === "component"
+      ? rotationAnchorPlacementForNode(selectedNode)
+      : DEFAULT_ROTATION_ANCHOR_PLACEMENT;
 
   useEffect(() => {
     const keys = selectedKeys?.length
@@ -230,8 +287,8 @@ export function TemplateV2SelectionTransformers({
         borderStrokeWidth={1}
         enabledAnchors={selectionKind === "component" ? undefined : []}
         resizeEnabled={selectionKind === "component"}
-        rotateAnchorAngle={180}
-        rotateAnchorOffset={42}
+        rotateAnchorAngle={rotationAnchorPlacement.angle}
+        rotateAnchorOffset={rotationAnchorPlacement.offset}
         rotateEnabled={selectionKind === "component"}
         rotateLineVisible={false}
       />

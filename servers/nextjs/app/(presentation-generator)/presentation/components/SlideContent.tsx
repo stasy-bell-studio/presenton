@@ -9,8 +9,16 @@ interface SlideContentProps {
   slide: any;
   index: number;
   presentationId: string;
-  onSlideAdded?: (index: number) => void;
+  onSlideAdded?: (
+    index: number,
+    options?: {
+      promptOverlaySlideId?: string;
+      promptOverlayKind?: "blank" | "layout";
+    },
+  ) => void;
   isChatEditing?: boolean;
+  showTemplatePromptOverlay?: boolean;
+  onTemplatePromptOverlayDismiss?: () => void;
 }
 
 const SlideContent = ({
@@ -19,6 +27,8 @@ const SlideContent = ({
   presentationId,
   onSlideAdded,
   isChatEditing = false,
+  showTemplatePromptOverlay = false,
+  onTemplatePromptOverlayDismiss,
 }: SlideContentProps) => {
   const slideLayout = typeof slide?.layout === "string" ? slide.layout : "";
   const { presentationData, isStreaming } = useSelector(
@@ -87,6 +97,9 @@ const SlideContent = ({
             theme={presentationData?.theme || null}
             fonts={presentationData?.fonts}
             renderIndex={index}
+            showBlankPromptOverlay
+            showTemplatePromptOverlay={showTemplatePromptOverlay}
+            onTemplatePromptOverlayDismiss={onTemplatePromptOverlayDismiss}
           />
         </div>
         <div className="my-4 hidden w-full md:block">

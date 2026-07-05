@@ -8,7 +8,6 @@ import {
   ArrowUp,
   Copy,
   EllipsisVertical,
-  Headphones,
   Plus,
   Trash2,
 } from "lucide-react";
@@ -42,7 +41,13 @@ interface SlideActionBarProps {
   slide: any;
   selectedSlide: number;
   presentationId: string;
-  onSlideSelected: (index: number) => void;
+  onSlideSelected: (
+    index: number,
+    options?: {
+      promptOverlaySlideId?: string;
+      promptOverlayKind?: "blank" | "layout";
+    },
+  ) => void;
   revealOnGroupHover?: boolean;
 }
 
@@ -223,27 +228,27 @@ const SlideActionBar = ({
   const newSlideModal =
     showNewSlideSelection && templateId && typeof document !== "undefined"
       ? createPortal(
-          <div
-            className="fixed inset-0 z-[1000] overflow-y-auto bg-black/50 px-4 py-16"
-            onClick={() => setShowNewSlideSelection(false)}
-          >
-            <div className="relative z-[1001] flex min-h-full items-start justify-center pt-10">
-              <div
-                className="w-full max-w-[675px]"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <NewSlide
-                  index={currentIndex}
-                  templateID={templateId}
-                  setShowNewSlideSelection={setShowNewSlideSelection}
-                  presentationId={presentationId}
-                  onSlideAdded={onSlideSelected}
-                />
-              </div>
+        <div
+          className="fixed inset-0 z-[1000] overflow-y-auto bg-black/50 px-4 py-16"
+          onClick={() => setShowNewSlideSelection(false)}
+        >
+          <div className="relative z-[1001] flex min-h-full items-start justify-center pt-10">
+            <div
+              className="w-full max-w-[675px]"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <NewSlide
+                index={currentIndex}
+                templateID={templateId}
+                setShowNewSlideSelection={setShowNewSlideSelection}
+                presentationId={presentationId}
+                onSlideAdded={onSlideSelected}
+              />
             </div>
-          </div>,
-          document.body
-        )
+          </div>
+        </div>,
+        document.body
+      )
       : null;
 
   return (
@@ -280,43 +285,47 @@ const SlideActionBar = ({
           </button>
 
           <Separator orientation="vertical" className="mx-2 h-6 shrink-0 bg-[#EDEEEF]" />
-
-          <Popover
-            open={isSpeakerPopoverOpen}
-            onOpenChange={setIsSpeakerPopoverOpen}
-          >
-            <PopoverTrigger asChild>
-              <button
-                type="button"
-                aria-label="Speaker notes"
-                className={cn(
-                  "flex h-8 w-10 shrink-0 items-center justify-center rounded-[6px] text-[#050505] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]",
-                  isSpeakerPopoverOpen && "bg-[#F7F6F9]"
-                )}
-              >
-                <Headphones className="h-4 w-4" strokeWidth={2.35} />
-              </button>
-            </PopoverTrigger>
-            <PopoverContent
-              side="top"
-              align="center"
-              sideOffset={14}
-              className="z-[90] w-[360px] rounded-[16px] border border-[#E6E6EC] bg-white p-0 font-syne shadow-[0_8px_24px_rgba(17,24,39,0.14)]"
+          {speakerNote &&
+            <Popover
+              open={isSpeakerPopoverOpen}
+              onOpenChange={setIsSpeakerPopoverOpen}
             >
-              <div className="border-b border-[#EDEEEF] px-5 py-4">
-                <p className="text-sm font-semibold text-[#191919]">
-                  Speaker notes
-                </p>
-              </div>
-              <div className="p-5">
-                <div className="max-h-[240px] min-h-[108px] overflow-auto whitespace-pre-wrap rounded-[12px] border border-[#EDEEEF] bg-[#FAFAFB] p-4 text-sm leading-relaxed text-[#333333]">
-                  {speakerNote || "No speaker notes for this slide."}
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Speaker notes"
+                  className={cn(
+                    "flex h-8 w-10 shrink-0 items-center justify-center rounded-[6px] text-[#050505] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]",
+                    isSpeakerPopoverOpen && "bg-[#F7F6F9]"
+                  )}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                    <path d="M5.86683 13.3331V10.5997L7.1335 10.7331C7.50225 10.7126 7.85123 10.5597 8.11627 10.3025C8.38131 10.0453 8.54462 9.70103 8.57616 9.33306V5.53306C8.58058 4.57262 8.20329 3.64976 7.52728 2.96751C6.85128 2.28525 5.93193 1.89948 4.9715 1.89506C4.01106 1.89064 3.0882 2.26793 2.40595 2.94394C1.72369 3.61994 1.33792 4.53929 1.3335 5.49972C1.3335 7.36639 1.77083 7.53572 2.00016 8.53306C2.15515 9.13537 2.16179 9.76628 2.0195 10.3717L1.3335 13.3331" stroke="black" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M13.2002 11.8668C14.1374 10.9294 14.6641 9.65834 14.6645 8.33284C14.6648 7.00735 14.1389 5.73594 13.2022 4.7981" stroke="black" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M11.3336 10C11.5517 9.78195 11.7244 9.52279 11.8417 9.23755C11.9591 8.95231 12.0187 8.64663 12.0171 8.33821C12.0156 8.02978 11.9529 7.72472 11.8327 7.44067C11.7125 7.15662 11.5372 6.89922 11.3169 6.68335" stroke="black" strokeWidth="1.33333" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="center"
+                sideOffset={14}
+                className="z-[90] w-[360px] rounded-[16px] border border-[#E6E6EC] bg-white p-0 font-syne shadow-[0_8px_24px_rgba(17,24,39,0.14)]"
+              >
+                <div className="border-b border-[#EDEEEF] px-5 py-4">
+                  <p className="text-sm font-semibold text-[#191919]">
+                    Speaker notes
+                  </p>
                 </div>
-              </div>
-            </PopoverContent>
-          </Popover>
-
-          <Separator orientation="vertical" className="mx-2 h-6 shrink-0 bg-[#EDEEEF]" />
+                <div className="p-5">
+                  <div className="max-h-[240px] min-h-[108px] overflow-auto whitespace-pre-wrap rounded-[12px] border border-[#EDEEEF] bg-[#FAFAFB] p-4 text-sm leading-relaxed text-[#333333]">
+                    {speakerNote || "No speaker notes for this slide."}
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>}
+          {speakerNote &&
+            <Separator orientation="vertical" className="mx-2 h-6 shrink-0 bg-[#EDEEEF]" />}
 
           <DropdownMenu.Root
             open={isSlideMenuOpen}

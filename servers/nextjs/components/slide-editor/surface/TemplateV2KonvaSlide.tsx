@@ -380,6 +380,10 @@ function TemplateV2KonvaSlideComponent({
     () => surfaceSelectionTarget(uiDraft, selection, surfaceSlideIndex),
     [selection, surfaceSlideIndex, uiDraft],
   );
+  const contentLayerKey = isEditMode
+    ? "template-v2-edit-layer"
+    : `fonts:${fontLoadState.revision}`;
+
   useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
@@ -1457,7 +1461,7 @@ function TemplateV2KonvaSlideComponent({
           <Rect width={STAGE_WIDTH} height={STAGE_HEIGHT} fill={backgroundColor(uiDraft)} />
         </Layer>
         <Layer
-          key={`fonts:${fontLoadState.revision}`}
+          key={contentLayerKey}
           listening={fontLoadState.ready}
           visible={fontLoadState.ready}
         >

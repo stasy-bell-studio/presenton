@@ -32,6 +32,10 @@ import MarkdownRenderer from "@/components/MarkDownRender";
 import { ImagesApi } from "../../services/api/images";
 import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { PresentationChatApi } from "../../services/api/chat";
+import {
+  PRESENTON_BLANK_SLIDE_PROMPT_EVENT,
+  type BlankSlidePromptEventDetail,
+} from "../../_shared/blank-slide-prompt-event";
 import type {
   ChatConversationSummary,
   ChatHistoryMessage,
@@ -850,6 +854,9 @@ const Chat = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const submitMessageRef = useRef<(message: string) => Promise<void>>(
+    async () => undefined,
+  );
   const lastFollowedTraceRef = useRef<string | null>(null);
   const focusEventSequenceRef = useRef(0);
   const activeFocusedSlideRef = useRef<number | null>(null);
@@ -1670,6 +1677,39 @@ const Chat = ({
       setIsSending(false);
     }
   };
+
+  useEffect(() => {
+    submitMessageRef.current = submitMessage;
+  });
+
+  useEffect(() => {
+    if (variant !== "template-v2" || typeof window === "undefined") return;
+
+    const handleBlankSlidePrompt = (event: Event) => {
+      const detail = (event as CustomEvent<BlankSlidePromptEventDetail>).detail;
+      const prompt = typeof detail?.prompt === "string" ? detail.prompt.trim() : "";
+      if (!prompt) return;
+
+      const target =
+        typeof detail.slideIndex === "number"
+          ? `slide ${detail.slideIndex + 1}`
+          : "the current blank slide";
+      void submitMessageRef.current(
+        `Create content for ${target} from this prompt: ${prompt}`,
+      );
+    };
+
+    window.addEventListener(
+      PRESENTON_BLANK_SLIDE_PROMPT_EVENT,
+      handleBlankSlidePrompt,
+    );
+    return () => {
+      window.removeEventListener(
+        PRESENTON_BLANK_SLIDE_PROMPT_EVENT,
+        handleBlankSlidePrompt,
+      );
+    };
+  }, [variant]);
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

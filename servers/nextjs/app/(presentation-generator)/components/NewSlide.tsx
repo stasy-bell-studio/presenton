@@ -14,7 +14,7 @@ import { notify } from "@/components/ui/sonner";
 import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
 import { getTemplatesByTemplateName } from "@/app/presentation-templates";
 import { RootState } from "@/store/store";
-import { TemplateV2LayoutPreview } from "../custom-template/components/EachSlide/TemplateV2LayoutPreview";
+import { TemplateV2HtmlSlidePreview } from "./TemplateV2HtmlSlidePreview";
 import {
   extractTemplateV2Layouts,
   type TemplateV2Layout,
@@ -53,6 +53,16 @@ function createTemplateV2LayoutItem(layout: TemplateV2Layout, layoutIndex: numbe
     layoutName: description ?? layoutId,
     sampleData: layout,
     v2Layout: layout,
+  };
+}
+
+function createTemplateV2PreviewSlide(layout: TemplateV2Layout, layoutId: string) {
+  return {
+    id: `template-v2-preview-${layoutId}`,
+    content: {},
+    ui: layout,
+    layout: layoutId,
+    layout_group: "template-v2",
   };
 }
 
@@ -124,7 +134,10 @@ const LayoutItem = memo(({ layout, onSelect }: LayoutItemProps) => {
               </div>
             </div>
           ) : v2Layout ? (
-            <TemplateV2LayoutPreview layout={v2Layout} />
+            <TemplateV2HtmlSlidePreview
+              slide={createTemplateV2PreviewSlide(v2Layout, layoutId)}
+              fixedSize
+            />
           ) : LayoutComponent ? (
             <LayoutComponent data={sampleData} />
           ) : null}

@@ -68,6 +68,11 @@ interface LoadingState {
   extra_info?: string;
 }
 
+type SlideAddedOptions = {
+  promptOverlaySlideId?: string;
+  promptOverlayKind?: "blank" | "layout";
+};
+
 const DEFAULT_LOADING_STATE: LoadingState = {
   isLoading: true,
   message: "Loading presentation",
@@ -115,6 +120,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     null
   );
   const [chatTargetedSlides, setChatTargetedSlides] = useState<number[]>([]);
+  const [templatePromptSlideIds, setTemplatePromptSlideIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [error, setError] = useState(false);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
@@ -267,6 +275,33 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const onSlideChange = (newSlide: number) => {
     handleSlideChange(newSlide, presentationData);
   };
+
+  const handleEditorSlideNavigation = useCallback(
+    (index: number, options?: SlideAddedOptions) => {
+      handleSlideClick(index);
+      if (
+        options?.promptOverlayKind === "layout" &&
+        options.promptOverlaySlideId
+      ) {
+        setTemplatePromptSlideIds((current) => {
+          const next = new Set(current);
+          next.add(options.promptOverlaySlideId!);
+          return next;
+        });
+      }
+    },
+    [handleSlideClick],
+  );
+
+  const dismissTemplatePromptOverlay = useCallback((slideId: unknown) => {
+    if (typeof slideId !== "string" || !slideId) return;
+    setTemplatePromptSlideIds((current) => {
+      if (!current.has(slideId)) return current;
+      const next = new Set(current);
+      next.delete(slideId);
+      return next;
+    });
+  }, []);
 
   const handlePresentationChanged = useCallback(() => {
     return fetchUserSlides({ clearHistory: false });
@@ -506,7 +541,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           <div className="w-[120px] h-full shrink-0 self-start sticky top-0 pt-[18px]">
             <SidePanel
               selectedSlide={selectedSlide}
-              onSlideClick={handleSlideClick}
+              onSlideClick={handleEditorSlideNavigation}
               presentationId={presentation_id}
               loading={loading}
             />
@@ -543,7 +578,14 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                             slide={slide}
                             index={index}
                             presentationId={presentation_id}
-                            onSlideAdded={handleSlideClick}
+                            onSlideAdded={handleEditorSlideNavigation}
+                            showTemplatePromptOverlay={
+                              typeof slide?.id === "string" &&
+                              templatePromptSlideIds.has(slide.id)
+                            }
+                            onTemplatePromptOverlayDismiss={() =>
+                              dismissTemplatePromptOverlay(slide?.id)
+                            }
                             isChatEditing={
                               highlightedSlideIndex !== null &&
                               index === highlightedSlideIndex

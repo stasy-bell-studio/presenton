@@ -28,7 +28,13 @@ import { SlideThumbnailCard } from "./SlideThumbnailCard";
 
 interface SidePanelProps {
   selectedSlide: number;
-  onSlideClick: (index: number) => void;
+  onSlideClick: (
+    index: number,
+    options?: {
+      promptOverlaySlideId?: string;
+      promptOverlayKind?: "blank" | "layout";
+    },
+  ) => void;
   presentationId: string;
 
   loading: boolean;

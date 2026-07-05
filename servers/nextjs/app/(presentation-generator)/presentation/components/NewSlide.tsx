@@ -16,7 +16,7 @@ import { getTemplatesByTemplateName } from "@/app/presentation-templates";
 import { usePathname } from "next/navigation";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { RootState } from "@/store/store";
-import { TemplateV2LayoutPreview } from "../../custom-template/components/EachSlide/TemplateV2LayoutPreview";
+import { TemplateV2HtmlSlidePreview } from "../../components/TemplateV2HtmlSlidePreview";
 import {
   extractTemplateV2Layouts,
   type TemplateV2Layout,
@@ -55,6 +55,16 @@ function createTemplateV2LayoutItem(layout: TemplateV2Layout, layoutIndex: numbe
     layoutName: description ?? layoutId,
     sampleData: layout,
     v2Layout: layout,
+  };
+}
+
+function createTemplateV2PreviewSlide(layout: TemplateV2Layout, layoutId: string) {
+  return {
+    id: `template-v2-preview-${layoutId}`,
+    content: {},
+    ui: layout,
+    layout: layoutId,
+    layout_group: "template-v2",
   };
 }
 
@@ -126,7 +136,10 @@ const LayoutItem = memo(({ layout, onSelect }: LayoutItemProps) => {
               </div>
             </div>
           ) : v2Layout ? (
-            <TemplateV2LayoutPreview layout={v2Layout} />
+            <TemplateV2HtmlSlidePreview
+              slide={createTemplateV2PreviewSlide(v2Layout, layoutId)}
+              fixedSize
+            />
           ) : LayoutComponent ? (
             <LayoutComponent data={sampleData} />
           ) : null}
@@ -142,7 +155,13 @@ interface NewSlideV1Props {
   templateID: string;
   index: number;
   presentationId: string;
-  onSlideAdded?: (index: number) => void;
+  onSlideAdded?: (
+    index: number,
+    options?: {
+      promptOverlaySlideId?: string;
+      promptOverlayKind?: "blank" | "layout";
+    },
+  ) => void;
 }
 const NewSlideV1 = ({
   setShowNewSlideSelection,
@@ -174,8 +193,9 @@ const NewSlideV1 = ({
   const handleNewSlide = useCallback(
     (sampleData: any, id: string) => {
       try {
+        const slideId = uuidv4();
         const newSlide = {
-          id: uuidv4(),
+          id: slideId,
           index: index,
           content: isTemplateV2 ? {} : sampleData,
           ...(isTemplateV2 ? { ui: sampleData } : {}),
@@ -184,7 +204,16 @@ const NewSlideV1 = ({
           presentation: presentationId,
         };
         dispatch(addNewSlide({ slideData: newSlide, index }));
-        onSlideAdded?.(index + 1);
+        onSlideAdded?.(
+          index + 1,
+          isTemplateV2
+            ? {
+                promptOverlaySlideId: slideId,
+                promptOverlayKind:
+                  id === BLANK_SLIDE_LAYOUT_ID ? "blank" : "layout",
+              }
+            : undefined,
+        );
         trackEvent(MixpanelEvent.Presentation_Slide_Added, {
           pathname,
           presentation_id: presentationId,
