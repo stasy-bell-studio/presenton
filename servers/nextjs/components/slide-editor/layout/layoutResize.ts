@@ -186,7 +186,7 @@ function adjustedFlexSize(
     return emptyLayoutSize(padding);
   }
 
-  const direction = readString(next.direction) === "column" ? "column" : "row";
+  const direction = readString(next.direction) === "row" ? "row" : "column";
   const isColumn = direction === "column";
   const mainGap =
     (isColumn
@@ -334,8 +334,8 @@ function adjustedGridSize(
 
   const gap = readNumber(next.gap) ?? 0;
   const rowGap = readNumber(next.row_gap) ?? readNumber(next.rowGap) ?? gap;
-  const previousColumns = gridColumnCount(previous, previousChildren.length);
-  const nextColumns = gridColumnCount(next, nextChildren.length);
+  const previousColumns = gridColumnCount(previous);
+  const nextColumns = gridColumnCount(next);
   const previousDeclaredRows = gridDeclaredRows(previous);
   const nextDeclaredRows = gridDeclaredRows(next);
   const previousRows = gridRowCount(
@@ -363,13 +363,11 @@ function adjustedGridSize(
   };
 }
 
-function gridColumnCount(element: RawRecord, childCount: number) {
+function gridColumnCount(element: RawRecord) {
   const explicitColumns = readArray(element.columns);
   const columnCount =
     readNumber(element.columns) ??
-    (explicitColumns.length > 0
-      ? explicitColumns.length
-      : Math.ceil(Math.sqrt(Math.max(1, childCount))));
+    (explicitColumns.length > 0 ? explicitColumns.length : 1);
   return Math.max(1, Math.floor(columnCount));
 }
 

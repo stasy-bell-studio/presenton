@@ -56,8 +56,8 @@ export function flowLayoutKind(
   element: FlowLayoutElement,
 ): FlowLayoutKind | null {
   const type = readString(element.type);
-  if (type === "flex") return "flex";
-  if (type === "grid") return "grid";
+  if (type === "flex" || type === "list-view") return "flex";
+  if (type === "grid" || type === "grid-view") return "grid";
   return null;
 }
 
@@ -84,6 +84,21 @@ export function layoutFlowChildren(
     box: null,
     layoutManaged: false,
   }));
+}
+
+export function intrinsicFlowSize(
+  parent: FlowLayoutElement,
+  children: FlowLayoutElement[],
+  deps: Pick<FlowLayoutDeps, "elementBox" | "elementSize" | "isManualPositioned">,
+): Size {
+  const kind = flowLayoutKind(parent);
+  if (kind === "flex") {
+    return intrinsicFlexSize(parent, children, deps);
+  }
+  if (kind === "grid") {
+    return intrinsicGridSize(parent, children, deps);
+  }
+  return { width: 1, height: 1 };
 }
 
 export function flexBasis(
@@ -199,7 +214,7 @@ function layoutFlexChildren(
 ) {
   if (children.length === 0) return [];
   const padding = readPadding(parent.padding);
-  const direction = readString(parent.direction) === "column" ? "column" : "row";
+  const direction = readString(parent.direction) === "row" ? "row" : "column";
   const isColumn = direction === "column";
   const mainGap =
     (isColumn
@@ -347,7 +362,7 @@ function layoutGridChildren(
     readNumber(parent.columns) ??
     (explicitColumns.length > 0
       ? explicitColumns.length
-      : Math.ceil(Math.sqrt(children.length)));
+      : 1);
   const safeColumns = Math.max(1, Math.floor(columnCount));
   const declaredRows =
     readNumber(parent.rows) ??
@@ -406,6 +421,135 @@ function layoutGridChildren(
       layoutManaged: true,
     };
   });
+}
+
+function intrinsicFlexSize(
+  parent: FlowLayoutElement,
+  children: FlowLayoutElement[],
+  deps: Pick<FlowLayoutDeps, "elementBox" | "elementSize" | "isManualPositioned">,
+): Size {
+  const padding = readPadding(parent.padding);
+  if (children.length === 0) {
+    return {
+      width: Math.max(1, padding.left + padding.right),
+      height: Math.max(1, padding.top + padding.bottom),
+    };
+  }
+
+  const direction = readString(parent.direction) === "row" ? "row" : "column";
+  const isColumn = direction === "column";
+  const mainGap =
+    (isColumn
+      ? readNumber(parent.row_gap) ?? readNumber(parent.rowGap)
+      : readNumber(parent.column_gap) ?? readNumber(parent.columnGap)) ??
+    readNumber(parent.gap) ??
+    0;
+
+  let main = 0;
+  let cross = 0;
+  children.forEach((child) => {
+    const size = intrinsicFlowChildSize(child, deps);
+    main += isColumn ? size.height : size.width;
+    cross = Math.max(cross, isColumn ? size.width : size.height);
+  });
+  main += mainGap * Math.max(0, children.length - 1);
+
+  return {
+    width: Math.max(1, padding.left + padding.right + (isColumn ? cross : main)),
+    height: Math.max(1, padding.top + padding.bottom + (isColumn ? main : cross)),
+  };
+}
+
+function intrinsicGridSize(
+  parent: FlowLayoutElement,
+  children: FlowLayoutElement[],
+  deps: Pick<FlowLayoutDeps, "elementBox" | "elementSize" | "isManualPositioned">,
+): Size {
+  const padding = readPadding(parent.padding);
+  if (children.length === 0) {
+    return {
+      width: Math.max(1, padding.left + padding.right),
+      height: Math.max(1, padding.top + padding.bottom),
+    };
+  }
+
+  const gap = readNumber(parent.gap) ?? 0;
+  const columnGap =
+    readNumber(parent.column_gap) ?? readNumber(parent.columnGap) ?? gap;
+  const rowGap = readNumber(parent.row_gap) ?? readNumber(parent.rowGap) ?? gap;
+  const explicitColumns = readArray(parent.columns);
+  const explicitRows = readArray(parent.rows);
+  const columnCount =
+    readNumber(parent.columns) ??
+    (explicitColumns.length > 0 ? explicitColumns.length : 1);
+  const columns = Math.max(1, Math.floor(columnCount));
+  const declaredRows =
+    readNumber(parent.rows) ??
+    (explicitRows.length > 0 ? explicitRows.length : null);
+  const placements = placeGridChildren(children, columns, declaredRows);
+  const rows = Math.max(
+    declaredRows ?? 1,
+    ...placements.map((placement) => placement.row + placement.rowSpan),
+  );
+  const columnWidths = Array.from({ length: columns }, () => 1);
+  const rowHeights = Array.from({ length: rows }, () => 1);
+
+  children.forEach((child, index) => {
+    const placement = placements[index];
+    if (!placement) return;
+    const size = intrinsicFlowChildSize(child, deps);
+    const widthShare =
+      (size.width - columnGap * Math.max(0, placement.columnSpan - 1)) /
+      placement.columnSpan;
+    const heightShare =
+      (size.height - rowGap * Math.max(0, placement.rowSpan - 1)) /
+      placement.rowSpan;
+    for (
+      let column = placement.col;
+      column < placement.col + placement.columnSpan;
+      column += 1
+    ) {
+      columnWidths[column] = Math.max(columnWidths[column], widthShare);
+    }
+    for (
+      let row = placement.row;
+      row < placement.row + placement.rowSpan;
+      row += 1
+    ) {
+      rowHeights[row] = Math.max(rowHeights[row], heightShare);
+    }
+  });
+
+  return {
+    width: Math.max(
+      1,
+      padding.left +
+        padding.right +
+        columnWidths.reduce((sum, width) => sum + Math.max(1, width), 0) +
+        columnGap * Math.max(0, columns - 1),
+    ),
+    height: Math.max(
+      1,
+      padding.top +
+        padding.bottom +
+        rowHeights.reduce((sum, height) => sum + Math.max(1, height), 0) +
+        rowGap * Math.max(0, rows - 1),
+    ),
+  };
+}
+
+function intrinsicFlowChildSize(
+  child: FlowLayoutElement,
+  deps: Pick<FlowLayoutDeps, "elementBox" | "elementSize" | "isManualPositioned">,
+): Size {
+  const box = deps.isManualPositioned(child) ? deps.elementBox(child) : null;
+  if (box) {
+    return {
+      width: Math.max(1, box.width),
+      height: Math.max(1, box.height),
+    };
+  }
+  return deps.elementSize(child);
 }
 
 function intrinsicTextMainSize(
