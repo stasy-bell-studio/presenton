@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import random
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from functools import partial
 from typing import Any, Optional
@@ -10,7 +10,14 @@ from urllib.parse import unquote, urlparse
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Response
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, ValidationError
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    model_validator,
+)
 from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
@@ -19,6 +26,7 @@ from models.sql.template_v2 import TemplateV2
 from services.database import get_async_session
 from services.export_task_service import EXPORT_TASK_SERVICE
 from templates.v2.generation import (
+    MAX_PARALLEL_SLIDE_LAYOUTS,
     generate_slide_layout,
     generate_template,
     merge_similar_components,
@@ -35,9 +43,11 @@ from utils.file_utils import get_original_file_name
 
 TEMPLATES_V2_ROUTER = APIRouter(prefix="/templates", tags=["Templates V2"])
 LOGGER = logging.getLogger(__name__)
+_TEMPLATE_LAYOUT_PATCH_LOCKS: dict[uuid.UUID, asyncio.Lock] = {}
+_TEMPLATE_LAYOUT_PATCH_LOCKS_GUARD = asyncio.Lock()
 
 
-class CreateTemplateV2Request(BaseModel):
+class InitTemplateV2Request(BaseModel):
     pptx_url: str
     slide_image_urls: list[str]
     fonts: dict[str, Any] = Field(default_factory=dict)
@@ -45,16 +55,102 @@ class CreateTemplateV2Request(BaseModel):
     description: Optional[str] = None
 
 
-class ReconstructTemplateV2LayoutRequest(BaseModel):
+class CreateTemplateV2Request(InitTemplateV2Request):
+    pass
+
+
+class GenerateTemplateV2BlocksRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     template_id: uuid.UUID = Field(validation_alias=AliasChoices("template_id", "id"))
+
+
+class CreateTemplateV2LayoutsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    template_id: uuid.UUID = Field(validation_alias=AliasChoices("template_id", "id"))
+    index: Optional[int] = Field(default=None, ge=0)
+    indices: Optional[list[int]] = None
+
+    @model_validator(mode="after")
+    def _validate_indices(self) -> "CreateTemplateV2LayoutsRequest":
+        if self.index is None and self.indices is None:
+            raise ValueError("Either index or indices is required")
+        if self.index is not None and self.indices is not None:
+            raise ValueError("Use either index or indices, not both")
+
+        values = self.layout_indices
+        if not values:
+            raise ValueError("At least one slide index is required")
+        if len(values) > MAX_PARALLEL_SLIDE_LAYOUTS:
+            raise ValueError(
+                f"At most {MAX_PARALLEL_SLIDE_LAYOUTS} slide layouts can be "
+                "created at once"
+            )
+        if any(index < 0 for index in values):
+            raise ValueError("Slide indices must be non-negative")
+        if len(values) != len(set(values)):
+            raise ValueError("Slide indices must be unique")
+        return self
+
+    @property
+    def layout_indices(self) -> list[int]:
+        if self.indices is not None:
+            return list(self.indices)
+        if self.index is not None:
+            return [self.index]
+        return []
+
+
+class CreatedTemplateV2SlideLayout(BaseModel):
     index: int = Field(ge=0)
+    layout: SlideLayout
+
+
+class CreateTemplateV2LayoutsResponse(BaseModel):
+    layouts: list[CreatedTemplateV2SlideLayout]
+
+
+class PatchTemplateV2SlideLayoutItem(BaseModel):
+    index: int = Field(ge=0)
+    layout: SlideLayout
 
 
 class PatchTemplateV2SlideLayoutRequest(BaseModel):
-    index: int = Field(ge=0)
-    layout: SlideLayout
+    index: Optional[int] = Field(default=None, ge=0)
+    layout: Optional[SlideLayout] = None
+    layouts: Optional[list[PatchTemplateV2SlideLayoutItem]] = None
+
+    @model_validator(mode="after")
+    def _validate_layout_items(self) -> "PatchTemplateV2SlideLayoutRequest":
+        has_single = self.index is not None or self.layout is not None
+        has_batch = self.layouts is not None
+        if has_single and has_batch:
+            raise ValueError("Use either a single layout or layouts, not both")
+        if has_single and (self.index is None or self.layout is None):
+            raise ValueError("Both index and layout are required")
+        if not has_single and not has_batch:
+            raise ValueError("Either a single layout or layouts is required")
+        if has_batch:
+            if not self.layouts:
+                raise ValueError("At least one layout is required")
+            indices = [item.index for item in self.layouts]
+            if len(indices) != len(set(indices)):
+                raise ValueError("Layout indices must be unique")
+        return self
+
+    @property
+    def layout_items(self) -> list[PatchTemplateV2SlideLayoutItem]:
+        if self.layouts is not None:
+            return list(self.layouts)
+        if self.index is None or self.layout is None:
+            return []
+        return [
+            PatchTemplateV2SlideLayoutItem(
+                index=self.index,
+                layout=self.layout,
+            )
+        ]
 
 
 class TemplateV2ListItem(BaseModel):
@@ -80,7 +176,7 @@ class TemplateV2Response(TemplateV2ListItem):
     raw_layouts: Optional[dict[str, Any]] = None
     components: Optional[dict[str, Any]] = None
     merged_components: Optional[dict[str, Any]] = None
-    layouts: dict[str, Any]
+    layouts: Optional[dict[str, Any]] = None
     assets: Optional[dict[str, Any]] = None
 
 
@@ -274,6 +370,200 @@ def _get_template_thumbnail_from_assets(assets: Any) -> str | None:
     return None
 
 
+async def _get_template_layout_patch_lock(template_id: uuid.UUID) -> asyncio.Lock:
+    async with _TEMPLATE_LAYOUT_PATCH_LOCKS_GUARD:
+        lock = _TEMPLATE_LAYOUT_PATCH_LOCKS.get(template_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _TEMPLATE_LAYOUT_PATCH_LOCKS[template_id] = lock
+        return lock
+
+
+async def _prepare_template_v2_source(
+    request: InitTemplateV2Request,
+    *,
+    operation: str,
+) -> tuple[str, RawSlideLayouts, dict[str, Any], dict[str, str]]:
+    LOGGER.info(
+        "[templates.v2.%s] request received pptx_url=%s slide_images=%d "
+        "font_count=%d has_name=%s",
+        operation,
+        request.pptx_url,
+        len(request.slide_image_urls),
+        len(request.fonts or {}),
+        bool((request.name or "").strip()),
+    )
+    if not request.slide_image_urls:
+        LOGGER.warning(
+            "[templates.v2.%s] rejected request without slide images pptx_url=%s",
+            operation,
+            request.pptx_url,
+        )
+        raise HTTPException(
+            status_code=400, detail="At least one slide image is required"
+        )
+
+    pptx_path = resolve_app_path_to_filesystem(request.pptx_url)
+    if not pptx_path or not os.path.isfile(pptx_path):
+        LOGGER.warning(
+            "[templates.v2.%s] rejected request; PPTX file not found "
+            "pptx_url=%s resolved_path=%s",
+            operation,
+            request.pptx_url,
+            pptx_path,
+        )
+        raise HTTPException(status_code=400, detail="PPTX file not found")
+
+    LOGGER.info(
+        "[templates.v2.%s] converting PPTX to JSON pptx_path=%s",
+        operation,
+        pptx_path,
+    )
+    pptx_json = await EXPORT_TASK_SERVICE.convert_pptx_to_json(pptx_path)
+    try:
+        raw_layouts = RawSlideLayouts.model_validate(
+            pptx_json.model_dump(mode="json")
+        )
+    except ValidationError as exc:
+        LOGGER.exception(
+            "[templates.v2.%s] PPTX-to-JSON export produced invalid slide "
+            "layout JSON pptx_path=%s",
+            operation,
+            pptx_path,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="PPTX-to-JSON export produced invalid slide layout JSON",
+        ) from exc
+    LOGGER.info(
+        "[templates.v2.%s] PPTX-to-JSON validation complete pptx_path=%s "
+        "slides=%d",
+        operation,
+        pptx_path,
+        len(raw_layouts.layouts),
+    )
+
+    if len(raw_layouts.layouts) > len(request.slide_image_urls):
+        LOGGER.info(
+            "[templates.v2.%s] capping raw layouts to preview images "
+            "raw_slides=%d slide_images=%d",
+            operation,
+            len(raw_layouts.layouts),
+            len(request.slide_image_urls),
+        )
+        raw_layouts = RawSlideLayouts(
+            layouts=raw_layouts.layouts[: len(request.slide_image_urls)]
+        )
+    elif len(request.slide_image_urls) > len(raw_layouts.layouts):
+        raise HTTPException(
+            status_code=400,
+            detail="Exactly one slide image is required for each slide layout",
+        )
+
+    return (
+        pptx_path,
+        raw_layouts,
+        raw_layouts.model_dump(mode="json", exclude_none=True),
+        _coerce_font_map(request.fonts),
+    )
+
+
+def _layout_indexes_from_assets(assets: Any, layout_count: int) -> list[int]:
+    if isinstance(assets, dict):
+        indexes = assets.get("layout_indexes")
+        if (
+            isinstance(indexes, list)
+            and len(indexes) == layout_count
+            and all(isinstance(index, int) and index >= 0 for index in indexes)
+            and len(indexes) == len(set(indexes))
+        ):
+            return list(indexes)
+    return list(range(layout_count))
+
+
+def _raw_layout_count(template: TemplateV2) -> int | None:
+    if not isinstance(template.raw_layouts, dict):
+        return None
+    layouts = template.raw_layouts.get("layouts")
+    return len(layouts) if isinstance(layouts, list) else None
+
+
+def _merge_template_layout_items(
+    template: TemplateV2,
+    items: list[PatchTemplateV2SlideLayoutItem],
+) -> tuple[SlideLayouts, list[int]]:
+    existing_layouts = (
+        _coerce_template_slide_layouts(template.layouts)
+        if template.layouts is not None
+        else None
+    )
+    existing_items = existing_layouts.layouts if existing_layouts else []
+    layout_indexes = _layout_indexes_from_assets(template.assets, len(existing_items))
+    layout_by_index = dict(zip(layout_indexes, existing_items))
+    raw_slide_count = _raw_layout_count(template)
+    if raw_slide_count is None:
+        max_slide_count = len(existing_layouts.layouts) if existing_layouts else None
+    elif existing_layouts is not None:
+        max_slide_count = max(raw_slide_count, len(existing_layouts.layouts))
+    else:
+        max_slide_count = raw_slide_count
+
+    for item in items:
+        if max_slide_count is not None and item.index >= max_slide_count:
+            raise HTTPException(status_code=400, detail="Invalid slide index")
+        layout_by_index[item.index] = item.layout
+
+    ordered_indexes = sorted(layout_by_index)
+    try:
+        return (
+            SlideLayouts(
+                layouts=[layout_by_index[index] for index in ordered_indexes]
+            ),
+            ordered_indexes,
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Patched template layouts are invalid",
+        ) from exc
+
+
+def _generate_indexed_slide_layouts(
+    raw_layouts: RawSlideLayouts,
+    indices: list[int],
+    slide_image_urls: list[str | None],
+    fonts: dict[str, str],
+) -> list[CreatedTemplateV2SlideLayout]:
+    max_workers = min(MAX_PARALLEL_SLIDE_LAYOUTS, len(indices))
+    layouts_by_index: dict[int, SlideLayout] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {
+            executor.submit(
+                generate_slide_layout,
+                raw_layouts.layouts[index],
+                index,
+                slide_image_urls[index],
+                fonts,
+            ): index
+            for index in indices
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            generated_layout = future.result()
+            layouts_by_index[index] = (
+                generated_layout
+                if isinstance(generated_layout, SlideLayout)
+                else SlideLayout.model_validate(generated_layout)
+            )
+
+    ordered_layouts = [layouts_by_index[index] for index in indices]
+    randomized = _with_randomized_layout_ids(SlideLayouts(layouts=ordered_layouts))
+    return [
+        CreatedTemplateV2SlideLayout(index=index, layout=layout)
+        for index, layout in zip(indices, randomized.layouts)
+    ]
+
+
 @TEMPLATES_V2_ROUTER.get("", response_model=TemplateV2ListResponse)
 async def list_templates_v2(
     page: int = Query(default=1, ge=1),
@@ -318,6 +608,50 @@ async def list_templates_v2(
 
 
 @TEMPLATES_V2_ROUTER.post(
+    "/init",
+    status_code=201,
+    response_model=uuid.UUID,
+)
+async def init_template_v2(
+    request: InitTemplateV2Request = Body(...),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    pptx_path, raw_layouts, raw_layouts_json, available_fonts = (
+        await _prepare_template_v2_source(request, operation="init")
+    )
+    template = TemplateV2(
+        name=(request.name or "").strip() or _derive_template_name(
+            request.pptx_url, pptx_path
+        ),
+        description=request.description,
+        raw_layouts=raw_layouts_json,
+        layouts=None,
+        assets={
+            "pptx_url": request.pptx_url,
+            "fonts": available_fonts,
+            "slide_image_urls": request.slide_image_urls,
+            "images": _collect_image_urls_from_layouts(raw_layouts_json),
+            "layout_indexes": [],
+        },
+    )
+    LOGGER.info(
+        "[templates.v2.init] persisting template name=%s slides=%d images=%d",
+        template.name,
+        len(raw_layouts.layouts),
+        len(template.assets.get("images", [])),
+    )
+    sql_session.add(template)
+    await sql_session.commit()
+    await sql_session.refresh(template)
+    LOGGER.info(
+        "[templates.v2.init] template persisted template_id=%s name=%s",
+        template.id,
+        template.name,
+    )
+    return template.id
+
+
+@TEMPLATES_V2_ROUTER.post(
     "",
     status_code=201,
     response_model=TemplateV2Response,
@@ -326,77 +660,9 @@ async def create_template_v2(
     request: CreateTemplateV2Request = Body(...),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    LOGGER.info(
-        "[templates.v2.create] request received pptx_url=%s slide_images=%d "
-        "font_count=%d has_name=%s",
-        request.pptx_url,
-        len(request.slide_image_urls),
-        len(request.fonts or {}),
-        bool((request.name or "").strip()),
+    pptx_path, raw_layouts, raw_layouts_json, available_fonts = (
+        await _prepare_template_v2_source(request, operation="create")
     )
-    if not request.slide_image_urls:
-        LOGGER.warning(
-            "[templates.v2.create] rejected request without slide images "
-            "pptx_url=%s",
-            request.pptx_url,
-        )
-        raise HTTPException(
-            status_code=400, detail="At least one slide image is required"
-        )
-
-    pptx_path = resolve_app_path_to_filesystem(request.pptx_url)
-    if not pptx_path or not os.path.isfile(pptx_path):
-        LOGGER.warning(
-            "[templates.v2.create] rejected request; PPTX file not found "
-            "pptx_url=%s resolved_path=%s",
-            request.pptx_url,
-            pptx_path,
-        )
-        raise HTTPException(status_code=400, detail="PPTX file not found")
-
-    LOGGER.info(
-        "[templates.v2.create] converting PPTX to JSON pptx_path=%s",
-        pptx_path,
-    )
-    pptx_json = await EXPORT_TASK_SERVICE.convert_pptx_to_json(pptx_path)
-    try:
-        raw_layouts = RawSlideLayouts.model_validate(
-            pptx_json.model_dump(mode="json")
-        )
-    except ValidationError as exc:
-        LOGGER.exception(
-            "[templates.v2.create] PPTX-to-JSON export produced invalid slide "
-            "layout JSON pptx_path=%s",
-            pptx_path,
-        )
-        raise HTTPException(
-            status_code=500,
-            detail="PPTX-to-JSON export produced invalid slide layout JSON",
-        ) from exc
-    LOGGER.info(
-        "[templates.v2.create] PPTX-to-JSON validation complete pptx_path=%s "
-        "slides=%d",
-        pptx_path,
-        len(raw_layouts.layouts),
-    )
-
-    if len(raw_layouts.layouts) > len(request.slide_image_urls):
-        LOGGER.info(
-            "[templates.v2.create] capping raw layouts to preview images "
-            "raw_slides=%d slide_images=%d",
-            len(raw_layouts.layouts),
-            len(request.slide_image_urls),
-        )
-        raw_layouts = RawSlideLayouts(
-            layouts=raw_layouts.layouts[: len(request.slide_image_urls)]
-        )
-    elif len(request.slide_image_urls) > len(raw_layouts.layouts):
-        raise HTTPException(
-            status_code=400,
-            detail="Exactly one slide image is required for each slide layout",
-        )
-
-    available_fonts = _coerce_font_map(request.fonts)
     generated_layouts = await _generate_slide_layouts(
         raw_layouts,
         request.slide_image_urls,
@@ -404,7 +670,6 @@ async def create_template_v2(
     )
     generated_layouts = _with_randomized_layout_ids(generated_layouts)
     merged_components = await _merge_generated_components(generated_layouts)
-    raw_layouts_json = raw_layouts.model_dump(mode="json", exclude_none=True)
     template = TemplateV2(
         name=(request.name or "").strip() or _derive_template_name(
             request.pptx_url, pptx_path
@@ -439,11 +704,11 @@ async def create_template_v2(
 
 
 @TEMPLATES_V2_ROUTER.post(
-    "/layouts/reconstruct",
-    response_model=SlideLayout,
+    "/layouts/create",
+    response_model=CreateTemplateV2LayoutsResponse,
 )
-async def reconstruct_template_v2_slide_layout(
-    request: ReconstructTemplateV2LayoutRequest = Body(...),
+async def create_template_v2_slide_layouts(
+    request: CreateTemplateV2LayoutsRequest = Body(...),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
     template = await sql_session.get(TemplateV2, request.template_id)
@@ -460,7 +725,7 @@ async def reconstruct_template_v2_slide_layout(
         raw_layouts = RawSlideLayouts.model_validate(template.raw_layouts)
     except ValidationError as exc:
         LOGGER.exception(
-            "[templates.v2.reconstruct] template has invalid raw layouts "
+            "[templates.v2.layouts.create] template has invalid raw layouts "
             "template_id=%s",
             request.template_id,
         )
@@ -469,61 +734,105 @@ async def reconstruct_template_v2_slide_layout(
             detail="Template raw layouts are invalid",
         ) from exc
 
-    if request.index >= len(raw_layouts.layouts):
+    indices = request.layout_indices
+    if any(index >= len(raw_layouts.layouts) for index in indices):
         raise HTTPException(status_code=400, detail="Invalid slide index")
 
     slide_image_urls = _get_template_slide_image_urls(template)
-    slide_image_url = (
-        slide_image_urls[request.index]
-        if request.index < len(slide_image_urls)
-        else None
+    missing_slide_image = any(
+        index >= len(slide_image_urls) or slide_image_urls[index] is None
+        for index in indices
     )
-    if slide_image_url is None:
+    if missing_slide_image:
         raise HTTPException(
             status_code=400,
             detail="Slide image URL is unavailable for requested slide index",
         )
 
     LOGGER.info(
-        "[templates.v2.reconstruct] slide layout reconstruction start "
-        "template_id=%s slide=%d/%d",
+        "[templates.v2.layouts.create] slide layout creation start "
+        "template_id=%s slides=%s/%d",
         request.template_id,
-        request.index + 1,
+        ",".join(str(index + 1) for index in indices),
         len(raw_layouts.layouts),
     )
     try:
-        generated_layout = await _run_template_generation_thread(
-            generate_slide_layout,
-            raw_layouts.layouts[request.index],
-            request.index,
-            slide_image_url,
+        created_layouts = await _run_template_generation_thread(
+            _generate_indexed_slide_layouts,
+            raw_layouts,
+            indices,
+            slide_image_urls,
             _get_template_fonts(template),
-        )
-        layout = (
-            generated_layout
-            if isinstance(generated_layout, SlideLayout)
-            else SlideLayout.model_validate(generated_layout)
         )
     except (ValidationError, ValueError) as exc:
         LOGGER.exception(
-            "[templates.v2.reconstruct] slide layout reconstruction produced "
-            "invalid output template_id=%s slide=%d",
+            "[templates.v2.layouts.create] slide layout creation produced "
+            "invalid output template_id=%s slides=%s",
             request.template_id,
-            request.index + 1,
+            ",".join(str(index + 1) for index in indices),
         )
         raise HTTPException(
             status_code=500,
-            detail="Slide layout reconstruction produced invalid output",
+            detail="Slide layout creation produced invalid output",
         ) from exc
 
     LOGGER.info(
-        "[templates.v2.reconstruct] slide layout reconstruction complete "
-        "template_id=%s slide=%d components=%d",
+        "[templates.v2.layouts.create] slide layout creation complete "
+        "template_id=%s slides=%s components=%d",
         request.template_id,
-        request.index + 1,
-        len(layout.components),
+        ",".join(str(index + 1) for index in indices),
+        sum(len(item.layout.components) for item in created_layouts),
     )
-    return layout
+    return CreateTemplateV2LayoutsResponse(layouts=created_layouts)
+
+
+@TEMPLATES_V2_ROUTER.post(
+    "/generate-blocks",
+    response_model=TemplateV2Response,
+)
+async def generate_template_v2_blocks(
+    request: GenerateTemplateV2BlocksRequest = Body(...),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    template = await sql_session.get(TemplateV2, request.template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if template.layouts is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Template layouts are unavailable",
+        )
+
+    try:
+        layouts = _coerce_template_slide_layouts(template.layouts)
+    except ValidationError as exc:
+        LOGGER.exception(
+            "[templates.v2.generate_blocks] template has invalid layouts "
+            "template_id=%s",
+            request.template_id,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Template layouts are invalid",
+        ) from exc
+
+    merged_components = await _merge_generated_components(layouts)
+    template.merged_components = merged_components.model_dump(
+        mode="json",
+        exclude_none=True,
+    )
+    sql_session.add(template)
+    await sql_session.commit()
+    await sql_session.refresh(template)
+    LOGGER.info(
+        "[templates.v2.generate_blocks] component blocks generated "
+        "template_id=%s layouts=%d merged_components=%d",
+        request.template_id,
+        len(layouts.layouts),
+        len(merged_components.components),
+    )
+    return template
 
 
 @TEMPLATES_V2_ROUTER.patch(
@@ -535,48 +844,43 @@ async def patch_template_v2_slide_layout(
     request: PatchTemplateV2SlideLayoutRequest = Body(...),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    template = await sql_session.get(TemplateV2, template_id)
-    if not template:
-        raise HTTPException(status_code=404, detail="Template not found")
+    lock = await _get_template_layout_patch_lock(template_id)
+    async with lock:
+        template = await sql_session.get(TemplateV2, template_id)
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
 
-    try:
-        existing_layouts = _coerce_template_slide_layouts(template.layouts)
-    except ValidationError as exc:
-        LOGGER.exception(
-            "[templates.v2.patch_layout] template has invalid layouts "
-            "template_id=%s",
+        try:
+            updated_layouts, layout_indexes = _merge_template_layout_items(
+                template,
+                request.layout_items,
+            )
+        except ValidationError as exc:
+            LOGGER.exception(
+                "[templates.v2.patch_layout] template has invalid layouts "
+                "template_id=%s",
+                template_id,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="Template layouts are invalid",
+            ) from exc
+
+        assets = dict(template.assets) if isinstance(template.assets, dict) else {}
+        assets["layout_indexes"] = layout_indexes
+        template.layouts = updated_layouts.model_dump(mode="json", exclude_none=True)
+        template.assets = assets
+        sql_session.add(template)
+        await sql_session.commit()
+        await sql_session.refresh(template)
+        LOGGER.info(
+            "[templates.v2.patch_layout] slide layouts patched template_id=%s "
+            "slides=%s saved_layouts=%d",
             template_id,
+            ",".join(str(item.index + 1) for item in request.layout_items),
+            len(updated_layouts.layouts),
         )
-        raise HTTPException(
-            status_code=500,
-            detail="Template layouts are invalid",
-        ) from exc
-
-    if request.index >= len(existing_layouts.layouts):
-        raise HTTPException(status_code=400, detail="Invalid slide index")
-
-    patched_layouts = list(existing_layouts.layouts)
-    patched_layouts[request.index] = request.layout
-    try:
-        updated_layouts = SlideLayouts(layouts=patched_layouts)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=400,
-            detail="Patched template layouts are invalid",
-        ) from exc
-
-    template.layouts = updated_layouts.model_dump(mode="json", exclude_none=True)
-    await sql_session.commit()
-    await sql_session.refresh(template)
-    LOGGER.info(
-        "[templates.v2.patch_layout] slide layout patched template_id=%s "
-        "slide=%d/%d layout_id=%s",
-        template_id,
-        request.index + 1,
-        len(updated_layouts.layouts),
-        request.layout.id,
-    )
-    return template
+        return template
 
 
 @TEMPLATES_V2_ROUTER.get("/{template_id}", response_model=TemplateV2Response)

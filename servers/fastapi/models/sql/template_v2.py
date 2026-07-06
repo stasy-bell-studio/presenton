@@ -23,7 +23,9 @@ class TemplateV2(SQLModel, table=True):
     merged_components: Optional[dict] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
     )
-    layouts: dict = Field(sa_column=Column(JSON, nullable=False))
+    layouts: Optional[dict] = Field(
+        default=None, sa_column=Column(JSON, nullable=True)
+    )
     assets: Optional[dict] = Field(
         default=None, sa_column=Column(JSON, nullable=True)
     )

@@ -9,7 +9,6 @@ import {
     SlideLayoutResponse,
     UploadedFont,
     ProcessedSlide,
-    TemplateV2ImportResponse,
     TemplateV2Layout,
     TemplateCreationMetadata,
 } from "../types";
@@ -19,6 +18,10 @@ import { validateLayoutCodeForClient } from "../utils/layoutCodeValidation";
 
 /** Must match `VISION_LAYOUT_ERROR_MARKER` in FastAPI `utils/template_vision_errors.py`. */
 const TEMPLATE_VISION_MODEL_MARKER = "TEMPLATE_VISION_MODEL_REQUIRED";
+const TEMPLATE_V2_LAYOUT_BATCH_SIZE = 10;
+
+type CreatedTemplateV2Layout = { index: number; layout: TemplateV2Layout };
+type FailedTemplateV2Layout = { index: number; error: string };
 
 const initialState: TemplateCreationState = {
     step: 'file-upload',
@@ -31,10 +34,6 @@ const initialState: TemplateCreationState = {
     slideLayouts: [],
     currentSlideIndex: 0,
 };
-
-function readTemplateV2Id(template: TemplateV2ImportResponse): string | null {
-    return typeof template.id === "string" ? template.id : null;
-}
 
 function normalizeTemplateMetadata(
     metadata?: TemplateCreationMetadata | null
@@ -53,24 +52,66 @@ function isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function extractTemplateV2Layouts(value: unknown): TemplateV2Layout[] {
-    if (Array.isArray(value)) {
-        return value.filter(isRecord) as TemplateV2Layout[];
+function readTemplateV2InitId(value: unknown): string | null {
+    if (typeof value === "string" && value) {
+        return value;
     }
-
-    if (isRecord(value) && Array.isArray(value.layouts)) {
-        return value.layouts.filter(isRecord) as TemplateV2Layout[];
+    if (isRecord(value) && typeof value.id === "string" && value.id) {
+        return value.id;
     }
-
-    return [];
+    return null;
 }
 
-function getRenderableTemplateV2Layouts(
-    template: TemplateV2ImportResponse
-): TemplateV2Layout[] {
-    const layouts = extractTemplateV2Layouts(template.layouts);
-    if (layouts.length > 0) return layouts;
-    return extractTemplateV2Layouts(template.raw_layouts);
+function extractCreatedTemplateV2Layouts(
+    value: unknown
+): CreatedTemplateV2Layout[] {
+    const rawLayouts = isRecord(value) && Array.isArray(value.layouts)
+        ? value.layouts
+        : [];
+
+    return rawLayouts.flatMap((item) => {
+        if (!isRecord(item) || !Number.isInteger(item.index) || !isRecord(item.layout)) {
+            return [];
+        }
+        return [{ index: item.index as number, layout: item.layout as TemplateV2Layout }];
+    });
+}
+
+function templateV2SlideFromLayout(
+    slide: ProcessedSlide,
+    layout: TemplateV2Layout,
+    templateId: string,
+    index: number
+): ProcessedSlide {
+    const layoutId = typeof layout.id === "string" ? layout.id : null;
+    const layoutDescription = typeof layout.description === "string"
+        ? layout.description
+        : "Generated with Templates V2";
+
+    return {
+        ...slide,
+        processing: false,
+        processed: true,
+        error: undefined,
+        v2Layout: layout,
+        template_v2_id: templateId,
+        layout_id: layoutId || `slide_${index + 1}`,
+        layout_name: layoutId || `Slide ${index + 1}`,
+        layout_description: layoutDescription,
+    };
+}
+
+function templateV2LayoutBatches(totalSlides: number): number[][] {
+    const batches: number[][] = [];
+    for (let start = 0; start < totalSlides; start += TEMPLATE_V2_LAYOUT_BATCH_SIZE) {
+        const end = Math.min(start + TEMPLATE_V2_LAYOUT_BATCH_SIZE, totalSlides);
+        batches.push(Array.from({ length: end - start }, (_, offset) => start + offset));
+    }
+    return batches;
+}
+
+function errorMessageFromUnknown(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
 }
 
 type UseTemplateCreationOptions = {
@@ -255,6 +296,125 @@ export const useTemplateCreation = ({
         }
     }, [uploadedFonts, updateState]);
 
+    const saveTemplateV2Layouts = useCallback(async (
+        templateId: string,
+        layouts: CreatedTemplateV2Layout[]
+    ): Promise<void> => {
+        if (layouts.length === 0) return;
+
+        const response = await fetch(
+            getApiUrl(`/api/v2/templates/${encodeURIComponent(templateId)}/layouts`),
+            {
+                method: "PATCH",
+                headers: getHeader(),
+                body: JSON.stringify({ layouts }),
+            }
+        );
+
+        await ApiResponseHandler.handleResponse(
+            response,
+            "Failed to save generated template layouts"
+        );
+    }, []);
+
+    const createTemplateV2Layout = useCallback(async (
+        templateId: string,
+        index: number
+    ): Promise<CreatedTemplateV2Layout> => {
+        const response = await fetch(getApiUrl("/api/v2/templates/layouts/create"), {
+            method: "POST",
+            headers: getHeader(),
+            body: JSON.stringify({
+                template_id: templateId,
+                index,
+            }),
+        });
+
+        const data = await ApiResponseHandler.handleResponse(
+            response,
+            `Failed to generate template layout for slide ${index + 1}`
+        );
+        const layout = extractCreatedTemplateV2Layouts(data)
+            .find((item) => item.index === index);
+        if (!layout) {
+            throw new Error("No generated layout was returned for this slide.");
+        }
+        return layout;
+    }, []);
+
+    const createAndSaveTemplateV2Layouts = useCallback(async (
+        templateId: string,
+        indices: number[],
+        options: {
+            onLayoutCreated?: (layout: CreatedTemplateV2Layout) => void;
+        } = {}
+    ): Promise<{ layouts: CreatedTemplateV2Layout[]; failures: FailedTemplateV2Layout[] }> => {
+        const results = await Promise.allSettled(
+            indices.map(async (index) => {
+                const layout = await createTemplateV2Layout(templateId, index);
+                options.onLayoutCreated?.(layout);
+                return layout;
+            })
+        );
+        const layouts: CreatedTemplateV2Layout[] = [];
+        const failures: FailedTemplateV2Layout[] = [];
+
+        results.forEach((result, resultIndex) => {
+            const index = indices[resultIndex];
+            if (result.status === "fulfilled") {
+                layouts.push(result.value);
+                return;
+            }
+            failures.push({
+                index,
+                error: errorMessageFromUnknown(
+                    result.reason,
+                    "Template layout generation failed"
+                ),
+            });
+        });
+
+        if (layouts.length > 0) {
+            try {
+                await saveTemplateV2Layouts(templateId, layouts);
+            } catch (error) {
+                const saveError = errorMessageFromUnknown(
+                    error,
+                    "Failed to save generated template layouts"
+                );
+                return {
+                    layouts: [],
+                    failures: [
+                        ...failures,
+                        ...layouts.map((layout) => ({
+                            index: layout.index,
+                            error: saveError,
+                        })),
+                    ],
+                };
+            }
+        }
+
+        return { layouts, failures };
+    }, [createTemplateV2Layout, saveTemplateV2Layouts]);
+
+    const generateTemplateV2Blocks = useCallback(async (
+        templateId: string
+    ): Promise<void> => {
+        const response = await fetch(getApiUrl("/api/v2/templates/generate-blocks"), {
+            method: "POST",
+            headers: getHeader(),
+            body: JSON.stringify({
+                template_id: templateId,
+            }),
+        });
+
+        await ApiResponseHandler.handleResponse(
+            response,
+            "Failed to generate template blocks"
+        );
+    }, []);
+
     const generateTemplateV2 = useCallback(async (
         previewData: FontUploadPreviewResponse,
         options: {
@@ -293,7 +453,7 @@ export const useTemplateCreation = ({
                 uploaded_font_count: Object.keys(previewData.fonts ?? {}).length,
             });
 
-            const response = await fetch(getApiUrl("/api/v2/templates"), {
+            const initResponse = await fetch(getApiUrl("/api/v2/templates/init"), {
                 method: "POST",
                 headers: getHeader(),
                 body: JSON.stringify({
@@ -305,56 +465,118 @@ export const useTemplateCreation = ({
                 }),
             });
 
-            const template = (await ApiResponseHandler.handleResponse(
-                response,
-                "Failed to generate template"
-            )) as TemplateV2ImportResponse;
-            const layouts = getRenderableTemplateV2Layouts(template);
-            const templateId = readTemplateV2Id(template);
-
-            const generatedSlides: ProcessedSlide[] = previewData.slide_image_urls.map(
-                (url, index) => {
-                    const layout = layouts[index];
-                    const layoutId = typeof layout?.id === "string" ? layout.id : null;
-                    const layoutDescription = typeof layout?.description === "string"
-                        ? layout.description
-                        : "Generated with Templates V2";
-
-                    return {
-                        slide_number: index + 1,
-                        screenshot_url: url,
-                        processing: false,
-                        processed: Boolean(layout),
-                        v2Layout: layout,
-                        template_v2_id: templateId ?? undefined,
-                        layout_id: layoutId || `slide_${index + 1}`,
-                        layout_name: layoutId || `Slide ${index + 1}`,
-                        layout_description: layoutDescription,
-                        error: layout ? undefined : "No generated layout was returned for this slide.",
-                    };
-                }
+            const initData = await ApiResponseHandler.handleResponse(
+                initResponse,
+                "Failed to initialize template"
             );
+            const templateId = readTemplateV2InitId(initData);
+            if (!templateId) {
+                throw new Error("Template initialization did not return a template id");
+            }
 
             updateState({
                 templateId,
-                totalSlides: generatedSlides.length,
+                totalSlides: initialSlides.length,
                 currentSlideIndex: 0,
             });
 
-            for (let index = 0; index < generatedSlides.length; index += 1) {
-                if (index > 0) {
-                    await new Promise((resolve) => setTimeout(resolve, 150));
-                }
-                updateState({ currentSlideIndex: index });
-                setSlides((current) =>
-                    current.map((slide, slideIndex) =>
-                        slideIndex === index ? generatedSlides[index] : slide
+            let generatedSlides = initialSlides;
+            const commitSlides = (nextSlides: ProcessedSlide[]) => {
+                generatedSlides = nextSlides;
+                setSlides(nextSlides);
+            };
+            const updateGeneratedSlides = (
+                updater: (currentSlides: ProcessedSlide[]) => ProcessedSlide[]
+            ) => {
+                commitSlides(updater(generatedSlides));
+            };
+
+            for (const indices of templateV2LayoutBatches(initialSlides.length)) {
+                updateState({ currentSlideIndex: indices[0] ?? 0 });
+                updateGeneratedSlides((currentSlides) =>
+                    currentSlides.map((slide, index) =>
+                        indices.includes(index)
+                            ? {
+                                ...slide,
+                                processing: true,
+                                processed: false,
+                                error: undefined,
+                            }
+                            : slide
                     )
+                );
+
+                const { layouts: createdLayouts, failures } =
+                    await createAndSaveTemplateV2Layouts(templateId, indices, {
+                        onLayoutCreated: (createdLayout) => {
+                            updateGeneratedSlides((currentSlides) =>
+                                currentSlides.map((slide, index) =>
+                                    index === createdLayout.index
+                                        ? templateV2SlideFromLayout(
+                                            slide,
+                                            createdLayout.layout,
+                                            templateId,
+                                            index
+                                        )
+                                        : slide
+                                )
+                            );
+                        },
+                    });
+                const layoutByIndex = new Map(
+                    createdLayouts.map((item) => [item.index, item.layout])
+                );
+                const failureByIndex = new Map(
+                    failures.map((item) => [item.index, item.error])
+                );
+                updateGeneratedSlides((currentSlides) =>
+                    currentSlides.map((slide, index) => {
+                        if (!indices.includes(index)) return slide;
+
+                        const failure = failureByIndex.get(index);
+                        if (failure) {
+                            return {
+                                ...slide,
+                                processing: false,
+                                processed: false,
+                                error: failure,
+                            };
+                        }
+
+                        const layout = layoutByIndex.get(index);
+                        if (!layout) {
+                            return {
+                                ...slide,
+                                processing: false,
+                                processed: false,
+                                error: "No generated layout was returned for this slide.",
+                            };
+                        }
+                        return templateV2SlideFromLayout(
+                            slide,
+                            layout,
+                            templateId,
+                            index
+                        );
+                    })
                 );
             }
 
             const failedCount = generatedSlides.filter((slide) => Boolean(slide.error)).length;
             const processedCount = generatedSlides.filter((slide) => slide.processed).length;
+            let blocksError: string | null = null;
+            if (processedCount > 0) {
+                try {
+                    await generateTemplateV2Blocks(templateId);
+                } catch (error) {
+                    blocksError = errorMessageFromUnknown(
+                        error,
+                        "Failed to generate template blocks"
+                    );
+                    updateState({ error: blocksError });
+                }
+            }
+
             updateState({
                 step: 'completed',
                 isLoading: false,
@@ -371,6 +593,11 @@ export const useTemplateCreation = ({
                 notify.warning(
                     "Some slides could not be generated",
                     `${processedCount} of ${generatedSlides.length} slides were generated.`
+                );
+            } else if (blocksError) {
+                notify.warning(
+                    "Template generated",
+                    `Slides were saved, but template blocks were not generated. ${blocksError}`
                 );
             } else {
                 notify.success(
@@ -394,7 +621,7 @@ export const useTemplateCreation = ({
             notify.error("Generation failed", errorMessage);
             return null;
         }
-    }, [updateState]);
+    }, [createAndSaveTemplateV2Layouts, generateTemplateV2Blocks, updateState]);
 
     // Step 4: Create slide layout for a specific slide (with auto-advance for initial processing)
     const createSlideLayout = useCallback(async (
@@ -678,21 +905,75 @@ export const useTemplateCreation = ({
             return;
         }
 
-        if (!state.previewData) {
-            notify.error("No preview data", "Generate a preview before trying again.");
+        if (!state.templateId) {
+            notify.error("Template unavailable", "Initialize the template before trying again.");
             return;
         }
 
-        notify.info(
-            "Regenerating template",
-            "Templates V2 regenerates the full template for this preview."
+        const templateId = state.templateId;
+        updateState({ currentSlideIndex: slideIndex });
+        setSlides((current) =>
+            current.map((slide, index) =>
+                index === slideIndex
+                    ? {
+                        ...slide,
+                        processing: true,
+                        processed: false,
+                        error: undefined,
+                    }
+                    : slide
+            )
         );
-        void generateTemplateV2(state.previewData, { retrySlideIndex: slideIndex });
+
+        void (async () => {
+            try {
+                const { layouts: createdLayouts, failures } = await createAndSaveTemplateV2Layouts(
+                    templateId,
+                    [slideIndex]
+                );
+                const failure = failures.find((item) => item.index === slideIndex);
+                if (failure) {
+                    throw new Error(failure.error);
+                }
+                const layout = createdLayouts.find((item) => item.index === slideIndex)?.layout;
+                if (!layout) {
+                    throw new Error("No generated layout was returned for this slide.");
+                }
+                setSlides((current) =>
+                    current.map((slide, index) =>
+                        index === slideIndex
+                            ? templateV2SlideFromLayout(slide, layout, templateId, index)
+                            : slide
+                    )
+                );
+                notify.success(
+                    "Slide regenerated",
+                    `Slide ${slideIndex + 1} was regenerated successfully.`
+                );
+            } catch (error) {
+                const errorMessage = error instanceof Error
+                    ? error.message
+                    : "Template layout generation failed";
+                setSlides((current) =>
+                    current.map((slide, index) =>
+                        index === slideIndex
+                            ? {
+                                ...slide,
+                                processing: false,
+                                processed: false,
+                                error: errorMessage,
+                            }
+                            : slide
+                    )
+                );
+                notify.error(`Slide ${slideIndex + 1} failed`, errorMessage);
+            }
+        })();
     }, [
         createSlideLayout,
-        generateTemplateV2,
-        state.previewData,
+        createAndSaveTemplateV2Layouts,
         state.templateId,
+        updateState,
         useTemplateV2Generation,
     ]);
 

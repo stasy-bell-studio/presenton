@@ -7,15 +7,19 @@ import pytest
 from fastapi import HTTPException
 
 from api.v2.templates.router import (
+    CreateTemplateV2LayoutsRequest,
     CreateTemplateV2Request,
+    GenerateTemplateV2BlocksRequest,
+    InitTemplateV2Request,
     PatchTemplateV2SlideLayoutRequest,
-    ReconstructTemplateV2LayoutRequest,
+    create_template_v2_slide_layouts,
     create_template_v2,
     delete_template_v2,
+    generate_template_v2_blocks,
     get_template_v2,
+    init_template_v2,
     list_templates_v2,
     patch_template_v2_slide_layout,
-    reconstruct_template_v2_slide_layout,
 )
 from models.sql.template_v2 import TemplateV2
 from services.export_task_service import PptxToJsonDocument
@@ -300,6 +304,46 @@ def test_create_template_v2_requires_slide_images(fake_async_session):
     assert exc.value.detail == "At least one slide image is required"
 
 
+def test_init_template_v2_persists_assets_without_layouts(tmp_path, fake_async_session):
+    pptx_path = tmp_path / "quarterly-review.pptx"
+    pptx_path.write_bytes(b"pptx")
+    with patch(
+        "api.v2.templates.router.resolve_app_path_to_filesystem",
+        return_value=str(pptx_path),
+    ), patch(
+        "api.v2.templates.router.EXPORT_TASK_SERVICE.convert_pptx_to_json",
+        new=AsyncMock(return_value=PptxToJsonDocument(**RAW_LAYOUTS)),
+    ) as convert_mock:
+        template_id = asyncio.run(
+            init_template_v2(
+                InitTemplateV2Request(
+                    pptx_url="/app_data/uploads/quarterly-review.pptx",
+                    slide_image_urls=["/app_data/images/slide-1.png"],
+                    fonts={"Inter": "https://example.com/inter.css"},
+                    name="Quarterly Review",
+                    description="Board deck template",
+                ),
+                sql_session=fake_async_session,
+            )
+        )
+
+    assert isinstance(template_id, uuid.UUID)
+    convert_mock.assert_awaited_once_with(str(pptx_path))
+    template = fake_async_session.added[0]
+    assert template.name == "Quarterly Review"
+    assert template.description == "Board deck template"
+    assert template.raw_layouts == RAW_LAYOUTS
+    assert template.layouts is None
+    assert template.assets == {
+        "pptx_url": "/app_data/uploads/quarterly-review.pptx",
+        "fonts": {"Inter": "https://example.com/inter.css"},
+        "slide_image_urls": ["/app_data/images/slide-1.png"],
+        "images": ["/app_data/pptx-to-json/session/images/photo.png"],
+        "layout_indexes": [],
+    }
+    assert fake_async_session.commit_count == 1
+
+
 def test_list_templates_v2_returns_paginated_summary():
     response = asyncio.run(
         list_templates_v2(page=1, page_size=20, sql_session=_ListSession())
@@ -315,7 +359,7 @@ def test_list_templates_v2_returns_paginated_summary():
     assert response.items[0].thumbnail == "/app_data/images/slide-1.png"
 
 
-def test_reconstruct_template_v2_slide_layout_returns_generated_layout(
+def test_create_template_v2_slide_layouts_returns_generated_layout(
     fake_async_session,
 ):
     template_id = uuid.uuid4()
@@ -329,16 +373,19 @@ def test_reconstruct_template_v2_slide_layout_returns_generated_layout(
         },
     )
     fake_async_session._get_results[template_id] = template
-    request = ReconstructTemplateV2LayoutRequest.model_validate(
-        {"id": str(template_id), "index": 0}
+    request = CreateTemplateV2LayoutsRequest.model_validate(
+        {"id": str(template_id), "indices": [0]}
     )
 
     with patch(
         "api.v2.templates.router.generate_slide_layout",
         new=Mock(return_value=GENERATED_LAYOUTS.layouts[0]),
-    ) as generate_mock:
+    ) as generate_mock, patch(
+        "api.v2.templates.router.random.randint",
+        return_value=4801,
+    ):
         response = asyncio.run(
-            reconstruct_template_v2_slide_layout(
+            create_template_v2_slide_layouts(
                 request,
                 sql_session=fake_async_session,
             )
@@ -350,12 +397,17 @@ def test_reconstruct_template_v2_slide_layout_returns_generated_layout(
     assert slide_index == 0
     assert slide_image_url == "/app_data/images/slide-1.png"
     assert fonts == {"Inter": "https://example.com/inter.css"}
-    assert response.model_dump(mode="json", exclude_none=True) == TEMPLATE_LAYOUTS[
-        "layouts"
-    ][0]
+    assert response.layouts[0].index == 0
+    response_layout = response.layouts[0].layout.model_dump(
+        mode="json", exclude_none=True
+    )
+    assert response_layout == {
+        **TEMPLATE_LAYOUTS["layouts"][0],
+        "id": "slide_1_4801",
+    }
 
 
-def test_reconstruct_template_v2_slide_layout_rejects_invalid_index(
+def test_create_template_v2_slide_layouts_rejects_invalid_index(
     fake_async_session,
 ):
     template_id = uuid.uuid4()
@@ -368,10 +420,10 @@ def test_reconstruct_template_v2_slide_layout_rejects_invalid_index(
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
-            reconstruct_template_v2_slide_layout(
-                ReconstructTemplateV2LayoutRequest(
+            create_template_v2_slide_layouts(
+                CreateTemplateV2LayoutsRequest(
                     template_id=template_id,
-                    index=1,
+                    indices=[1],
                 ),
                 sql_session=fake_async_session,
             )
@@ -381,7 +433,7 @@ def test_reconstruct_template_v2_slide_layout_rejects_invalid_index(
     assert exc.value.detail == "Invalid slide index"
 
 
-def test_reconstruct_template_v2_slide_layout_requires_slide_image(
+def test_create_template_v2_slide_layouts_requires_slide_image(
     fake_async_session,
 ):
     template_id = uuid.uuid4()
@@ -394,10 +446,10 @@ def test_reconstruct_template_v2_slide_layout_requires_slide_image(
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
-            reconstruct_template_v2_slide_layout(
-                ReconstructTemplateV2LayoutRequest(
+            create_template_v2_slide_layouts(
+                CreateTemplateV2LayoutsRequest(
                     template_id=template_id,
-                    index=0,
+                    indices=[0],
                 ),
                 sql_session=fake_async_session,
             )
@@ -409,7 +461,7 @@ def test_reconstruct_template_v2_slide_layout_requires_slide_image(
     )
 
 
-def test_reconstruct_template_v2_slide_layout_preserves_image_url_indexes(
+def test_create_template_v2_slide_layouts_preserves_image_url_indexes(
     fake_async_session,
 ):
     template_id = uuid.uuid4()
@@ -435,10 +487,10 @@ def test_reconstruct_template_v2_slide_layout_preserves_image_url_indexes(
         new=Mock(return_value=GENERATED_LAYOUTS.layouts[0]),
     ) as generate_mock:
         asyncio.run(
-            reconstruct_template_v2_slide_layout(
-                ReconstructTemplateV2LayoutRequest(
+            create_template_v2_slide_layouts(
+                CreateTemplateV2LayoutsRequest(
                     template_id=template_id,
-                    index=1,
+                    indices=[1],
                 ),
                 sql_session=fake_async_session,
             )
@@ -450,15 +502,15 @@ def test_reconstruct_template_v2_slide_layout_preserves_image_url_indexes(
     assert slide_image_url == "/app_data/images/slide-2.png"
 
 
-def test_reconstruct_template_v2_slide_layout_returns_404_for_missing_template(
+def test_create_template_v2_slide_layouts_returns_404_for_missing_template(
     fake_async_session,
 ):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
-            reconstruct_template_v2_slide_layout(
-                ReconstructTemplateV2LayoutRequest(
+            create_template_v2_slide_layouts(
+                CreateTemplateV2LayoutsRequest(
                     template_id=uuid.uuid4(),
-                    index=0,
+                    indices=[0],
                 ),
                 sql_session=fake_async_session,
             )
@@ -466,6 +518,59 @@ def test_reconstruct_template_v2_slide_layout_returns_404_for_missing_template(
 
     assert exc.value.status_code == 404
     assert exc.value.detail == "Template not found"
+
+
+def test_generate_template_v2_blocks_clusters_and_persists(fake_async_session):
+    template_id = uuid.uuid4()
+    template = TemplateV2(
+        name="Custom",
+        layouts=TEMPLATE_LAYOUTS,
+        raw_layouts=RAW_LAYOUTS,
+    )
+    fake_async_session._get_results[template_id] = template
+
+    with patch(
+        "api.v2.templates.router.merge_similar_components",
+        new=Mock(return_value=MERGED_COMPONENTS),
+    ) as merge_mock:
+        response = asyncio.run(
+            generate_template_v2_blocks(
+                GenerateTemplateV2BlocksRequest.model_validate(
+                    {"id": str(template_id)}
+                ),
+                sql_session=fake_async_session,
+            )
+        )
+
+    merge_mock.assert_called_once()
+    layouts_arg = merge_mock.call_args.args[0]
+    assert layouts_arg.layouts[0].id == "slide_1"
+    assert response == template
+    assert template.merged_components == MERGED_COMPONENTS.model_dump(
+        mode="json", exclude_none=True
+    )
+    assert fake_async_session.commit_count == 1
+
+
+def test_generate_template_v2_blocks_requires_layouts(fake_async_session):
+    template_id = uuid.uuid4()
+    fake_async_session._get_results[template_id] = TemplateV2(
+        name="Custom",
+        layouts=None,
+        raw_layouts=RAW_LAYOUTS,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            generate_template_v2_blocks(
+                GenerateTemplateV2BlocksRequest(template_id=template_id),
+                sql_session=fake_async_session,
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Template layouts are unavailable"
+    assert fake_async_session.commit_count == 0
 
 
 def test_patch_template_v2_slide_layout_updates_stored_layouts(fake_async_session):
@@ -496,7 +601,60 @@ def test_patch_template_v2_slide_layout_updates_stored_layouts(fake_async_sessio
     assert response == template
     assert template.layouts["layouts"][0]["id"] == "slide_1"
     assert template.layouts["layouts"][1] == patched_layout
+    assert template.assets == {"layout_indexes": [0, 1]}
     assert fake_async_session.commit_count == 1
+
+
+def test_patch_template_v2_slide_layout_merges_out_of_order_init_saves(
+    fake_async_session,
+):
+    template_id = uuid.uuid4()
+    raw_layouts = {
+        "layouts": [
+            RAW_LAYOUTS["layouts"][0],
+            {
+                **RAW_LAYOUTS["layouts"][0],
+                "id": "slide_2",
+                "description": "Full slide layout converted from PPTX slide 2.",
+            },
+        ]
+    }
+    template = TemplateV2(
+        name="Custom",
+        raw_layouts=raw_layouts,
+        layouts=None,
+        assets={"layout_indexes": []},
+    )
+    fake_async_session._get_results[template_id] = template
+    second_layout = {
+        **TEMPLATE_LAYOUTS["layouts"][0],
+        "id": "slide_2",
+        "description": "Full slide layout converted from PPTX slide 2.",
+    }
+
+    asyncio.run(
+        patch_template_v2_slide_layout(
+            template_id,
+            PatchTemplateV2SlideLayoutRequest(
+                layouts=[{"index": 1, "layout": second_layout}],
+            ),
+            sql_session=fake_async_session,
+        )
+    )
+    asyncio.run(
+        patch_template_v2_slide_layout(
+            template_id,
+            PatchTemplateV2SlideLayoutRequest(
+                layouts=[{"index": 0, "layout": TEMPLATE_LAYOUTS["layouts"][0]}],
+            ),
+            sql_session=fake_async_session,
+        )
+    )
+
+    assert template.assets == {"layout_indexes": [0, 1]}
+    assert template.layouts["layouts"][0]["id"] == "slide_1"
+    assert template.layouts["layouts"][1]["id"] == "slide_2"
+    assert fake_async_session.commit_count == 2
 
 
 def test_patch_template_v2_slide_layout_rejects_invalid_index(fake_async_session):

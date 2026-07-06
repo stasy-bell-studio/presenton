@@ -540,6 +540,40 @@ def test_merge_similar_components_clusters_by_global_component_index(
     second["components"][0]["description"] = (
         "Reusable grid presenting several business metrics and labels."
     )
+    second["components"][0]["size"] = {"width": 600, "height": 180}
+    second["components"][0]["elements"] = [
+        {
+            "type": "grid",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 600, "height": 180},
+            "columns": 2,
+            "rows": 1,
+            "gap": 24,
+            "name": "metrics",
+            "min_children": 1,
+            "max_children": 2,
+            "children": [
+                {
+                    "type": "text",
+                    "size": {"width": 280, "height": 80},
+                    "decorative": False,
+                    "name": "metric_value",
+                    "min_length": 1,
+                    "max_length": 10,
+                    "runs": [{"text": "42%"}],
+                },
+                {
+                    "type": "text",
+                    "size": {"width": 280, "height": 80},
+                    "decorative": False,
+                    "name": "metric_label",
+                    "min_length": 5,
+                    "max_length": 30,
+                    "runs": [{"text": "Revenue growth"}],
+                },
+            ],
+        }
+    ]
     third = _generated_layout("third_layout")
     third["components"][0]["id"] = "section_heading"
     third["components"][0]["description"] = (
@@ -617,6 +651,98 @@ def test_merge_similar_components_skips_llm_for_single_component(monkeypatch):
     assert len(merged.components) == 1
     assert merged.components[0].id == "title_block"
     assert len(merged.components[0].variants) == 1
+
+
+def test_merge_similar_components_removes_structural_duplicates_after_clustering(
+    monkeypatch,
+):
+    first = _generated_layout("first_layout")
+    first["components"][0]["id"] = "headline_a"
+    first["components"][0]["description"] = (
+        "Reusable headline card with static divider decoration."
+    )
+    first["components"][0]["elements"] = [
+        {
+            "type": "rectangle",
+            "position": {"x": 0, "y": 70},
+            "size": {"width": 600, "height": 4},
+            "fill": {"color": "#111111"},
+        },
+        {
+            "type": "text",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 600, "height": 60},
+            "decorative": False,
+            "name": "headline",
+            "min_length": 5,
+            "max_length": 60,
+            "runs": [{"text": "First headline content"}],
+        },
+    ]
+    second = _generated_layout("second_layout")
+    second["components"][0]["id"] = "headline_b"
+    second["components"][0]["description"] = (
+        "Reusable title card with the same static divider decoration."
+    )
+    second["components"][0]["position"] = {"x": 260, "y": 180}
+    second["components"][0]["elements"] = [
+        {
+            "type": "rectangle",
+            "position": {"x": 0, "y": 70},
+            "size": {"width": 600, "height": 4},
+            "fill": {"color": "#111111"},
+        },
+        {
+            "type": "text",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 600, "height": 60},
+            "decorative": False,
+            "name": "title",
+            "min_length": 5,
+            "max_length": 80,
+            "runs": [{"text": "Different editable title copy"}],
+        },
+    ]
+    third = _generated_layout("third_layout")
+    third["components"][0]["id"] = "headline_c"
+    third["components"][0]["description"] = (
+        "Reusable headline card with a different static divider decoration."
+    )
+    third["components"][0]["elements"] = [
+        {
+            "type": "rectangle",
+            "position": {"x": 0, "y": 70},
+            "size": {"width": 600, "height": 4},
+            "fill": {"color": "#DDDDDD"},
+        },
+        {
+            "type": "text",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 600, "height": 60},
+            "decorative": False,
+            "name": "headline",
+            "min_length": 5,
+            "max_length": 60,
+            "runs": [{"text": "Third headline content"}],
+        },
+    ]
+    layouts = SlideLayouts.model_validate({"layouts": [first, second, third]})
+    client = _FakeClient({"similar_components": []})
+    monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
+    monkeypatch.setattr("templates.v2.generation.get_llm_config", lambda: {})
+    monkeypatch.setattr("templates.v2.generation.get_model", lambda: "test-model")
+
+    merged = merge_similar_components(layouts)
+
+    assert len(client.calls) == 1
+    assert len(merged.components) == 2
+    assert [variant.id for variant in merged.components[0].variants] == [
+        "headline_a",
+        "headline_b",
+    ]
+    assert [variant.id for variant in merged.components[1].variants] == [
+        "headline_c",
+    ]
 
 
 def test_similar_components_requires_unique_non_negative_indices():

@@ -42,6 +42,37 @@ MAX_PREVIEW_SLIDE_CALLS = 2
 
 LOGGER = logging.getLogger(__name__)
 
+_DUPLICATE_POSITION_GRID_UNITS = 5
+_IGNORED_DUPLICATE_SCHEMA_KEYS = {
+    "name",
+    "max_length",
+    "min_length",
+    "max_items",
+    "min_items",
+    "max_item_length",
+    "min_item_length",
+    "max_columns",
+    "min_columns",
+    "max_rows",
+    "min_rows",
+    "max_children",
+    "min_children",
+}
+_CONTENT_VALUE_KEYS_BY_ELEMENT_TYPE = {
+    "chart": {
+        "categories",
+        "series",
+        "source",
+        "title",
+        "x_axis_title",
+        "y_axis_title",
+    },
+    "image": {"data", "prompt"},
+    "infographic": {"max_value", "min_value", "value"},
+    "text": {"runs"},
+    "text-list": {"items"},
+}
+
 
 GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT = """
 Convert the provided raw slide elements to components.
@@ -257,14 +288,16 @@ def merge_similar_components(layouts: SlideLayouts) -> MergedComponents:
         indexed_components,
         [group.indices for group in clusters.similar_components],
     )
+    deduplicated = _deduplicate_merged_components(merged)
     LOGGER.info(
         "[templates.v2.deduplicate] clustering complete components=%d "
-        "similar_groups=%d merged_components=%d",
+        "similar_groups=%d merged_components=%d structural_duplicates=%d",
         len(indexed_components),
         len(clusters.similar_components),
-        len(merged.components),
+        len(deduplicated.components),
+        len(merged.components) - len(deduplicated.components),
     )
-    return merged
+    return deduplicated
 
 
 def _validate_similarity_groups(
@@ -312,6 +345,227 @@ def _build_merged_components(
         )
 
     return MergedComponents(components=merged_components)
+
+
+def _deduplicate_merged_components(merged: MergedComponents) -> MergedComponents:
+    if len(merged.components) < 2:
+        return merged
+
+    parent = list(range(len(merged.components)))
+    signature_owner: dict[tuple[Any, ...], int] = {}
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def union(first: int, second: int) -> None:
+        first_root = find(first)
+        second_root = find(second)
+        if first_root == second_root:
+            return
+        if first_root < second_root:
+            parent[second_root] = first_root
+        else:
+            parent[first_root] = second_root
+
+    for index, component_group in enumerate(merged.components):
+        for signature in _merged_component_variant_signatures(component_group):
+            previous_index = signature_owner.get(signature)
+            if previous_index is None:
+                signature_owner[signature] = index
+                continue
+            union(index, previous_index)
+
+    components_by_root: dict[int, list[int]] = {}
+    for index in range(len(merged.components)):
+        root = find(index)
+        components_by_root.setdefault(root, []).append(index)
+
+    deduplicated: list[MergedComponent] = []
+    emitted_roots: set[int] = set()
+    for index, component_group in enumerate(merged.components):
+        root = find(index)
+        if root in emitted_roots:
+            continue
+        emitted_roots.add(root)
+        duplicate_indices = components_by_root[root]
+        variants = [
+            variant
+            for duplicate_index in duplicate_indices
+            for variant in merged.components[duplicate_index].variants
+        ]
+        deduplicated.append(
+            component_group.model_copy(deep=True, update={"variants": variants})
+        )
+
+    return MergedComponents(components=deduplicated)
+
+
+def _merged_component_variant_signatures(
+    component_group: MergedComponent,
+) -> tuple[tuple[Any, ...], ...]:
+    seen: set[tuple[Any, ...]] = set()
+    signatures: list[tuple[Any, ...]] = []
+    for variant in component_group.variants:
+        signature = _component_duplicate_signature(variant)
+        if signature in seen:
+            continue
+        seen.add(signature)
+        signatures.append(signature)
+    return tuple(signatures)
+
+
+def _component_duplicate_signature(component: Component) -> tuple[Any, ...]:
+    component_data = component.model_dump(mode="json", exclude_none=True)
+    root_size = component_data.get("size")
+    return (
+        "component",
+        ("aspect", _aspect_signature(root_size)),
+        (
+            "elements",
+            tuple(
+                _element_duplicate_signature(element, root_size=root_size)
+                for element in component_data.get("elements", [])
+            ),
+        ),
+    )
+
+
+def _element_duplicate_signature(
+    element: dict[str, Any],
+    *,
+    root_size: Any,
+) -> tuple[Any, ...]:
+    element_type = str(element.get("type", ""))
+    decorative = bool(element.get("decorative", False))
+    items: list[tuple[str, Any]] = []
+
+    for key in sorted(element):
+        if key in _IGNORED_DUPLICATE_SCHEMA_KEYS:
+            continue
+
+        value = element[key]
+        if key == "position":
+            items.append((key, _position_signature(value, root_size)))
+            continue
+        if key == "size":
+            items.append((key, _size_signature(value, root_size)))
+            continue
+        if key == "child":
+            child_signature = (
+                _element_duplicate_signature(value, root_size=root_size)
+                if isinstance(value, dict)
+                else None
+            )
+            items.append((key, child_signature))
+            continue
+        if key == "children":
+            children = value if isinstance(value, list) else []
+            items.append(
+                (
+                    key,
+                    tuple(
+                        _element_duplicate_signature(child, root_size=root_size)
+                        for child in children
+                        if isinstance(child, dict)
+                    ),
+                )
+            )
+            continue
+        if not decorative and key in _CONTENT_VALUE_KEYS_BY_ELEMENT_TYPE.get(
+            element_type, set()
+        ):
+            continue
+        if not decorative and element_type == "table" and key in {"columns", "rows"}:
+            items.append((key, _normalize_signature_value(_strip_table_text(value))))
+            continue
+
+        items.append((key, _normalize_signature_value(value)))
+
+    return tuple(items)
+
+
+def _strip_table_text(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _strip_table_text(child)
+            for key, child in value.items()
+            if key != "runs"
+        }
+    if isinstance(value, list):
+        return [_strip_table_text(item) for item in value]
+    return value
+
+
+def _position_signature(value: Any, root_size: Any) -> tuple[Any, ...] | None:
+    if not isinstance(value, dict):
+        return None
+    return (
+        ("x", _axis_signature(value.get("x"), root_size, "width")),
+        ("y", _axis_signature(value.get("y"), root_size, "height")),
+    )
+
+
+def _size_signature(value: Any, root_size: Any) -> tuple[Any, ...] | None:
+    if not isinstance(value, dict):
+        return None
+    return (
+        ("width", _axis_signature(value.get("width"), root_size, "width")),
+        ("height", _axis_signature(value.get("height"), root_size, "height")),
+    )
+
+
+def _axis_signature(value: Any, root_size: Any, axis_key: str) -> Any:
+    number = _coerce_number(value)
+    if number is None:
+        return _normalize_signature_value(value)
+
+    axis_size = None
+    if isinstance(root_size, dict):
+        axis_size = _coerce_number(root_size.get(axis_key))
+    if axis_size is not None and axis_size > 0:
+        normalized = (number / axis_size) * 1000
+        return (
+            round(normalized / _DUPLICATE_POSITION_GRID_UNITS)
+            * _DUPLICATE_POSITION_GRID_UNITS
+        )
+    return round(number, 1)
+
+
+def _aspect_signature(root_size: Any) -> Any:
+    if not isinstance(root_size, dict):
+        return None
+    width = _coerce_number(root_size.get("width"))
+    height = _coerce_number(root_size.get("height"))
+    if width is None or height is None or height <= 0:
+        return None
+    return round((width / height) * 100)
+
+
+def _normalize_signature_value(value: Any) -> Any:
+    number = _coerce_number(value)
+    if number is not None:
+        return round(number, 2)
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        return tuple(
+            (key, _normalize_signature_value(child))
+            for key, child in sorted(value.items())
+        )
+    if isinstance(value, list):
+        return tuple(_normalize_signature_value(item) for item in value)
+    return value
+
+
+def _coerce_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
 
 
 def _unique_merged_component_id(component_id: str, used_ids: set[str]) -> str:
