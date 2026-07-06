@@ -136,6 +136,7 @@ export interface TemplateV2Element {
   flip_v?: boolean | string | null;
   focus_x?: number | string | null;
   focus_y?: number | string | null;
+  clippath?: string | null;
   color?: string | null;
   child?: TemplateV2Element | null;
   children?: TemplateV2Element[] | null;

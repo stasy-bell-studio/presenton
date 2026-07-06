@@ -88,6 +88,7 @@ import {
   type Box,
   type ComponentSelection,
   type ElementSelection,
+  type Point,
   type RawComponent,
   type RawElement,
   type SelectOptions,
@@ -896,6 +897,7 @@ function RawImageElement({
   const focusY = clamp(readNumber(element.focus_y) ?? 50, 0, 100) / 100;
   const flipH = readBoolean(element.flip_h) === true;
   const flipV = readBoolean(element.flip_v) === true;
+  const clipPath = imageClipPath(element);
   const cornerRadii = imageCornerRadii(element, width, height);
   const naturalRatio = loaded.width / loaded.height || 1;
   const boxRatio = width / height || 1;
@@ -922,6 +924,32 @@ function RawImageElement({
     }
   }
 
+  const imageNode = (
+    <KonvaImage
+      image={loaded}
+      x={offsetX + (flipH ? drawW : 0)}
+      y={offsetY + (flipV ? drawH : 0)}
+      width={drawW}
+      height={drawH}
+      scaleX={flipH ? -1 : 1}
+      scaleY={flipV ? -1 : 1}
+      listening={interactive}
+    />
+  );
+
+  const clippedImageNode = clipPath ? (
+    <Group
+      clipFunc={(context) =>
+        drawImageClipPath(context, clipPath, width, height)
+      }
+      listening={interactive}
+    >
+      {imageNode}
+    </Group>
+  ) : (
+    imageNode
+  );
+
   return (
     <Group
       clipFunc={(context) =>
@@ -929,18 +957,290 @@ function RawImageElement({
       }
       listening={interactive}
     >
-      <KonvaImage
-        image={loaded}
-        x={offsetX + (flipH ? drawW : 0)}
-        y={offsetY + (flipV ? drawH : 0)}
-        width={drawW}
-        height={drawH}
-        scaleX={flipH ? -1 : 1}
-        scaleY={flipV ? -1 : 1}
-        listening={interactive}
-      />
+      {clippedImageNode}
     </Group>
   );
+}
+
+type ParsedImageClipPath =
+  | { kind: "polygon"; points: Point[] }
+  | {
+    kind: "inset";
+    top: number;
+    right: number;
+    bottom: number;
+    left: number;
+    radius: number;
+  }
+  | { kind: "circle"; x: number; y: number; radius: number }
+  | { kind: "ellipse"; x: number; y: number; radiusX: number; radiusY: number };
+
+function imageClipPath(element: RawElement): string | null {
+  const raw = readString(element.clippath ?? element.clipPath ?? element.clip_path);
+  const clipPath = raw?.trim();
+  return clipPath && clipPath.toLowerCase() !== "none" ? clipPath : null;
+}
+
+function drawImageClipPath(
+  context: Konva.Context,
+  clipPath: string,
+  width: number,
+  height: number,
+) {
+  const parsed = parseImageClipPath(clipPath, width, height);
+  if (!parsed) {
+    context.rect(0, 0, width, height);
+    return;
+  }
+
+  if (parsed.kind === "polygon") {
+    parsed.points.forEach((point, index) => {
+      if (index === 0) context.moveTo(point.x, point.y);
+      else context.lineTo(point.x, point.y);
+    });
+    context.closePath();
+    return;
+  }
+
+  if (parsed.kind === "inset") {
+    const x = parsed.left;
+    const y = parsed.top;
+    const insetWidth = Math.max(0, width - parsed.left - parsed.right);
+    const insetHeight = Math.max(0, height - parsed.top - parsed.bottom);
+    const radius = Math.min(parsed.radius, insetWidth / 2, insetHeight / 2);
+    if (radius > 0) {
+      context.roundRect(x, y, insetWidth, insetHeight, radius);
+    } else {
+      context.rect(x, y, insetWidth, insetHeight);
+    }
+    return;
+  }
+
+  if (parsed.kind === "circle") {
+    context.arc(parsed.x, parsed.y, parsed.radius, 0, Math.PI * 2);
+    return;
+  }
+
+  context.ellipse(
+    parsed.x,
+    parsed.y,
+    parsed.radiusX,
+    parsed.radiusY,
+    0,
+    0,
+    Math.PI * 2,
+  );
+}
+
+function parseImageClipPath(
+  value: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const match = /^([a-z-]+)\(([\s\S]*)\)$/i.exec(value.trim());
+  if (!match) return null;
+
+  const [, rawKind, rawBody] = match;
+  const kind = rawKind.toLowerCase();
+  const body = rawBody.trim();
+
+  if (kind === "polygon") return parsePolygonClipPath(body, width, height);
+  if (kind === "inset") return parseInsetClipPath(body, width, height);
+  if (kind === "circle") return parseCircleClipPath(body, width, height);
+  if (kind === "ellipse") return parseEllipseClipPath(body, width, height);
+  return null;
+}
+
+function parsePolygonClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const pointSource = body.replace(/^(evenodd|nonzero)\s*,\s*/i, "");
+  const rawPoints = pointSource.split(/\s*,\s*/).filter(Boolean);
+  const points =
+    rawPoints.length >= 3
+      ? rawPoints.map((point) => parseClipPoint(point, width, height))
+      : parseClipPointPairs(splitCssTokens(pointSource), width, height);
+
+  if (points.length < 3 || points.some((point) => point == null)) return null;
+  return {
+    kind: "polygon",
+    points: points as Point[],
+  };
+}
+
+function parseInsetClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const [insetPart, radiusPart] = splitCssRound(body);
+  const values = splitCssTokens(insetPart);
+  if (values.length === 0) return null;
+
+  const top = parseClipLength(values[0], height);
+  const right = parseClipLength(values[1] ?? values[0], width);
+  const bottom = parseClipLength(values[2] ?? values[0], height);
+  const left = parseClipLength(values[3] ?? values[1] ?? values[0], width);
+  if (top == null || right == null || bottom == null || left == null) {
+    return null;
+  }
+
+  const radiusToken = radiusPart ? splitCssTokens(radiusPart)[0] : null;
+  const radius = radiusToken
+    ? parseClipLength(radiusToken, Math.min(width, height)) ?? 0
+    : 0;
+  return {
+    kind: "inset",
+    top,
+    right,
+    bottom,
+    left,
+    radius,
+  };
+}
+
+function parseCircleClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const [radiusPart, positionPart] = splitCssAt(body);
+  const radiusToken = splitCssTokens(radiusPart)[0];
+  const radius = radiusToken
+    ? parseClipLength(radiusToken, Math.min(width, height))
+    : Math.min(width, height) / 2;
+  const center = parseClipPosition(positionPart, width, height);
+  if (radius == null || !center) return null;
+  return {
+    kind: "circle",
+    x: center.x,
+    y: center.y,
+    radius,
+  };
+}
+
+function parseEllipseClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const [radiusPart, positionPart] = splitCssAt(body);
+  const radiusTokens = splitCssTokens(radiusPart);
+  const radiusX = radiusTokens[0]
+    ? parseClipLength(radiusTokens[0], width)
+    : width / 2;
+  const radiusY = radiusTokens[1]
+    ? parseClipLength(radiusTokens[1], height)
+    : height / 2;
+  const center = parseClipPosition(positionPart, width, height);
+  if (radiusX == null || radiusY == null || !center) return null;
+  return {
+    kind: "ellipse",
+    x: center.x,
+    y: center.y,
+    radiusX,
+    radiusY,
+  };
+}
+
+function parseClipPoint(
+  value: string,
+  width: number,
+  height: number,
+): Point | null {
+  const [rawX, rawY] = splitCssTokens(value);
+  const x = parseClipLength(rawX, width);
+  const y = parseClipLength(rawY, height);
+  return x == null || y == null ? null : { x, y };
+}
+
+function parseClipPointPairs(
+  tokens: string[],
+  width: number,
+  height: number,
+) {
+  const points: Array<Point | null> = [];
+  for (let index = 0; index < tokens.length; index += 2) {
+    points.push(parseClipPoint(`${tokens[index]} ${tokens[index + 1]}`, width, height));
+  }
+  return points;
+}
+
+function parseClipPosition(
+  value: string | null,
+  width: number,
+  height: number,
+): Point | null {
+  const tokens = splitCssTokens(value ?? "");
+  if (tokens.length === 0) return { x: width / 2, y: height / 2 };
+  if (tokens.length === 1) {
+    const token = tokens[0].toLowerCase();
+    if (token === "center") return { x: width / 2, y: height / 2 };
+    if (token === "left" || token === "right") {
+      return {
+        x: parseClipPositionLength(token, width, "left", "right") ?? width / 2,
+        y: height / 2,
+      };
+    }
+    if (token === "top" || token === "bottom") {
+      return {
+        x: width / 2,
+        y: parseClipPositionLength(token, height, "top", "bottom") ?? height / 2,
+      };
+    }
+    const x = parseClipLength(token, width);
+    return x == null ? null : { x, y: height / 2 };
+  }
+
+  const x = parseClipPositionLength(tokens[0], width, "left", "right");
+  const y = parseClipPositionLength(tokens[1], height, "top", "bottom");
+  return x == null || y == null ? null : { x, y };
+}
+
+function parseClipPositionLength(
+  token: string | undefined,
+  reference: number,
+  startKeyword: string,
+  endKeyword: string,
+) {
+  if (!token) return null;
+  const normalized = token.toLowerCase();
+  if (normalized === "center") return reference / 2;
+  if (normalized === startKeyword) return 0;
+  if (normalized === endKeyword) return reference;
+  return parseClipLength(normalized, reference);
+}
+
+function parseClipLength(token: string | undefined, reference: number) {
+  if (!token) return null;
+  const normalized = token.trim().toLowerCase();
+  if (!normalized) return null;
+  if (normalized.endsWith("%")) {
+    const value = Number.parseFloat(normalized.slice(0, -1));
+    return Number.isFinite(value) ? (value / 100) * reference : null;
+  }
+  if (normalized.endsWith("px")) {
+    const value = Number.parseFloat(normalized.slice(0, -2));
+    return Number.isFinite(value) ? value : null;
+  }
+  const value = Number.parseFloat(normalized);
+  return Number.isFinite(value) ? value : null;
+}
+
+function splitCssAt(value: string): [string, string | null] {
+  const parts = value.split(/\s+at\s+/i);
+  return [parts[0]?.trim() ?? "", parts[1]?.trim() ?? null];
+}
+
+function splitCssRound(value: string): [string, string | null] {
+  const parts = value.split(/\s+round\s+/i);
+  return [parts[0]?.trim() ?? "", parts[1]?.trim() ?? null];
+}
+
+function splitCssTokens(value: string) {
+  return value.trim().split(/\s+/).filter(Boolean);
 }
 
 function useLoadedKonvaImage(src: string | null): HTMLImageElement | null {

@@ -754,6 +754,7 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     focus_x: readNumber(raw, "focus_x"),
     focus_y: readNumber(raw, "focus_y"),
     border_radius: adaptBorderRadius(readRecord(raw, "border_radius")),
+    clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
     is_icon: readBoolean(raw, "is_icon"),
   };

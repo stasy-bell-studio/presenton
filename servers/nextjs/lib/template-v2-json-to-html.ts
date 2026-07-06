@@ -445,20 +445,21 @@ function renderItem(item: JsonRecord, mode: RenderMode): string {
 function renderImage(item: JsonRecord, mode: RenderMode): string {
   const source = readString(item.data);
   if (!source) return "";
+  const clipPathStyle = imageClipPathStyle(item);
   const color = normalizeChartColor(readString(item.color));
   if (color && readBoolean(item.isIcon ?? item.is_icon)) {
     const maskUrl = cssUrl(source);
     const maskSize = imageMaskSize(item.fit);
     return `<div style="${frameStyle(item, mode)}${boxStyle(
       item
-    )}color:${escapeCssColor(
+    )}${clipPathStyle}color:${escapeCssColor(
       color
     )};background:currentColor;-webkit-mask:${maskUrl} center/${maskSize} no-repeat;mask:${maskUrl} center/${maskSize} no-repeat;"></div>`;
   }
   return `<img alt="" src="${escapeAttribute(source)}" style="${frameStyle(
     item,
     mode
-  )}${boxStyle(item)}display:block;object-fit:${imageFit(
+  )}${boxStyle(item)}${clipPathStyle}display:block;object-fit:${imageFit(
     item.fit
   )};${imageFocusStyle(item)}">`;
 }
@@ -1515,6 +1516,17 @@ function imageFit(value: unknown): string {
 function imageMaskSize(value: unknown): string {
   const fit = imageFit(value);
   return fit === "fill" ? "100% 100%" : fit;
+}
+
+function imageClipPathStyle(item: JsonRecord): string {
+  const raw = readString(item.clippath ?? item.clipPath ?? item.clip_path);
+  const clipPath = raw?.trim();
+  if (!clipPath || !isSafeImageClipPath(clipPath)) return "";
+  return `clip-path:${clipPath};-webkit-clip-path:${clipPath};`;
+}
+
+function isSafeImageClipPath(value: string) {
+  return /^(polygon|inset|circle|ellipse)\([0-9a-zA-Z\s.,%+\-]*\)$/i.test(value);
 }
 
 function imageFocusStyle(item: JsonRecord): string {

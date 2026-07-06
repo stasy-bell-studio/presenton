@@ -176,6 +176,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
   const borderRadius = borderRadiusPx(readRecord(element.border_radius));
   const fit = imageFit(element.fit);
   const objectPosition = imageObjectPosition(element);
+  const clipPath = imageClipPath(element);
   const flipH = readBoolean(element.flip_h);
   const flipV = readBoolean(element.flip_v);
   const transform = imageFlipTransform(flipH, flipV);
@@ -186,7 +187,9 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
       style={{
         ...frameStyle(element, mode),
         borderRadius,
+        clipPath,
         overflow: "hidden",
+        WebkitClipPath: clipPath,
       }}
     >
       <img
@@ -695,6 +698,21 @@ function imageFit(value: unknown): React.CSSProperties["objectFit"] {
     return value;
   }
   return "contain";
+}
+
+function imageClipPath(
+  element: TemplateV2Element,
+): React.CSSProperties["clipPath"] {
+  const raw =
+    readString(element.clippath) ??
+    readString(element.clipPath) ??
+    readString(element.clip_path);
+  const clipPath = raw?.trim();
+  return clipPath && isSafeImageClipPath(clipPath) ? clipPath : undefined;
+}
+
+function isSafeImageClipPath(value: string) {
+  return /^(polygon|inset|circle|ellipse)\([\s\S]*\)$/i.test(value);
 }
 
 function imageObjectPosition(

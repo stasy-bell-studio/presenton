@@ -190,6 +190,7 @@ export type ImageElement = ElementBase & {
   focus_x?: number | null;
   focus_y?: number | null;
   border_radius?: BorderRadius | null;
+  clippath?: string | null;
   color?: string | null;
   prompt?: string | null;
   is_icon?: boolean | null;
