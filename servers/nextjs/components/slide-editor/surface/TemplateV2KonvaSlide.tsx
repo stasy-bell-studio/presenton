@@ -1353,7 +1353,9 @@ function TemplateV2KonvaSlideComponent({
           "[data-template-v2-floating-toolbar='true'], [data-inline-edit-ignore='true']",
         )
       ) {
-        activateSurface();
+        if (isSurfaceActive()) {
+          activateSurface();
+        }
         return;
       }
       if (targetNode && root?.contains(targetNode)) {
@@ -1373,6 +1375,7 @@ function TemplateV2KonvaSlideComponent({
     clearEditorUiState,
     clearSurface,
     isEditMode,
+    isSurfaceActive,
   ]);
 
   useEffect(() => {

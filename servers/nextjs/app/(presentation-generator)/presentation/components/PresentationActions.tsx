@@ -1418,7 +1418,10 @@ const PresentationActions = (props: PresentationActionsProps) => {
   };
 
   return (
-    <div className="flex h-full w-full overflow-hidden  bg-white px-2 py-1.5">
+    <div
+      data-inline-edit-ignore="true"
+      className="flex h-full w-full overflow-hidden  bg-white px-2 py-1.5"
+    >
       <ActionsSidebar
         activeAction={activeAction}
         onActionSelect={handleActionSelect}
