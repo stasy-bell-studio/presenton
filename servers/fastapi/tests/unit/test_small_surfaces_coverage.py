@@ -148,6 +148,7 @@ def test_slide_model_get_new_slide_branches():
         layout="l",
         index=2,
         content={"a": 1},
+        html_content="<div>slide</div>",
         speaker_note="n",
         properties={"x": True},
         ui={"id": "layout-1", "components": []},
@@ -155,6 +156,7 @@ def test_slide_model_get_new_slide_branches():
     assert base.get_new_slide(pid, None).content == {"a": 1}
     assert base.get_new_slide(pid, {"b": 2}).content == {"b": 2}
     assert base.get_new_slide(pid).ui == {"id": "layout-1", "components": []}
+    assert base.get_new_slide(pid).html_content == "<div>slide</div>"
 
 
 def test_sse_response_frame_format():
@@ -221,11 +223,16 @@ def test_presentation_model_get_new_and_typed_getters(theme):
         layout=layout_payload,
         structure=structure_payload,
         theme=theme,
+        fonts={"heading": "Inter"},
+        web_search=True,
     )
     new_presentation = p.get_new_presentation()
     assert p.version == PresentationVersion.V1_STANDARD
     assert new_presentation.version == PresentationVersion.V1_STANDARD
     assert new_presentation.content == "c"
+    assert new_presentation.theme == theme
+    assert new_presentation.fonts == {"heading": "Inter"}
+    assert new_presentation.web_search is True
     assert isinstance(p.get_presentation_outline(), PresentationOutlineModel)
     assert isinstance(p.get_layout(), PresentationLayoutModel)
     assert isinstance(p.get_structure(), PresentationStructureModel)

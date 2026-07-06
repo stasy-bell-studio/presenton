@@ -238,10 +238,13 @@ class ChatTools:
                 description=(
                     "Inspect the rendered UI layout of one slide by zero-based index. "
                     "Rendered template slides display their `ui` layout (components with "
-                    "text/text-list/table/chart/image elements), NOT the schema `content`. "
-                    "Returns component ids, element types, current content, limits, and "
+                    "visible text/text-list/table/chart/image/container/shape/layout "
+                    "elements), NOT the schema `content`. Returns component ids, element "
+                    "types, whether content is editable, current content, limits, and "
                     "concrete element paths. Call this before any element edit and use its "
-                    "paths verbatim. If it returns editable:false, edit that slide with "
+                    "paths verbatim. For content_editable:false elements, only use "
+                    "position/size here, or choose a content_editable descendant path. "
+                    "If it returns editable:false, edit that slide with "
                     "getContentSchemaFromLayoutId + saveSlide instead."
                 ),
                 schema=GetSlideElementsInput,
@@ -256,7 +259,10 @@ class ChatTools:
                     "whole table via table {columns or headers, rows}, chart "
                     "title/categories/series via chart, image/icon URLs via text (from "
                     "generateAssets, generateImage, or generateIcon), or position/size "
-                    "for move/resize requests. Chart series must use values arrays, not "
+                    "for move/resize requests. For elements where getSlideElements reports "
+                    "content_editable:false, do not send text/items/table/chart; update "
+                    "position/size or target a content_editable descendant instead. "
+                    "Chart series must use values arrays, not "
                     "data arrays. This changes what the user sees. Respect any max/min "
                     "limits reported by getSlideElements. Never delete a table/chart just "
                     "because a data update failed; retry with the correct payload shape."

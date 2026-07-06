@@ -104,6 +104,7 @@ export enum MixpanelEvent {
   Dashboard_New_Presentation_Clicked = 'Dashboard New Presentation Clicked',
   Dashboard_Presentation_Opened = 'Dashboard Presentation Opened',
   Dashboard_Presentation_Deleted = 'Dashboard Presentation Deleted',
+  Dashboard_Presentation_Duplicated = 'Dashboard Presentation Duplicated',
   Dashboard_Create_New_Card_Clicked = 'Dashboard Create New Card Clicked',
 
   Sidebar_Navigation_Clicked = 'Sidebar Navigation Clicked',
