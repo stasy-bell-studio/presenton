@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ensureGoogleFontsForDescriptors,
   ensureTemplateFontsForDescriptors,
+  waitForFontDescriptorsLoaded,
   type TemplateFontOption,
 } from "@/components/slide-editor/text/google-fonts";
 import {
@@ -28,7 +29,7 @@ export function useFontLoadState(
   const fontSignature = useMemo(() => fontLoadSignatureForUi(ui), [ui]);
   const [state, setState] = useState(() => ({
     revision: 0,
-    ready: areFontDescriptorsLoaded(fontSignature),
+    ready: !fontSignature,
   }));
 
   useEffect(() => {
@@ -84,10 +85,7 @@ export function useFontLoadState(
     // Keep canvas hidden while we expect fonts, but never indefinitely.
     readyFallbackTimeout = window.setTimeout(markReady, 4000);
     void Promise.all(stylesheetLoads)
-      .then(() =>
-        Promise.all(descriptors.map((descriptor) => fonts.load(descriptor))),
-      )
-      .then(() => fonts.ready)
+      .then(() => waitForFontDescriptorsLoaded(descriptors))
       .then(scheduleReadyProbe)
       .catch(scheduleReadyProbe);
     fonts.addEventListener?.("loadingdone", scheduleReadyProbe);

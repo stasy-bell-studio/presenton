@@ -19,7 +19,10 @@ import type { TemplateV2Layout } from "@/components/slide-editor/importing/templ
 import {
   templateFontOptionsFromMap,
 } from "@/components/slide-editor/text/google-fonts";
-import { ungroupTemplateV2ComponentInUi } from "@/components/slide-editor/model/template-v2-ungroup";
+import {
+  canUngroupTemplateV2Component,
+  ungroupTemplateV2ComponentInUi,
+} from "@/components/slide-editor/model/template-v2-ungroup";
 import { textRunsContent } from "@/components/slide-editor/text/text-runs";
 
 import {
@@ -325,7 +328,7 @@ function TemplateV2KonvaSlideComponent({
     () =>
       selection?.kind === "component" &&
       selectedComponent != null &&
-      readArray(selectedComponent.elements).filter(isRecord).length > 1,
+      canUngroupTemplateV2Component(selectedComponent),
     [selectedComponent, selection],
   );
   const canUngroupLayoutTargetComponent = useMemo(() => {
@@ -339,9 +342,7 @@ function TemplateV2KonvaSlideComponent({
       return false;
     }
     const component = asRecord(readArray(uiDraft.components)[componentIndex]);
-    return component
-      ? readArray(component.elements).filter(isRecord).length > 1
-      : false;
+    return canUngroupTemplateV2Component(component);
   }, [layoutToolbarTarget, uiDraft.components]);
   const [, setToolbarViewportVersion] = useState(0);
   const hasDismissibleEditorUi = Boolean(
@@ -1061,9 +1062,7 @@ function TemplateV2KonvaSlideComponent({
     const component = asRecord(
       readArray(currentUiRef.current.components)[componentIndex],
     );
-    if (!component || readArray(component.elements).filter(isRecord).length <= 1) {
-      return;
-    }
+    if (!canUngroupTemplateV2Component(component)) return;
     const result = ungroupTemplateV2ComponentInUi(
       currentUiRef.current,
       componentIndex,

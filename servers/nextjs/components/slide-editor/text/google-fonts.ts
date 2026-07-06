@@ -216,10 +216,12 @@ export const GOOGLE_FONT_OPTIONS: GoogleFontOption[] = [
 ];
 
 const GOOGLE_FONT_STYLESHEET_TIMEOUT_MS = 2500;
+const FONT_FACE_LOAD_TIMEOUT_MS = 3000;
 const GOOGLE_FONT_URL_BY_FAMILY = new Map(
   GOOGLE_FONT_OPTIONS.map(({ family, cssUrl }) => [family, cssUrl]),
 );
 const pendingStylesheetLoads = new Map<string, Promise<void>>();
+const pendingFontDescriptorLoads = new Map<string, Promise<void>>();
 
 export function isGoogleFontFamily(family: string) {
   return GOOGLE_FONT_URL_BY_FAMILY.has(family.trim());
@@ -311,6 +313,42 @@ export function ensureTemplateFontsForDescriptors(
   return loads;
 }
 
+export function waitForFontDescriptorsLoaded(descriptors: Iterable<string>) {
+  if (typeof document === "undefined" || !document.fonts) {
+    return Promise.resolve();
+  }
+
+  const normalizedDescriptors = Array.from(
+    new Set(
+      Array.from(descriptors)
+        .map((descriptor) => descriptor.trim())
+        .filter(Boolean),
+    ),
+  ).sort();
+  if (!normalizedDescriptors.length) return Promise.resolve();
+
+  const cacheKey = normalizedDescriptors.join("\n");
+  const pendingLoad = pendingFontDescriptorLoads.get(cacheKey);
+  if (pendingLoad) return pendingLoad;
+
+  const fonts = document.fonts;
+  const loadPromise = withTimeout(
+    Promise.all(
+      normalizedDescriptors.map((descriptor) =>
+        loadFontDescriptor(fonts, descriptor),
+      ),
+    )
+      .then(() => fonts.ready)
+      .then(() => undefined),
+    FONT_FACE_LOAD_TIMEOUT_MS,
+  ).finally(() => {
+    pendingFontDescriptorLoads.delete(cacheKey);
+  });
+
+  pendingFontDescriptorLoads.set(cacheKey, loadPromise);
+  return loadPromise;
+}
+
 function findStylesheetLink(cssUrl: string) {
   return Array.from(
     document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
@@ -352,7 +390,9 @@ function ensureStylesheetLoaded(family: string, cssUrl: string) {
 }
 
 function ensureFontFaceLoaded(family: string, sourceUrl: string) {
-  if (findFontFaceStyle(family, sourceUrl)) return null;
+  if (findFontFaceStyle(family, sourceUrl)) {
+    return waitForFontDescriptorsLoaded(fontFamilyLoadDescriptors(family));
+  }
 
   const style = document.createElement("style");
   style.setAttribute("data-font-url", sourceUrl);
@@ -365,7 +405,7 @@ function ensureFontFaceLoaded(family: string, sourceUrl: string) {
 }`;
   document.head.appendChild(style);
 
-  return Promise.resolve();
+  return waitForFontDescriptorsLoaded(fontFamilyLoadDescriptors(family));
 }
 
 function findFontFaceStyle(family: string, sourceUrl: string) {
@@ -402,6 +442,39 @@ function waitForStylesheet(link: HTMLLinkElement) {
     link.addEventListener("load", finish, { once: true });
     link.addEventListener("error", finish, { once: true });
   });
+}
+
+function loadFontDescriptor(fonts: FontFaceSet, descriptor: string) {
+  try {
+    return fonts.load(descriptor).then(
+      () => undefined,
+      () => undefined,
+    );
+  } catch {
+    return Promise.resolve();
+  }
+}
+
+function withTimeout(promise: Promise<void>, timeoutMs: number) {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    let timeoutId: number | null = null;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId != null) {
+        window.clearTimeout(timeoutId);
+      }
+      resolve();
+    };
+    timeoutId = window.setTimeout(finish, timeoutMs);
+    promise.then(finish, finish);
+  });
+}
+
+function fontFamilyLoadDescriptors(family: string) {
+  const escapedFamily = escapeCssString(family);
+  return [`400 16px "${escapedFamily}"`, `700 16px "${escapedFamily}"`];
 }
 
 function fontFamilyFromFontDescriptor(descriptor: string) {

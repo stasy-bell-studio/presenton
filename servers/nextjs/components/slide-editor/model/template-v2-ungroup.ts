@@ -33,6 +33,15 @@ export type TemplateV2UngroupSelection = {
   componentIndex: number;
 };
 
+export function canUngroupTemplateV2Component(
+  component: RawRecord | null | undefined,
+) {
+  if (!component) return false;
+  const elements = readArray(component.elements).filter(isRecord);
+  if (elements.length > 1) return true;
+  return elements.some(hasUngroupableFlowLayout);
+}
+
 export function ungroupTemplateV2ComponentInUi(
   sourceUi: RawRecord,
   componentIndex: number,
@@ -40,7 +49,7 @@ export function ungroupTemplateV2ComponentInUi(
 ): { ui: RawRecord; selection: TemplateV2UngroupSelection } | null {
   const components = [...readArray(sourceUi.components)];
   const component = asRecord(components[componentIndex]);
-  if (!component) return null;
+  if (!component || !canUngroupTemplateV2Component(component)) return null;
 
   const ungroupedComponents = ungroupedComponentsFromComponent(
     component,
@@ -126,6 +135,16 @@ function ungroupElementTree(
   return [...currentLevel, ...children];
 }
 
+function hasUngroupableFlowLayout(element: RawRecord): boolean {
+  const childInfo = childArrayInfoFromRecord(element);
+  if (!childInfo) return false;
+  const children = childInfo.items.filter(isRecord);
+  if (isFlowLayoutType(readString(element.type)) && children.length > 0) {
+    return true;
+  }
+  return children.some(hasUngroupableFlowLayout);
+}
+
 function ungroupedComponent(
   entry: { element: RawRecord; box: TemplateV2UngroupBox },
   idBase: string,
@@ -155,6 +174,22 @@ function stripElementChildren(element: RawRecord): RawRecord {
   delete rest.elements;
   delete rest.item;
   return rest;
+}
+
+function childArrayInfoFromRecord(element: RawRecord): ChildArrayInfo | null {
+  if (Array.isArray(element.children)) return { items: element.children };
+  if (Array.isArray(element.elements)) return { items: element.elements };
+  if (asRecord(element.child)) return { items: [element.child] };
+  return null;
+}
+
+function isFlowLayoutType(type: string | null) {
+  return (
+    type === "flex" ||
+    type === "grid" ||
+    type === "list-view" ||
+    type === "grid-view"
+  );
 }
 
 function elementHasVisibleBoxStyle(
