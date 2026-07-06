@@ -240,7 +240,7 @@ export function withEqualTemplateV2FlowChildSizes(
   );
   const type = readString(element.type);
 
-  if (type === "flex") {
+  if (type === "flex" || type === "list-view") {
     const childTypes = children.map((child) => readString(asRecord(child)?.type));
     if (
       childTypes.some((childType) => childType == null) ||
@@ -249,7 +249,7 @@ export function withEqualTemplateV2FlowChildSizes(
       return children;
     }
 
-    const direction = readString(element.direction) === "column" ? "column" : "row";
+    const direction = readString(element.direction) === "row" ? "row" : "column";
     const gap =
       direction === "row"
         ? readNumber(element, "column_gap") ??
@@ -273,7 +273,7 @@ export function withEqualTemplateV2FlowChildSizes(
     );
   }
 
-  if (type === "grid") {
+  if (type === "grid" || type === "grid-view") {
     const columns = Math.max(
       1,
       Math.min(children.length, Math.trunc(readNumber(element, "columns") ?? 1)),
@@ -917,7 +917,7 @@ function adaptFlex(raw: UnknownRecord): SlideElement {
   return {
     ...requiredBaseElement(raw),
     type: "flex",
-    direction: readEnum(raw, ["row", "column"], "direction") ?? "row",
+    direction: readEnum(raw, ["row", "column"], "direction") ?? "column",
     wrap: readBoolean(raw, "wrap"),
     align_items: readLayoutAlignment(raw, "align_items"),
     justify_content: readLayoutAlignment(raw, "justify_content"),

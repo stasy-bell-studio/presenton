@@ -72,6 +72,7 @@ import {
   readNumber,
   readString,
   ROOT_ELEMENTS_COMPONENT_INDEX,
+  STAGE_BOX,
   resizeComponent,
   scaleRawElementTextMetrics,
   selectionTouchesComponent,
@@ -157,10 +158,12 @@ export function RawComponentNode({
         groupRef.current = node;
         setNodeRef(key, node);
       }}
-      x={box.x}
-      y={box.y}
+      x={box.x + box.width / 2}
+      y={box.y + box.height / 2}
       width={box.width}
       height={box.height}
+      offsetX={box.width / 2}
+      offsetY={box.height / 2}
       rotation={readNumber(component.rotation) ?? 0}
       clipX={isEditMode ? undefined : 0}
       clipY={isEditMode ? undefined : 0}
@@ -216,9 +219,13 @@ export function RawComponentNode({
           width: Math.max(1, box.width * scaleX),
           height: Math.max(1, box.height * scaleY),
         };
+        const position = positionFromNodeInParent(node, STAGE_BOX, {
+          ...box,
+          ...nextBox,
+        });
         onComponentChange(componentIndex, (current) =>
           resizeComponent(current, {
-            ...node.position(),
+            ...position,
             width: nextBox.width,
             height: nextBox.height,
             scaleX,
@@ -964,6 +971,7 @@ function RawImageElement({
 
 type ParsedImageClipPath =
   | { kind: "polygon"; points: Point[] }
+  | { kind: "path"; data: string }
   | {
     kind: "inset";
     top: number;
@@ -972,6 +980,7 @@ type ParsedImageClipPath =
     left: number;
     radius: number;
   }
+  | { kind: "rect"; x: number; y: number; width: number; height: number; radius: number }
   | { kind: "circle"; x: number; y: number; radius: number }
   | { kind: "ellipse"; x: number; y: number; radiusX: number; radiusY: number };
 
@@ -989,6 +998,19 @@ function drawImageClipPath(
 ) {
   const parsed = parseImageClipPath(clipPath, width, height);
   if (!parsed) {
+    context.rect(0, 0, width, height);
+    return;
+  }
+
+  if (parsed.kind === "path") {
+    if (typeof Path2D !== "undefined") {
+      try {
+        return [new Path2D(parsed.data)] as [Path2D];
+      } catch {
+        // Fall through to the basic path drawer below.
+      }
+    }
+    if (drawBasicSvgClipPath(context, parsed.data)) return;
     context.rect(0, 0, width, height);
     return;
   }
@@ -1016,6 +1038,16 @@ function drawImageClipPath(
     return;
   }
 
+  if (parsed.kind === "rect") {
+    const radius = Math.min(parsed.radius, parsed.width / 2, parsed.height / 2);
+    if (radius > 0) {
+      context.roundRect(parsed.x, parsed.y, parsed.width, parsed.height, radius);
+    } else {
+      context.rect(parsed.x, parsed.y, parsed.width, parsed.height);
+    }
+    return;
+  }
+
   if (parsed.kind === "circle") {
     context.arc(parsed.x, parsed.y, parsed.radius, 0, Math.PI * 2);
     return;
@@ -1037,15 +1069,17 @@ function parseImageClipPath(
   width: number,
   height: number,
 ): ParsedImageClipPath | null {
-  const match = /^([a-z-]+)\(([\s\S]*)\)$/i.exec(value.trim());
-  if (!match) return null;
+  const pathData = clipPathDataFromValue(value);
+  if (pathData) return { kind: "path", data: pathData };
 
-  const [, rawKind, rawBody] = match;
-  const kind = rawKind.toLowerCase();
-  const body = rawBody.trim();
+  const clipFunction = readCssClipFunction(value);
+  if (!clipFunction) return null;
 
+  const { kind, body } = clipFunction;
   if (kind === "polygon") return parsePolygonClipPath(body, width, height);
   if (kind === "inset") return parseInsetClipPath(body, width, height);
+  if (kind === "rect") return parseRectClipPath(body, width, height);
+  if (kind === "xywh") return parseXywhClipPath(body, width, height);
   if (kind === "circle") return parseCircleClipPath(body, width, height);
   if (kind === "ellipse") return parseEllipseClipPath(body, width, height);
   return null;
@@ -1087,10 +1121,7 @@ function parseInsetClipPath(
     return null;
   }
 
-  const radiusToken = radiusPart ? splitCssTokens(radiusPart)[0] : null;
-  const radius = radiusToken
-    ? parseClipLength(radiusToken, Math.min(width, height)) ?? 0
-    : 0;
+  const radius = parseClipBoxRadius(radiusPart, width, height);
   return {
     kind: "inset",
     top,
@@ -1101,6 +1132,60 @@ function parseInsetClipPath(
   };
 }
 
+function parseRectClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const [rectPart, radiusPart] = splitCssRound(body);
+  const values = splitCssTokens(rectPart);
+  if (values.length < 4) return null;
+
+  const top = parseClipLength(values[0], height);
+  const right = parseClipLength(values[1], width);
+  const bottom = parseClipLength(values[2], height);
+  const left = parseClipLength(values[3], width);
+  if (top == null || right == null || bottom == null || left == null) {
+    return null;
+  }
+
+  return {
+    kind: "rect",
+    x: left,
+    y: top,
+    width: Math.max(0, right - left),
+    height: Math.max(0, bottom - top),
+    radius: parseClipBoxRadius(radiusPart, width, height),
+  };
+}
+
+function parseXywhClipPath(
+  body: string,
+  width: number,
+  height: number,
+): ParsedImageClipPath | null {
+  const [boxPart, radiusPart] = splitCssRound(body);
+  const values = splitCssTokens(boxPart);
+  if (values.length < 4) return null;
+
+  const x = parseClipLength(values[0], width);
+  const y = parseClipLength(values[1], height);
+  const rectWidth = parseClipLength(values[2], width);
+  const rectHeight = parseClipLength(values[3], height);
+  if (x == null || y == null || rectWidth == null || rectHeight == null) {
+    return null;
+  }
+
+  return {
+    kind: "rect",
+    x,
+    y,
+    width: Math.max(0, rectWidth),
+    height: Math.max(0, rectHeight),
+    radius: parseClipBoxRadius(radiusPart, width, height),
+  };
+}
+
 function parseCircleClipPath(
   body: string,
   width: number,
@@ -1108,10 +1193,11 @@ function parseCircleClipPath(
 ): ParsedImageClipPath | null {
   const [radiusPart, positionPart] = splitCssAt(body);
   const radiusToken = splitCssTokens(radiusPart)[0];
-  const radius = radiusToken
-    ? parseClipLength(radiusToken, Math.min(width, height))
-    : Math.min(width, height) / 2;
   const center = parseClipPosition(positionPart, width, height);
+  if (!center) return null;
+  const radius = radiusToken
+    ? parseCircleRadius(radiusToken, center, width, height)
+    : Math.min(center.x, width - center.x, center.y, height - center.y);
   if (radius == null || !center) return null;
   return {
     kind: "circle",
@@ -1128,13 +1214,16 @@ function parseEllipseClipPath(
 ): ParsedImageClipPath | null {
   const [radiusPart, positionPart] = splitCssAt(body);
   const radiusTokens = splitCssTokens(radiusPart);
-  const radiusX = radiusTokens[0]
-    ? parseClipLength(radiusTokens[0], width)
-    : width / 2;
-  const radiusY = radiusTokens[1]
-    ? parseClipLength(radiusTokens[1], height)
-    : height / 2;
   const center = parseClipPosition(positionPart, width, height);
+  if (!center) return null;
+  const radiusX = radiusTokens[0]
+    ? parseEllipseRadius(radiusTokens[0], center.x, width)
+    : Math.min(center.x, width - center.x);
+  const radiusY = radiusTokens[1]
+    ? parseEllipseRadius(radiusTokens[1], center.y, height)
+    : radiusTokens[0]
+      ? parseEllipseRadius(radiusTokens[0], center.y, height)
+      : Math.min(center.y, height - center.y);
   if (radiusX == null || radiusY == null || !center) return null;
   return {
     kind: "ellipse",
@@ -1143,6 +1232,189 @@ function parseEllipseClipPath(
     radiusX,
     radiusY,
   };
+}
+
+function parseClipBoxRadius(
+  value: string | null,
+  width: number,
+  height: number,
+) {
+  const radiusToken = value ? splitCssTokens(value)[0] : null;
+  return radiusToken
+    ? parseClipLength(radiusToken, Math.min(width, height)) ?? 0
+    : 0;
+}
+
+function parseCircleRadius(
+  token: string,
+  center: Point,
+  width: number,
+  height: number,
+) {
+  const normalized = token.toLowerCase();
+  if (normalized === "closest-side") {
+    return Math.min(center.x, width - center.x, center.y, height - center.y);
+  }
+  if (normalized === "farthest-side") {
+    return Math.max(center.x, width - center.x, center.y, height - center.y);
+  }
+  return parseClipLength(token, Math.min(width, height));
+}
+
+function parseEllipseRadius(token: string, center: number, size: number) {
+  const normalized = token.toLowerCase();
+  if (normalized === "closest-side") return Math.min(center, size - center);
+  if (normalized === "farthest-side") return Math.max(center, size - center);
+  return parseClipLength(token, size);
+}
+
+function drawBasicSvgClipPath(context: Konva.Context, data: string) {
+  const tokens =
+    data.match(/[AaCcHhLlMmQqSsTtVvZz]|[-+]?(?:\d*\.\d+|\d+\.?)(?:e[-+]?\d+)?/g) ??
+    [];
+  let index = 0;
+  let command = "";
+  let current: Point = { x: 0, y: 0 };
+  let subpathStart: Point = { x: 0, y: 0 };
+  let lastCubicControl: Point | null = null;
+  let lastQuadraticControl: Point | null = null;
+
+  const isCommand = (token: string | undefined) =>
+    Boolean(token && /^[A-Za-z]$/.test(token));
+  const readPathNumber = () => {
+    const token = tokens[index];
+    if (token == null || isCommand(token)) return null;
+    index += 1;
+    const value = Number.parseFloat(token);
+    return Number.isFinite(value) ? value : null;
+  };
+  const readPoint = (relative: boolean): Point | null => {
+    const x = readPathNumber();
+    const y = readPathNumber();
+    if (x == null || y == null) return null;
+    return relative ? { x: current.x + x, y: current.y + y } : { x, y };
+  };
+  const reflectPoint = (point: Point | null) =>
+    point ? { x: current.x * 2 - point.x, y: current.y * 2 - point.y } : current;
+
+  while (index < tokens.length) {
+    if (isCommand(tokens[index])) {
+      command = tokens[index] ?? "";
+      index += 1;
+    } else if (!command) {
+      return false;
+    }
+
+    const relative = command === command.toLowerCase();
+    switch (command.toLowerCase()) {
+      case "m": {
+        const point = readPoint(relative);
+        if (!point) return false;
+        context.moveTo(point.x, point.y);
+        current = point;
+        subpathStart = point;
+        command = relative ? "l" : "L";
+        lastCubicControl = null;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "l": {
+        const point = readPoint(relative);
+        if (!point) return false;
+        context.lineTo(point.x, point.y);
+        current = point;
+        lastCubicControl = null;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "h": {
+        const value = readPathNumber();
+        if (value == null) return false;
+        current = { x: relative ? current.x + value : value, y: current.y };
+        context.lineTo(current.x, current.y);
+        lastCubicControl = null;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "v": {
+        const value = readPathNumber();
+        if (value == null) return false;
+        current = { x: current.x, y: relative ? current.y + value : value };
+        context.lineTo(current.x, current.y);
+        lastCubicControl = null;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "c": {
+        const control1 = readPoint(relative);
+        const control2 = readPoint(relative);
+        const point = readPoint(relative);
+        if (!control1 || !control2 || !point) return false;
+        context.bezierCurveTo(
+          control1.x,
+          control1.y,
+          control2.x,
+          control2.y,
+          point.x,
+          point.y,
+        );
+        current = point;
+        lastCubicControl = control2;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "s": {
+        const control1 = reflectPoint(lastCubicControl);
+        const control2 = readPoint(relative);
+        const point = readPoint(relative);
+        if (!control2 || !point) return false;
+        context.bezierCurveTo(
+          control1.x,
+          control1.y,
+          control2.x,
+          control2.y,
+          point.x,
+          point.y,
+        );
+        current = point;
+        lastCubicControl = control2;
+        lastQuadraticControl = null;
+        break;
+      }
+      case "q": {
+        const control = readPoint(relative);
+        const point = readPoint(relative);
+        if (!control || !point) return false;
+        context.quadraticCurveTo(control.x, control.y, point.x, point.y);
+        current = point;
+        lastCubicControl = null;
+        lastQuadraticControl = control;
+        break;
+      }
+      case "t": {
+        const control = reflectPoint(lastQuadraticControl);
+        const point = readPoint(relative);
+        if (!point) return false;
+        context.quadraticCurveTo(control.x, control.y, point.x, point.y);
+        current = point;
+        lastCubicControl = null;
+        lastQuadraticControl = control;
+        break;
+      }
+      case "z": {
+        context.closePath();
+        current = subpathStart;
+        command = "";
+        lastCubicControl = null;
+        lastQuadraticControl = null;
+        break;
+      }
+      default:
+        return false;
+    }
+  }
+
+  return true;
 }
 
 function parseClipPoint(
@@ -1241,6 +1513,71 @@ function splitCssRound(value: string): [string, string | null] {
 
 function splitCssTokens(value: string) {
   return value.trim().split(/\s+/).filter(Boolean);
+}
+
+function readCssClipFunction(value: string) {
+  const match = /([a-z-]+)\(/i.exec(value);
+  if (!match || match.index == null) return null;
+
+  const kind = match[1].toLowerCase();
+  const bodyStart = match.index + match[0].length;
+  let depth = 1;
+  let quote: string | null = null;
+
+  for (let index = bodyStart; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === "\\" && index + 1 < value.length) {
+        index += 1;
+        continue;
+      }
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          kind,
+          body: value.slice(bodyStart, index).trim(),
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
+function clipPathDataFromValue(value: string) {
+  const clipFunction = readCssClipFunction(value);
+  if (clipFunction?.kind === "path") {
+    const data = extractCssPathData(clipFunction.body);
+    return data && isSafeSvgClipPathData(data) ? data : null;
+  }
+
+  const data = extractCssPathData(value);
+  return data && isSafeSvgClipPathData(data) ? data : null;
+}
+
+function extractCssPathData(value: string) {
+  const body = value.trim().replace(/^(evenodd|nonzero)\s*,\s*/i, "");
+  const quoted = /^(['"])([\s\S]*)\1$/.exec(body);
+  return quoted ? quoted[2].trim() : body;
+}
+
+function isSafeSvgClipPathData(value: string) {
+  return (
+    /[A-Za-z]/.test(value) &&
+    /^[AaCcHhLlMmQqSsTtVvZz0-9eE\s.,+\-]*$/.test(value)
+  );
 }
 
 function useLoadedKonvaImage(src: string | null): HTMLImageElement | null {

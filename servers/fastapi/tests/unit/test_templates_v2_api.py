@@ -206,6 +206,88 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
     assert fake_async_session.commit_count == 1
 
 
+def test_create_template_v2_caps_raw_layouts_to_preview_images(tmp_path, fake_async_session):
+    pptx_path = tmp_path / "slidesgo.pptx"
+    pptx_path.write_bytes(b"pptx")
+    raw_layouts = {
+        "layouts": [
+            RAW_LAYOUTS["layouts"][0],
+            {
+                **RAW_LAYOUTS["layouts"][0],
+                "id": "slide_2",
+                "description": "Full slide layout converted from PPTX slide 2.",
+            },
+        ]
+    }
+    with patch(
+        "api.v2.templates.router.resolve_app_path_to_filesystem",
+        return_value=str(pptx_path),
+    ), patch(
+        "api.v2.templates.router.EXPORT_TASK_SERVICE.convert_pptx_to_json",
+        new=AsyncMock(return_value=PptxToJsonDocument(**raw_layouts)),
+    ), patch(
+        "api.v2.templates.router.generate_template",
+        new=Mock(return_value=GENERATED_LAYOUTS),
+    ) as generate_mock, patch(
+        "api.v2.templates.router.merge_similar_components",
+        new=Mock(return_value=MERGED_COMPONENTS),
+    ), patch(
+        "api.v2.templates.router.random.randint",
+        return_value=4801,
+    ):
+        template = asyncio.run(
+            create_template_v2(
+                CreateTemplateV2Request(
+                    pptx_url="/app_data/uploads/slidesgo.pptx",
+                    slide_image_urls=["/app_data/images/slide-1.png"],
+                ),
+                sql_session=fake_async_session,
+            )
+        )
+
+    raw_layouts_arg = generate_mock.call_args.args[0]
+    assert [layout.id for layout in raw_layouts_arg.layouts] == ["slide_1"]
+    assert template.raw_layouts == RAW_LAYOUTS
+    assert template.assets["slide_image_urls"] == ["/app_data/images/slide-1.png"]
+
+
+def test_create_template_v2_persists_when_component_dedup_fails(
+    tmp_path,
+    fake_async_session,
+):
+    pptx_path = tmp_path / "dedup-fails.pptx"
+    pptx_path.write_bytes(b"pptx")
+    with patch(
+        "api.v2.templates.router.resolve_app_path_to_filesystem",
+        return_value=str(pptx_path),
+    ), patch(
+        "api.v2.templates.router.EXPORT_TASK_SERVICE.convert_pptx_to_json",
+        new=AsyncMock(return_value=PptxToJsonDocument(**RAW_LAYOUTS)),
+    ), patch(
+        "api.v2.templates.router.generate_template",
+        new=Mock(return_value=GENERATED_LAYOUTS),
+    ), patch(
+        "api.v2.templates.router.merge_similar_components",
+        new=Mock(side_effect=ValueError("bad clusters")),
+    ), patch(
+        "api.v2.templates.router.random.randint",
+        return_value=4801,
+    ):
+        template = asyncio.run(
+            create_template_v2(
+                CreateTemplateV2Request(
+                    pptx_url="/app_data/uploads/dedup-fails.pptx",
+                    slide_image_urls=["/app_data/images/slide-1.png"],
+                ),
+                sql_session=fake_async_session,
+            )
+        )
+
+    assert template.merged_components == {"components": []}
+    assert template.layouts["layouts"][0]["id"] == "slide_1_4801"
+    assert fake_async_session.commit_count == 1
+
+
 def test_create_template_v2_requires_slide_images(fake_async_session):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(

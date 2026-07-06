@@ -28,6 +28,7 @@ import {
   textVisualLocalBox,
 } from "@/components/slide-editor/text/template-v2-text";
 import {
+  intrinsicFlowSize,
   isFlowLayoutElement,
   layoutFlowChildren,
 } from "@/components/slide-editor/layout/flowLayout";
@@ -477,8 +478,7 @@ export function elementWithNormalizedLayoutChildren(
 }
 
 export function shouldUseCenterOrigin(element: RawElement) {
-  const type = readString(element.type);
-  return type === "image";
+  return Boolean(element);
 }
 
 export function layoutContainerChildren(
@@ -1204,8 +1204,24 @@ export function elementSize(element: RawElement, fallback?: Size): Size {
       height: fallback?.height ?? DECORATIVE_LINE_LENGTH,
     };
   }
-  if (type === "flex" || type === "grid") {
-    return fallback ?? childrenBounds(childArrayInfo(element)?.items ?? []);
+  if (
+    type === "flex" ||
+    type === "grid" ||
+    type === "list-view" ||
+    type === "grid-view"
+  ) {
+    return (
+      fallback ??
+      intrinsicFlowSize(
+        element,
+        (childArrayInfo(element)?.items ?? []).filter(isRecord) as RawElement[],
+        {
+          elementBox,
+          elementSize,
+          isManualPositioned,
+        },
+      )
+    );
   }
   return fallback ?? { width: 1, height: 1 };
 }
@@ -1250,11 +1266,7 @@ export function shouldClipElementChildren(
 ) {
   if (!childInfo) return false;
   const type = readString(element.type);
-  return (
-    type === "container" ||
-    type === "flex" ||
-    type === "grid"
-  );
+  return type === "container";
 }
 
 export function isBoxVisualType(type: string | null) {
@@ -1263,6 +1275,8 @@ export function isBoxVisualType(type: string | null) {
     type === "container" ||
     type === "flex" ||
     type === "grid" ||
+    type === "list-view" ||
+    type === "grid-view" ||
     type === "group"
   );
 }

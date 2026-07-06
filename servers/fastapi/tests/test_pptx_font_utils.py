@@ -1,6 +1,8 @@
 import asyncio
+import io
 import os
 import zipfile
+import xml.etree.ElementTree as ET
 from types import SimpleNamespace
 
 import pytest
@@ -41,6 +43,54 @@ async def _run_sync_in_test(func, *args, **kwargs):
 
 def _fake_corrupted_pptx_bytes() -> bytes:
     return b"this is not a valid powerpoint zip package"
+
+
+def _fake_pptx_bytes(slide_count: int) -> bytes:
+    buffer = io.BytesIO()
+    slide_ids = "\n".join(
+        f'<p:sldId id="{255 + index}" r:id="rId{index}" />'
+        for index in range(1, slide_count + 1)
+    )
+    rels = "\n".join(
+        f'<Relationship Id="rId{index}" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" '
+        f'Target="slides/slide{index}.xml" />'
+        for index in range(1, slide_count + 1)
+    )
+    overrides = "\n".join(
+        f'<Override PartName="/ppt/slides/slide{index}.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml" />'
+        for index in range(1, slide_count + 1)
+    )
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            f"""\
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+{overrides}
+</Types>""",
+        )
+        archive.writestr(
+            "ppt/presentation.xml",
+            f"""\
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:sldIdLst>
+{slide_ids}
+  </p:sldIdLst>
+</p:presentation>""",
+        )
+        archive.writestr(
+            "ppt/_rels/presentation.xml.rels",
+            f"""\
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+{rels}
+</Relationships>""",
+        )
+        for index in range(1, slide_count + 1):
+            archive.writestr(f"ppt/slides/slide{index}.xml", "<p:sld />")
+            archive.writestr(f"ppt/slides/_rels/slide{index}.xml.rels", "<rels />")
+    return buffer.getvalue()
 
 
 def test_build_google_fonts_stylesheet_url_includes_regular_and_bold_weights():
@@ -108,6 +158,40 @@ def test_upload_fonts_and_preview_rejects_corrupted_pptx():
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == fonts_and_slides_preview.INVALID_PPTX_UPLOAD_ERROR
+
+
+def test_template_preview_slide_cap_and_pptx_trim(tmp_path):
+    pptx_path = tmp_path / "deck.pptx"
+    pptx_path.write_bytes(_fake_pptx_bytes(52))
+
+    assert fonts_and_slides_preview._resolve_template_preview_slide_cap(None) == 50
+    assert fonts_and_slides_preview._resolve_template_preview_slide_cap(100) == 50
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        fonts_and_slides_preview._resolve_template_preview_slide_cap(0)
+    assert exc_info.value.status_code == 400
+
+    trimmed_path = fonts_and_slides_preview._trim_pptx_to_max_slides(
+        str(pptx_path),
+        50,
+        str(tmp_path),
+        DummyLogger(),
+    )
+
+    assert trimmed_path != str(pptx_path)
+    with zipfile.ZipFile(trimmed_path) as archive:
+        assert "ppt/slides/slide50.xml" in archive.namelist()
+        assert "ppt/slides/slide51.xml" not in archive.namelist()
+        presentation_xml = ET.fromstring(archive.read("ppt/presentation.xml"))
+        slide_ids = presentation_xml.findall(
+            ".//p:sldId", fonts_and_slides_preview.PPT_NS
+        )
+        assert len(slide_ids) == 50
+        rels_xml = ET.fromstring(archive.read("ppt/_rels/presentation.xml.rels"))
+        assert rels_xml.find(
+            ".//*[@Id='rId51']",
+        ) is None
+        content_types = archive.read("[Content_Types].xml").decode()
+        assert "/ppt/slides/slide51.xml" not in content_types
 
 
 def test_build_google_fonts_stylesheet_url_sorts_and_deduplicates_weights():
@@ -518,6 +602,38 @@ async def test_create_slide_previews_from_html_batches_slides_in_one_task(
     assert "One" in htmls[0]
     assert "Two" in htmls[1]
     assert result == [str(path) for path in output_paths]
+
+
+@pytest.mark.anyio
+async def test_render_pptx_slides_to_images_rejects_image_count_mismatch(monkeypatch):
+    class FakeExportTaskService:
+        async def convert_pptx_to_html(self, pptx_path, get_fonts=False):
+            return SimpleNamespace(
+                slides=["<div>One</div>", "<div>Two</div>"],
+                font_css="",
+                width=320.0,
+                height=180.0,
+            )
+
+        async def render_htmls_to_images(self, htmls, width, height):
+            return SimpleNamespace(paths=["slide-1.png"])
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "EXPORT_TASK_SERVICE",
+        FakeExportTaskService(),
+    )
+
+    with pytest.raises(fonts_and_slides_preview.HTTPException) as exc_info:
+        await fonts_and_slides_preview.render_pptx_slides_to_images(
+            modified_pptx_path="deck.pptx",
+            font_paths_for_install=[],
+            max_slides=None,
+            logger=DummyLogger(),
+        )
+
+    assert exc_info.value.status_code == 500
+    assert "expected 2, got 1" in exc_info.value.detail
 
 
 @pytest.mark.anyio

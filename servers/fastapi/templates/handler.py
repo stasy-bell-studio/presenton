@@ -520,7 +520,6 @@ async def upload_fonts_and_slides_preview(
         pptx_file=pptx_file,
         font_files=font_files,
         original_font_names=original_font_names,
-        max_slides=25,
     )
 
 

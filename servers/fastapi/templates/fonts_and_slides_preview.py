@@ -10,6 +10,7 @@ import tempfile
 import uuid
 import shutil
 import zipfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 from fastapi import HTTPException, UploadFile
@@ -79,11 +80,20 @@ class _PreviewLogger:
 
 PREVIEW_WIDTH = 1280
 PREVIEW_HEIGHT = 720
+MAX_TEMPLATE_PREVIEW_SLIDES = 50
 MAX_FONT_CHECK_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
 FONT_CHECK_UPLOAD_SIZE_ERROR = "File size must be less than 100MB."
 INVALID_PPTX_UPLOAD_ERROR = (
     "The uploaded PowerPoint file is corrupted or unsupported."
 )
+PPT_NS = {
+    "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+}
+REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+ET.register_namespace("p", PPT_NS["p"])
+ET.register_namespace("r", PPT_NS["r"])
 
 
 def _preview_dimensions_from_document(width: float, height: float) -> Tuple[int, int]:
@@ -366,7 +376,7 @@ async def render_pptx_slides_to_images(
         modified_pptx_path, get_fonts=True
     )
     if not pptx_document.slides:
-        raise RuntimeError("PPTX-to-HTML returned no slides")
+        raise HTTPException(status_code=500, detail="PPTX-to-HTML returned no slides")
 
     slide_htmls = pptx_document.slides
     if max_slides:
@@ -405,6 +415,14 @@ async def render_pptx_slides_to_images(
         width=width,
         height=height,
     )
+    if len(rendered.paths) != len(localized_slide_htmls):
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "PPTX preview renderer returned an unexpected slide count: "
+                f"expected {len(localized_slide_htmls)}, got {len(rendered.paths)}"
+            ),
+        )
     logger.info(
         f"Rendered {len(rendered.paths)} HTML slide previews in one Chromium task"
     )
@@ -631,6 +649,97 @@ def _validate_pptx_package(pptx_path: str) -> None:
         raise HTTPException(status_code=400, detail=INVALID_PPTX_UPLOAD_ERROR)
 
 
+def _resolve_template_preview_slide_cap(max_slides: Optional[int]) -> int:
+    if max_slides is None:
+        return MAX_TEMPLATE_PREVIEW_SLIDES
+    if max_slides < 1:
+        raise HTTPException(
+            status_code=400,
+            detail="max_slides must be greater than zero",
+        )
+    return min(max_slides, MAX_TEMPLATE_PREVIEW_SLIDES)
+
+
+def _relationship_target_path(base_dir: str, target: str) -> str:
+    if target.startswith("/"):
+        return target.lstrip("/")
+    return os.path.normpath(os.path.join(base_dir, target)).replace(os.sep, "/")
+
+
+def _trim_pptx_to_max_slides(
+    pptx_path: str,
+    max_slides: int,
+    temp_dir: str,
+    logger,
+) -> str:
+    try:
+        with zipfile.ZipFile(pptx_path, "r") as archive:
+            presentation_xml = ET.fromstring(archive.read("ppt/presentation.xml"))
+            rels_xml = ET.fromstring(archive.read("ppt/_rels/presentation.xml.rels"))
+            slide_id_list = presentation_xml.find("p:sldIdLst", PPT_NS)
+            if slide_id_list is None:
+                raise ValueError("PPTX presentation is missing slide references")
+
+            slide_ids = list(slide_id_list.findall("p:sldId", PPT_NS))
+            if len(slide_ids) <= max_slides:
+                return pptx_path
+
+            rels_by_id = {
+                rel.get("Id"): rel
+                for rel in rels_xml.findall(f"{{{REL_NS}}}Relationship")
+            }
+            rel_attr = f"{{{PPT_NS['r']}}}id"
+            removed_parts: set[str] = set()
+            removed_part_names: set[str] = set()
+            for slide_id in slide_ids[max_slides:]:
+                slide_id_list.remove(slide_id)
+                rel = rels_by_id.get(slide_id.get(rel_attr))
+                if rel is None:
+                    continue
+                rels_xml.remove(rel)
+                target = rel.get("Target") or ""
+                if target:
+                    slide_path = _relationship_target_path("ppt", target)
+                    removed_parts.add(slide_path)
+                    removed_parts.add(
+                        slide_path.replace("ppt/slides/", "ppt/slides/_rels/")
+                        + ".rels"
+                    )
+                    removed_part_names.add(f"/{slide_path}")
+
+            output_path = os.path.join(
+                temp_dir,
+                f"{Path(pptx_path).stem}-first-{max_slides}.pptx",
+            )
+            with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as output:
+                for member in archive.infolist():
+                    if member.filename in removed_parts:
+                        continue
+                    if member.filename == "ppt/presentation.xml":
+                        output.writestr(member, ET.tostring(presentation_xml))
+                    elif member.filename == "ppt/_rels/presentation.xml.rels":
+                        output.writestr(member, ET.tostring(rels_xml))
+                    elif member.filename == "[Content_Types].xml":
+                        content_types_xml = ET.fromstring(archive.read(member.filename))
+                        for override in list(content_types_xml):
+                            if override.get("PartName") in removed_part_names:
+                                content_types_xml.remove(override)
+                        output.writestr(member, ET.tostring(content_types_xml))
+                    else:
+                        output.writestr(member, archive.read(member.filename))
+            logger.info(
+                f"Trimmed PPTX from {len(slide_ids)} to {max_slides} slides for template preview"
+            )
+            return output_path
+    except HTTPException:
+        raise
+    except (KeyError, OSError, zipfile.BadZipFile, ET.ParseError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="Failed to prepare PPTX slide preview. The file may be corrupted or unsupported.",
+        ) from exc
+
+
 async def check_fonts_in_pptx_handler(pptx_file: UploadFile) -> FontCheckResponse:
     """
     Extract fonts from a PPTX file and check their availability in Google Fonts.
@@ -727,6 +836,7 @@ async def upload_fonts_and_preview_handler(
         )
 
     logger = _PreviewLogger()
+    slide_cap = _resolve_template_preview_slide_cap(max_slides)
 
     logger.info(f"Processing font upload and preview for {num_font_files} fonts")
 
@@ -768,9 +878,15 @@ async def upload_fonts_and_preview_handler(
             session_dir=session_dir,
             upload_fonts=upload_fonts,
         )
-
         slide_image_paths: List[str] = []
         if get_slide_images:
+            modified_pptx_path = await asyncio.to_thread(
+                _trim_pptx_to_max_slides,
+                modified_pptx_path,
+                slide_cap,
+                temp_dir,
+                logger,
+            )
             slide_image_paths = await create_slide_previews(
                 modified_pptx_path=modified_pptx_path,
                 temp_dir=temp_dir,
@@ -778,7 +894,7 @@ async def upload_fonts_and_preview_handler(
                 font_mapping=font_mapping,
                 explicit_font_aliases=embedded_font_aliases,
                 protected_font_names=protected_embedded_font_names,
-                max_slides=max_slides,
+                max_slides=slide_cap,
                 logger=logger,
                 session_dir=session_dir,
             )

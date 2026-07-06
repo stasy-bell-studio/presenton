@@ -275,10 +275,7 @@ async def _merge_generated_components(layouts: SlideLayouts) -> MergedComponents
         LOGGER.exception(
             "[templates.v2.create] component de-duplication produced invalid output"
         )
-        raise HTTPException(
-            status_code=500,
-            detail="Component de-duplication produced invalid output",
-        ) from exc
+        return MergedComponents(components=[])
 
     LOGGER.info(
         "[templates.v2.create] component de-duplication complete merged_components=%d",
@@ -446,7 +443,18 @@ async def _prepare_template_v2_source(
         len(raw_layouts.layouts),
     )
 
-    if len(request.slide_image_urls) != len(raw_layouts.layouts):
+    if len(raw_layouts.layouts) > len(request.slide_image_urls):
+        LOGGER.info(
+            "[templates.v2.%s] capping raw layouts to preview images "
+            "raw_slides=%d slide_images=%d",
+            operation,
+            len(raw_layouts.layouts),
+            len(request.slide_image_urls),
+        )
+        raw_layouts = RawSlideLayouts(
+            layouts=raw_layouts.layouts[: len(request.slide_image_urls)]
+        )
+    elif len(request.slide_image_urls) > len(raw_layouts.layouts):
         raise HTTPException(
             status_code=400,
             detail="Exactly one slide image is required for each slide layout",
@@ -455,7 +463,7 @@ async def _prepare_template_v2_source(
     return (
         pptx_path,
         raw_layouts,
-        pptx_json.model_dump(mode="json", exclude_none=True),
+        raw_layouts.model_dump(mode="json", exclude_none=True),
         _coerce_font_map(request.fonts),
     )
 

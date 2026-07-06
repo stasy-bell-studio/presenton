@@ -46,7 +46,7 @@ async def upload_fonts_and_slides_preview_handler(
         pptx_file=pptx_file,
         font_files=font_files,
         original_font_names=original_font_names,
-        max_slides=max_slides or 25,
+        max_slides=max_slides,
         upload_fonts=upload_fonts,
         get_slide_images=get_slide_images,
         upload_presentation=upload_presentation,

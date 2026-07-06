@@ -137,6 +137,8 @@ export interface TemplateV2Element {
   focus_x?: number | string | null;
   focus_y?: number | string | null;
   clippath?: string | null;
+  clip_path?: string | null;
+  clipPath?: string | null;
   color?: string | null;
   child?: TemplateV2Element | null;
   children?: TemplateV2Element[] | null;

@@ -187,9 +187,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
       style={{
         ...frameStyle(element, mode),
         borderRadius,
-        clipPath,
         overflow: "hidden",
-        WebkitClipPath: clipPath,
       }}
     >
       <img
@@ -199,9 +197,11 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
         style={{
           display: "block",
           height: "100%",
+          clipPath,
           objectFit: fit,
           objectPosition,
           transform,
+          WebkitClipPath: clipPath,
           width: "100%",
         }}
       />
@@ -210,6 +210,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
           aria-hidden="true"
           style={{
             backgroundColor: color,
+            clipPath,
             inset: 0,
             maskImage: `url(${resolvedSrc})`,
             maskPosition: objectPosition ?? "center",
@@ -218,6 +219,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
             pointerEvents: "none",
             position: "absolute",
             transform,
+            WebkitClipPath: clipPath,
             WebkitMaskImage: `url(${resolvedSrc})`,
             WebkitMaskPosition: objectPosition ?? "center",
             WebkitMaskRepeat: "no-repeat",
@@ -708,11 +710,70 @@ function imageClipPath(
     readString(element.clipPath) ??
     readString(element.clip_path);
   const clipPath = raw?.trim();
-  return clipPath && isSafeImageClipPath(clipPath) ? clipPath : undefined;
+  if (!clipPath) return undefined;
+  return normalizeSafeImageClipPath(clipPath);
 }
 
-function isSafeImageClipPath(value: string) {
-  return /^(polygon|inset|circle|ellipse)\([\s\S]*\)$/i.test(value);
+function normalizeSafeImageClipPath(value: string) {
+  const path = /^path\(([\s\S]*)\)$/i.exec(value);
+  if (path) {
+    const data = extractCssPathData(path[1]);
+    return data && isSafeSvgClipPathData(data) ? `path('${data}')` : undefined;
+  }
+  const rawPath = extractCssPathData(value);
+  if (isSafeSvgClipPathData(rawPath)) return `path('${rawPath}')`;
+  return isSafeCssClipPath(value) ? value : undefined;
+}
+
+function extractCssPathData(value: string) {
+  const body = value.trim().replace(/^(evenodd|nonzero)\s*,\s*/i, "");
+  const quoted = /^(['"])([\s\S]*)\1$/.exec(body);
+  return quoted ? quoted[2].trim() : body;
+}
+
+function isSafeSvgClipPathData(value: string) {
+  return (
+    /[A-Za-z]/.test(value) &&
+    /^[AaCcHhLlMmQqSsTtVvZz0-9eE\s.,+\-]*$/.test(value)
+  );
+}
+
+function isSafeCssClipPath(value: string) {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 4096 &&
+    !/[;"{}<>\\]/.test(trimmed) &&
+    !lower.includes("javascript:") &&
+    !lower.includes("data:") &&
+    !lower.includes("expression(") &&
+    !lower.includes("var(") &&
+    hasBalancedCssClipPathSyntax(trimmed) &&
+    /(?:path|polygon|inset|circle|ellipse|rect|xywh|url)\(/i.test(trimmed)
+  );
+}
+
+function hasBalancedCssClipPathSyntax(value: string) {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0 && quote == null;
 }
 
 function imageObjectPosition(

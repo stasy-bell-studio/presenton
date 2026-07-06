@@ -1521,12 +1521,72 @@ function imageMaskSize(value: unknown): string {
 function imageClipPathStyle(item: JsonRecord): string {
   const raw = readString(item.clippath ?? item.clipPath ?? item.clip_path);
   const clipPath = raw?.trim();
-  if (!clipPath || !isSafeImageClipPath(clipPath)) return "";
-  return `clip-path:${clipPath};-webkit-clip-path:${clipPath};`;
+  if (!clipPath) return "";
+  const normalized = normalizeSafeImageClipPath(clipPath);
+  if (!normalized) return "";
+  return `clip-path:${normalized};-webkit-clip-path:${normalized};`;
 }
 
-function isSafeImageClipPath(value: string) {
-  return /^(polygon|inset|circle|ellipse)\([0-9a-zA-Z\s.,%+\-]*\)$/i.test(value);
+function normalizeSafeImageClipPath(value: string) {
+  const path = /^path\(([\s\S]*)\)$/i.exec(value);
+  if (path) {
+    const data = extractCssPathData(path[1]);
+    return data && isSafeSvgClipPathData(data) ? `path('${data}')` : null;
+  }
+  const rawPath = extractCssPathData(value);
+  if (isSafeSvgClipPathData(rawPath)) return `path('${rawPath}')`;
+  return isSafeCssClipPath(value) ? value : null;
+}
+
+function extractCssPathData(value: string) {
+  const body = value.trim().replace(/^(evenodd|nonzero)\s*,\s*/i, "");
+  const quoted = /^(['"])([\s\S]*)\1$/.exec(body);
+  return quoted ? quoted[2].trim() : body;
+}
+
+function isSafeSvgClipPathData(value: string) {
+  return (
+    /[A-Za-z]/.test(value) &&
+    /^[AaCcHhLlMmQqSsTtVvZz0-9eE\s.,+\-]*$/.test(value)
+  );
+}
+
+function isSafeCssClipPath(value: string) {
+  const trimmed = value.trim();
+  const lower = trimmed.toLowerCase();
+  return (
+    trimmed.length > 0 &&
+    trimmed.length <= 4096 &&
+    !/[;"{}<>\\]/.test(trimmed) &&
+    !lower.includes("javascript:") &&
+    !lower.includes("data:") &&
+    !lower.includes("expression(") &&
+    !lower.includes("var(") &&
+    hasBalancedCssClipPathSyntax(trimmed) &&
+    /(?:path|polygon|inset|circle|ellipse|rect|xywh|url)\(/i.test(trimmed)
+  );
+}
+
+function hasBalancedCssClipPathSyntax(value: string) {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0 && quote == null;
 }
 
 function imageFocusStyle(item: JsonRecord): string {
