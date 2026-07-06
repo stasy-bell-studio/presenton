@@ -2,6 +2,7 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Optional
 import uuid
+import copy
 from sqlalchemy import JSON, Column, DateTime, Enum as SAEnum, String
 from sqlmodel import Boolean, Field, SQLModel
 
@@ -70,16 +71,18 @@ class PresentationModel(SQLModel, table=True):
             n_slides=self.n_slides,
             language=self.language,
             title=self.title,
-            file_paths=self.file_paths,
-            outlines=self.outlines,
-            layout=self.layout,
-            structure=self.structure,
+            file_paths=copy.deepcopy(self.file_paths),
+            outlines=copy.deepcopy(self.outlines),
+            layout=copy.deepcopy(self.layout),
+            structure=copy.deepcopy(self.structure),
             instructions=self.instructions,
             tone=self.tone,
             verbosity=self.verbosity,
             include_table_of_contents=self.include_table_of_contents,
             include_title_slide=self.include_title_slide,
-            fonts=self.fonts,
+            web_search=self.web_search,
+            theme=copy.deepcopy(self.theme),
+            fonts=copy.deepcopy(self.fonts),
         )
 
     def get_presentation_outline(self):

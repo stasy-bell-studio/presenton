@@ -265,6 +265,66 @@ def test_update_slide_element_edits_ui_size():
     assert session.commit_count == 1
 
 
+def test_get_slide_elements_reports_visible_flex_and_resizes_it():
+    slide = _slide()
+    slide.ui["components"].append(
+        {
+            "id": "cards",
+            "description": "Visible card row.",
+            "elements": [
+                {
+                    "type": "flex",
+                    "name": "Cards",
+                    "direction": "row",
+                    "min_children": 1,
+                    "max_children": 3,
+                    "position": {"x": 10, "y": 20},
+                    "size": {"width": 300, "height": 120},
+                    "children": [
+                        {
+                            "type": "text",
+                            "decorative": False,
+                            "name": "Card title",
+                            "min_length": 1,
+                            "max_length": 80,
+                            "runs": [{"text": "Old card"}],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    tools, session = _tools(slide)
+
+    elements = _call(tools, "getSlideElements", {"index": 0})["result"]["elements"]
+    by_path = {element["path"]: element for element in elements}
+
+    flex = by_path["components[2].elements[0]"]
+    child = by_path["components[2].elements[0].children[0]"]
+    assert flex["type"] == "flex"
+    assert flex["content_editable"] is False
+    assert flex["geometry_editable"] is True
+    assert child["type"] == "text"
+    assert child["content_editable"] is True
+
+    result = _call(
+        tools,
+        "updateSlideElement",
+        {
+            "index": 0,
+            "elementPath": "components[2].elements[0]",
+            "size": {"width": 280, "height": 100},
+        },
+    )
+
+    assert result["ok"] is True
+    assert slide.ui["components"][2]["elements"][0]["size"] == {
+        "width": 280.0,
+        "height": 100.0,
+    }
+    assert session.commit_count == 1
+
+
 def test_update_slide_element_accepts_chart_data_alias_and_type():
     slide = _slide()
     slide.ui["components"].append(

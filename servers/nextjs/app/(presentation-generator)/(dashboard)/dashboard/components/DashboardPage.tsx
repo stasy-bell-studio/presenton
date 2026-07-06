@@ -159,6 +159,9 @@ const DashboardPage: React.FC = () => {
           isLoading={isLoading}
           error={error}
           onPresentationDeleted={removePresentation}
+          onPresentationDuplicated={(presentation) =>
+            setPresentations((prev: any) => [presentation, ...(prev || [])])
+          }
         />
       </section>
     </div>

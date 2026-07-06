@@ -30,6 +30,18 @@ LOGGER = logging.getLogger(__name__)
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 _PATH_SEGMENT_RE = re.compile(r"^(?P<key>components|elements|children)\[(?P<index>\d+)\]$")
+CONTENT_EDITABLE_ELEMENT_TYPES = {"text", "text-list", "table", "image", "chart"}
+VISIBLE_ELEMENT_TYPES = CONTENT_EDITABLE_ELEMENT_TYPES | {
+    "container",
+    "rectangle",
+    "ellipse",
+    "line",
+    "infographic",
+    "flex",
+    "grid",
+    "grid-view",
+    "group",
+}
 
 
 class TemplateV2ChatTools:
@@ -845,8 +857,24 @@ def _compact_components(layout_dict: dict[str, Any]) -> list[dict[str, Any]]:
     return components
 
 
-def _collect_editable_elements(layout_dict: dict[str, Any]) -> list[dict[str, Any]]:
+def _collect_editable_elements(
+    layout_dict: dict[str, Any],
+    *,
+    include_visual_elements: bool = False,
+) -> list[dict[str, Any]]:
     editable: list[dict[str, Any]] = []
+    root_elements = layout_dict.get("elements")
+    if isinstance(root_elements, list):
+        for element_index, element in enumerate(root_elements):
+            if isinstance(element, dict):
+                _visit_editable_element(
+                    element=element,
+                    path=f"elements[{element_index}]",
+                    component_id="",
+                    editable=editable,
+                    include_visual_elements=include_visual_elements,
+                )
+
     components = layout_dict.get("components", [])
     if not isinstance(components, list):
         return editable
@@ -865,6 +893,7 @@ def _collect_editable_elements(layout_dict: dict[str, Any]) -> list[dict[str, An
                     path=f"components[{component_index}].elements[{element_index}]",
                     component_id=component_id,
                     editable=editable,
+                    include_visual_elements=include_visual_elements,
                 )
     return editable
 
@@ -875,9 +904,13 @@ def _visit_editable_element(
     path: str,
     component_id: str,
     editable: list[dict[str, Any]],
+    include_visual_elements: bool,
 ) -> None:
     element_type = str(element.get("type") or "")
-    if element_type in {"text", "text-list", "table", "image", "chart"}:
+    is_content_editable = element_type in CONTENT_EDITABLE_ELEMENT_TYPES
+    if is_content_editable or (
+        include_visual_elements and element_type in VISIBLE_ELEMENT_TYPES
+    ):
         editable.append(
             {
                 "path": path,
@@ -885,6 +918,8 @@ def _visit_editable_element(
                 "type": element_type,
                 "name": element.get("name"),
                 "decorative": element.get("decorative"),
+                "content_editable": is_content_editable,
+                "geometry_editable": True,
                 "content": _element_content(element),
                 "limits": _element_limits(element),
             }
@@ -897,6 +932,7 @@ def _visit_editable_element(
             path=f"{path}.child",
             component_id=component_id,
             editable=editable,
+            include_visual_elements=include_visual_elements,
         )
 
     children = element.get("children")
@@ -908,6 +944,7 @@ def _visit_editable_element(
                     path=f"{path}.children[{index}]",
                     component_id=component_id,
                     editable=editable,
+                    include_visual_elements=include_visual_elements,
                 )
 
 
@@ -923,6 +960,10 @@ def _element_limits(element: dict[str, Any]) -> dict[str, Any]:
         "min_columns",
         "max_rows",
         "min_rows",
+        "max_children",
+        "min_children",
+        "max_value",
+        "min_value",
     )
     return {key: element[key] for key in keys if key in element}
 
