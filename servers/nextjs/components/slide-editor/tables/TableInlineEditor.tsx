@@ -22,8 +22,6 @@ import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
 import { TiptapInlineTextEditor } from "@/components/slide-editor/text/TiptapInlineTextEditor";
 import { readableTableTextColor } from "@/components/slide-editor/tables/table-colors";
 
-const DEFAULT_TABLE_NAME = "Default Table";
-const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 const TEMPLATE_V2_PX_PER_IN = 128;
 
@@ -70,31 +68,12 @@ export function TableInlineEditor({
   );
   const tableWidth = box.w * scale;
   const tableHeight = box.h * scale;
-  const isDefaultTable = isDefaultTableElement(element, stringRows);
-  const bodyRowCount = Math.max(1, rowCount - 1);
-  const defaultHeaderHeight = clamp(tableHeight * 0.26, 46, 104);
-  const defaultBodyRowHeight =
-    (Math.max(1, tableHeight - defaultHeaderHeight)) / bodyRowCount;
   const cellWidth = tableWidth / columnCount;
-  const cellHeight = isDefaultTable
-    ? isHeader
-      ? defaultHeaderHeight
-      : defaultBodyRowHeight
-    : tableHeight / rowCount;
+  const cellHeight = tableHeight / rowCount;
   const cellLeft = box.x * scale + colIndex * cellWidth;
-  const cellTop =
-    box.y * scale +
-    (isDefaultTable
-      ? isHeader
-        ? 0
-        : defaultHeaderHeight + (rowIndex - 1) * defaultBodyRowHeight
-      : rowIndex * cellHeight);
-  const paddingX = isDefaultTable
-    ? isHeader
-      ? clamp(tableWidth * 0.025, 18, 32)
-      : clamp(tableWidth * 0.018, 12, 26)
-    : Math.max(4, 0.08 * scale);
-  const paddingY = isDefaultTable ? 0 : Math.max(3, 0.04 * scale);
+  const cellTop = box.y * scale + rowIndex * cellHeight;
+  const paddingX = Math.max(4, 0.08 * scale);
+  const paddingY = Math.max(3, 0.04 * scale);
   const textElement: TextSlideElement = {
     type: "text",
     position: { x: cellLeft / scale, y: cellTop / scale },
@@ -267,6 +246,7 @@ function tableCellFont(
     letter_spacing: cellFont.letter_spacing ?? tableFont.letterSpacing,
     wrap: cellFont.wrap ?? tableFont.wrap ?? "word",
     ellipsis: cellFont.ellipsis ?? tableFont.ellipsis,
+    opacity: cellFont.opacity ?? tableFont.opacity,
   };
 }
 
@@ -357,18 +337,3 @@ const cellEditorStyle = {
   margin: 0,
   backgroundClip: "padding-box",
 } as const;
-
-function isDefaultTableElement(element: TableSlideElement, rows: string[][]) {
-  const headers = rows[0] ?? [];
-  const hasDefaultName =
-    (element as TableSlideElement & { name?: string }).name === DEFAULT_TABLE_NAME;
-  const hasDefaultHeaders =
-    headers.length === DEFAULT_TABLE_HEADERS.length &&
-    DEFAULT_TABLE_HEADERS.every((header, index) => headers[index] === header);
-
-  return hasDefaultName || hasDefaultHeaders;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
-}

@@ -110,6 +110,7 @@ class Font(BaseModel):
     letter_spacing: Optional[float] = None
     wrap: Optional[TextWrap] = None
     ellipsis: Optional[bool] = None
+    opacity: Optional[float] = None
 
 
 class Fill(BaseModel):

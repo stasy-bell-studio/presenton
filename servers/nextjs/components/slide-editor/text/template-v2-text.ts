@@ -41,6 +41,7 @@ const DEFAULT_FONT: RenderTextFont = {
   lineHeight: 1.15,
   letterSpacing: 0,
   wrap: "word",
+  opacity: 1,
 };
 const MIN_TRANSFORM_FONT_SIZE = 1;
 const MAX_TRANSFORM_FONT_SIZE = 512;
@@ -87,6 +88,7 @@ export function fontFromRecord(
       readNumber(font?.letterSpacing) ??
       fallback.letterSpacing,
     wrap: readString(font?.wrap) ?? fallback.wrap,
+    opacity: readNumber(font?.opacity) ?? fallback.opacity,
   };
 }
 
@@ -101,6 +103,7 @@ export function fontToSource(font: RenderTextFont): Font {
     line_height: font.lineHeight,
     letter_spacing: font.letterSpacing,
     wrap: readFontWrap(font.wrap),
+    opacity: font.opacity,
   };
 }
 
@@ -134,6 +137,7 @@ export function applyTextStyle(
     line_height: style.lineHeight,
     letter_spacing: style.letterSpacing,
     wrap: style.wrap,
+    opacity: style.opacity,
   };
   const runs = readArray(element.runs);
   return {
@@ -309,6 +313,7 @@ export function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
     ...font,
     line_height: font.line_height ?? font.lineHeight,
     letter_spacing: font.letter_spacing ?? font.letterSpacing,
+    opacity: font.opacity,
   };
 }
 
@@ -836,6 +841,7 @@ export function rawFontToSource(value: unknown) {
     ...font,
     line_height: font.line_height ?? font.lineHeight,
     letter_spacing: font.letter_spacing ?? font.letterSpacing,
+    opacity: font.opacity,
   });
 }
 

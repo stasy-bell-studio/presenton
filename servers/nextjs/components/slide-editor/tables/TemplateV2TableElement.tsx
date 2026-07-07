@@ -1,9 +1,10 @@
-import { Group, Line, Rect, Text } from "react-konva";
+import { Group, Rect, Text } from "react-konva";
 import { renderMarkdownTextRuns } from "@/components/slide-editor/text/markdown-text";
 import type { TextRun } from "@/components/slide-editor/types";
 import { layoutRichText } from "@/components/slide-editor/text/template-v2-text";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import { readableTableTextColor } from "@/components/slide-editor/tables/table-colors";
+import { colorWithOpacity } from "@/components/slide-editor/model/render-style";
 
 type UnknownRecord = Record<string, any>;
 type RawElement = UnknownRecord;
@@ -17,10 +18,8 @@ type RenderTextFont = {
   lineHeight: number;
   letterSpacing: number;
   wrap: string;
+  opacity: number;
 };
-
-const DEFAULT_TABLE_NAME = "Default Table";
-const DEFAULT_TABLE_HEADERS = ["Name", "Title", "Status", "Position"];
 
 export function TemplateV2TableElement({
   element,
@@ -46,21 +45,6 @@ export function TemplateV2TableElement({
   const cellH = height / rowCount;
   const font = rawFont(element);
 
-  if (isDefaultTableElement(element, rows)) {
-    return (
-      <RawDefaultTableElement
-        rows={rows}
-        width={width}
-        height={height}
-        interactive={interactive}
-        selectedCell={selectedCell}
-        onCellSelect={onCellSelect}
-        onCellEdit={onCellEdit}
-        font={font}
-      />
-    );
-  }
-
   return (
     <Group listening={interactive}>
       {rows.map((row, rowIndex) =>
@@ -82,9 +66,9 @@ export function TemplateV2TableElement({
           const renderRuns =
             rowIndex === 0
               ? runs.map((run) => ({
-                  ...run,
-                  font: { ...run.font, bold: true },
-                }))
+                ...run,
+                font: { ...run.font, bold: true },
+              }))
               : runs;
           const text = tableCellTextContent(runs);
           const fontSize = cellFont.size;
@@ -158,212 +142,6 @@ export function TemplateV2TableElement({
   );
 }
 
-function RawDefaultTableElement({
-  rows,
-  width,
-  height,
-  interactive,
-  selectedCell,
-  onCellSelect,
-  onCellEdit,
-  font,
-}: {
-  rows: unknown[][];
-  width: number;
-  height: number;
-  interactive: boolean;
-  selectedCell?: { rowIndex: number; colIndex: number } | null;
-  onCellSelect?: (rowIndex: number, colIndex: number) => void;
-  onCellEdit?: (rowIndex: number, colIndex: number) => void;
-  font: RenderTextFont;
-}) {
-  const colCount = Math.max(1, ...rows.map((row) => row.length));
-  const bodyRowCount = Math.max(1, rows.length - 1);
-  const headerH = clamp(height * 0.26, 46, 104);
-  const bodyH = Math.max(1, height - headerH);
-  const rowH = bodyH / bodyRowCount;
-  const cellW = width / colCount;
-  const headerPadX = clamp(width * 0.025, 18, 32);
-  const bodyPadX = clamp(width * 0.018, 12, 26);
-  const headerFontSize = clamp(font.size, 15, 30);
-  const bodyFontSize = clamp(font.size * 0.9, 13, 24);
-  const headerFill = "#F7F7FA";
-  const bodyFill = "#FFFFFF";
-  const lineColor = "#E8EAEE";
-  const headerDivider = "#FFFFFF";
-
-  return (
-    <Group listening={interactive}>
-      <Rect width={width} height={height} fill={bodyFill} />
-      {Array.from({ length: colCount }, (_, colIndex) => {
-        const cell = rows[0]?.[colIndex];
-        const cellRecord = asRecord(cell) ?? {};
-        const cellFont = fontFromRecord(asRecord(cellRecord.font), font);
-        const fill = fillColor(cellRecord.color ?? cellRecord.fill) ?? headerFill;
-        const runs = readableTableCellRuns(
-          rawTableCellRuns(cell, cellFont),
-          fill,
-          true,
-        );
-        const text = tableCellTextContent(runs);
-        const fontSize = cellFont.size || headerFontSize;
-        const textWidth = Math.max(1, cellW - headerPadX * 2);
-        const cellLineHeight = effectiveLineHeight({
-          text,
-          width: textWidth,
-          fontSize,
-          lineHeight: cellFont.lineHeight,
-          fallback: 1.15,
-          wrap: "none",
-        });
-        return (
-          <Group
-            key={`default-header-${colIndex}`}
-            x={colIndex * cellW}
-            onClick={(event) => {
-              if (!interactive) return;
-              event.cancelBubble = true;
-              onCellSelect?.(0, colIndex);
-            }}
-            onTap={(event) => {
-              if (!interactive) return;
-              event.cancelBubble = true;
-              onCellSelect?.(0, colIndex);
-            }}
-            onDblClick={(event) => {
-              if (!interactive) return;
-              event.cancelBubble = true;
-              onCellSelect?.(0, colIndex);
-              onCellEdit?.(0, colIndex);
-            }}
-            onDblTap={(event) => {
-              if (!interactive) return;
-              event.cancelBubble = true;
-              onCellSelect?.(0, colIndex);
-              onCellEdit?.(0, colIndex);
-            }}
-          >
-            <Rect width={cellW} height={headerH} fill={fill} />
-            <TableCellText
-              x={headerPadX}
-              y={0}
-              width={textWidth}
-              height={headerH}
-              runs={runs.map((run) => ({
-                ...run,
-                font: { ...run.font, bold: true, size: fontSize },
-              }))}
-              font={{ ...cellFont, bold: true, size: fontSize }}
-              align={readString(cellRecord.alignment) ?? "left"}
-              verticalAlign="middle"
-              lineHeight={cellLineHeight}
-              wrap="none"
-            />
-            {colIndex > 0 ? (
-              <Line
-                points={[0, 0, 0, headerH]}
-                stroke={headerDivider}
-                strokeWidth={2}
-              />
-            ) : null}
-          </Group>
-        );
-      })}
-      <Line points={[0, headerH, width, headerH]} stroke={lineColor} strokeWidth={1} />
-      {Array.from({ length: bodyRowCount }, (_, rowIndex) => {
-        const y = headerH + rowIndex * rowH;
-        return (
-          <Group key={`default-body-row-${rowIndex}`} y={y}>
-            {Array.from({ length: colCount }, (_, colIndex) => {
-              const cell = rows[rowIndex + 1]?.[colIndex];
-              const cellRecord = asRecord(cell) ?? {};
-              const cellFont = fontFromRecord(asRecord(cellRecord.font), font);
-              const fill = fillColor(cellRecord.color ?? cellRecord.fill);
-              const runs = readableTableCellRuns(
-                rawTableCellRuns(cell, cellFont),
-                fill,
-                false,
-              );
-              const text = tableCellTextContent(runs);
-              const fontSize = cellFont.size || bodyFontSize;
-              const textWidth = Math.max(1, cellW - bodyPadX * 2);
-              const cellLineHeight = effectiveLineHeight({
-                text,
-                width: textWidth,
-                fontSize,
-                lineHeight: cellFont.lineHeight,
-                fallback: 1.15,
-                wrap: cellFont.wrap,
-              });
-              return (
-                <Group
-                  key={`default-body-cell-${rowIndex}-${colIndex}`}
-                  x={colIndex * cellW}
-                  onClick={(event) => {
-                    if (!interactive) return;
-                    event.cancelBubble = true;
-                    onCellSelect?.(rowIndex + 1, colIndex);
-                  }}
-                  onTap={(event) => {
-                    if (!interactive) return;
-                    event.cancelBubble = true;
-                    onCellSelect?.(rowIndex + 1, colIndex);
-                  }}
-                  onDblClick={(event) => {
-                    if (!interactive) return;
-                    event.cancelBubble = true;
-                    onCellSelect?.(rowIndex + 1, colIndex);
-                    onCellEdit?.(rowIndex + 1, colIndex);
-                  }}
-                  onDblTap={(event) => {
-                    if (!interactive) return;
-                    event.cancelBubble = true;
-                    onCellSelect?.(rowIndex + 1, colIndex);
-                    onCellEdit?.(rowIndex + 1, colIndex);
-                  }}
-                >
-                  <Rect
-                    width={cellW}
-                    height={rowH}
-                    fill={fill ?? "rgba(0,0,0,0.01)"}
-                  />
-                  {text ? (
-                    <TableCellText
-                      x={bodyPadX}
-                      y={0}
-                      width={textWidth}
-                      height={rowH}
-                      runs={runs.map((run) => ({
-                        ...run,
-                        font: { ...run.font, size: fontSize },
-                      }))}
-                      font={{ ...cellFont, size: fontSize }}
-                      align={readString(cellRecord.alignment) ?? "left"}
-                      verticalAlign="middle"
-                      lineHeight={cellLineHeight}
-                    />
-                  ) : null}
-                </Group>
-              );
-            })}
-            {rowIndex < bodyRowCount - 1 ? (
-              <Line points={[0, rowH, width, rowH]} stroke={lineColor} strokeWidth={1} />
-            ) : null}
-          </Group>
-        );
-      })}
-      <SelectedTableCellOutline
-        colCount={colCount}
-        headerH={headerH}
-        rowH={rowH}
-        selectedCell={selectedCell}
-        totalRows={rows.length}
-        width={width}
-      />
-    </Group>
-  );
-}
-
 function TableCellText({
   x,
   y,
@@ -395,6 +173,7 @@ function TableCellText({
       lineHeight: run.font.lineHeight || lineHeight,
     },
   }));
+
   const { tokens } = layoutRichText(
     renderRuns,
     width,
@@ -415,12 +194,11 @@ function TableCellText({
           width={token.width}
           height={token.height}
           text={token.text}
-          fill={withHash(token.font.color)}
-          fontFamily={`${token.font.family}, Helvetica, sans-serif`}
+          fill={colorWithOpacity(withHash(token.font.color), token.font.opacity)}
+          fontFamily={`${token.font.family}, Inter`}
           fontSize={token.font.size}
-          fontStyle={`${token.font.bold ? "bold" : "normal"} ${
-            token.font.italic ? "italic" : ""
-          }`}
+          fontStyle={`${token.font.bold ? "bold" : "normal"} ${token.font.italic ? "italic" : ""
+            }`}
           textDecoration={token.font.underline ? "underline" : ""}
           lineHeight={token.font.lineHeight}
           letterSpacing={token.font.letterSpacing}
@@ -436,47 +214,17 @@ function SelectedTableCellOutline({
   cellH,
   cellW,
   colCount,
-  headerH,
   rowCount,
-  rowH,
   selectedCell,
-  totalRows,
-  width,
 }: {
   cellH?: number;
   cellW?: number;
   colCount: number;
-  headerH?: number;
   rowCount?: number;
-  rowH?: number;
   selectedCell?: { rowIndex: number; colIndex: number } | null;
-  totalRows?: number;
-  width?: number;
 }) {
   if (!selectedCell) return null;
   if (selectedCell.colIndex < 0 || selectedCell.colIndex >= colCount) return null;
-
-  if (headerH != null && rowH != null && width != null && totalRows != null) {
-    if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= totalRows) return null;
-    const defaultCellW = width / colCount;
-    const selectedY =
-      selectedCell.rowIndex === 0
-        ? 0
-        : headerH + (selectedCell.rowIndex - 1) * rowH;
-    return (
-      <Rect
-        x={selectedCell.colIndex * defaultCellW}
-        y={selectedY}
-        width={defaultCellW}
-        height={selectedCell.rowIndex === 0 ? headerH : rowH}
-        fill="rgba(0,0,0,0)"
-        stroke="#7C51F8"
-        strokeWidth={2}
-        listening={false}
-      />
-    );
-  }
-
   if (cellW == null || cellH == null || rowCount == null) return null;
   if (selectedCell.rowIndex < 0 || selectedCell.rowIndex >= rowCount) return null;
 
@@ -494,24 +242,10 @@ function SelectedTableCellOutline({
   );
 }
 
-function isDefaultTableElement(element: RawElement, rows: unknown[][]) {
-  const headers = rows[0]?.map(rawTableCellText) ?? [];
-  const hasDefaultName = readString(element.name) === DEFAULT_TABLE_NAME;
-  const hasDefaultHeaders =
-    headers.length === DEFAULT_TABLE_HEADERS.length &&
-    DEFAULT_TABLE_HEADERS.every((header, index) => headers[index] === header);
-
-  return hasDefaultName || hasDefaultHeaders;
-}
-
 function rawTableRows(element: RawElement) {
   const columns = readArray(element.columns);
   const rows = readArray(element.rows);
   return [columns, ...rows].filter((row) => Array.isArray(row)) as unknown[][];
-}
-
-function rawTableCellText(cell: unknown) {
-  return tableCellTextContent(rawTableCellRuns(cell, rawFont({})));
 }
 
 function rawTableCellRuns(cell: unknown, fallbackFont: RenderTextFont) {
@@ -566,6 +300,7 @@ function fontToTextRunFont(font: RenderTextFont): TextRun["font"] {
     line_height: font.lineHeight,
     letter_spacing: font.letterSpacing,
     wrap: readFontWrap(font.wrap),
+    opacity: font.opacity,
   };
 }
 
@@ -600,6 +335,7 @@ function rawFont(element: RawElement) {
     lineHeight: 1.15,
     letterSpacing: 0,
     wrap: "word",
+    opacity: 1,
   });
 }
 
@@ -628,6 +364,7 @@ function fontFromRecord(
       readNumber(font?.letterSpacing) ??
       fallback.letterSpacing,
     wrap: readString(font?.wrap) ?? fallback.wrap,
+    opacity: readNumber(font?.opacity) ?? fallback.opacity,
   };
 }
 
@@ -677,8 +414,4 @@ function readFontWrap(value: unknown) {
 function withHash(value: string | null | undefined) {
   if (!value) return undefined;
   return value.startsWith("#") || value.startsWith("rgb") ? value : `#${value}`;
-}
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max);
 }

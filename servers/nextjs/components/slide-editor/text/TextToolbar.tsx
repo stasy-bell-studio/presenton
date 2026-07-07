@@ -139,6 +139,7 @@ export function TextToolbar({
   const horizontalAlignment = element.alignment?.horizontal ?? "left";
   const letterSpacing = font.letterSpacing ?? 0;
   const lineHeight = font.lineHeight ?? DEFAULT_LINE_HEIGHT;
+  const opacity = font.opacity ?? 1;
   const HorizontalAlignmentIcon =
     HORIZONTAL_ALIGNMENT_ICONS[horizontalAlignment];
   const templateFontFamilySet = new Set(
@@ -215,10 +216,8 @@ export function TextToolbar({
   };
 
   const updateOpacity = (nextOpacity: number) => {
-    onChange(index, {
-      ...element,
-      opacity: nextOpacity,
-    });
+    if (!Number.isFinite(nextOpacity)) return;
+    updateFont({ opacity: clampMetric(nextOpacity, 0, 1) });
   };
   const updateLetterSpacing = (nextLetterSpacing: number) => {
     if (!Number.isFinite(nextLetterSpacing)) return;
@@ -505,7 +504,7 @@ export function TextToolbar({
           </ToolbarButton>
           {openPanel === "settings" ? (
             <TextSettingsPanel
-              opacity={element.opacity ?? 1}
+              opacity={opacity}
               letterSpacing={letterSpacing}
               listMarker={listMarker}
               lineHeight={lineHeight}

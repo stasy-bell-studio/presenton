@@ -1199,6 +1199,7 @@ function adaptFont(value: UnknownRecord | null): Font | null {
     letter_spacing: clamp(readNumber(value, "letter_spacing") ?? 0, -200, 600),
     wrap: readEnum(value, ["word", "char", "none"], "wrap"),
     ellipsis: readBoolean(value, "ellipsis"),
+    opacity: clampOptional(readNumber(value, "opacity"), 0, 1),
   });
 }
 

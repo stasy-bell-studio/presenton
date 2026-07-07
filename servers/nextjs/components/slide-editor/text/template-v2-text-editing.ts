@@ -25,6 +25,7 @@ export type TemplateV2TextEditStyle = {
   lineHeight: number;
   letterSpacing: number;
   wrap: Font["wrap"] | string;
+  opacity: number;
   horizontal: "left" | "center" | "right";
   vertical: "top" | "middle" | "bottom";
 };
