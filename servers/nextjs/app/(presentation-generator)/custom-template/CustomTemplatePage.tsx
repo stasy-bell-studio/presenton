@@ -6,6 +6,7 @@ import React, { useEffect, useCallback, useReducer, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Download, Loader2, RefreshCw, Wrench, X } from "lucide-react";
 import { toast } from "sonner";
+import { useSelector } from "react-redux";
 
 
 
@@ -28,6 +29,11 @@ import { validateLayoutCodeForClient } from "./utils/layoutCodeValidation";
 import { useFontLoader as loadFontAssets } from "../hooks/useFontLoad";
 import Header from "@/app/(presentation-generator)/(dashboard)/dashboard/components/Header";
 import { normalizeBackendAssetUrls } from "@/utils/api";
+import type { RootState } from "@/store/store";
+import {
+    dismissTemplateV2ModelWarning,
+    showTemplateV2ModelWarningIfNeeded,
+} from "./utils/templateModelWarning";
 
 type LibreOfficeGateState = "checking" | "ready" | "missing" | "installing" | "error";
 type LibreOfficeGateSnapshot = {
@@ -408,6 +414,7 @@ const CustomTemplatePage = ({
     useTemplateV2Generation = false,
 }: CustomTemplatePageProps) => {
     const router = useRouter();
+    const llmConfig = useSelector((state: RootState) => state.userConfig.llm_config);
 
     const [schemaEditorSlideIndex, setSchemaEditorSlideIndex] = useState<number | null>(null);
     const [schemaPreviewData, setSchemaPreviewData] = useState<Record<number, Record<string, any>>>({});
@@ -447,6 +454,16 @@ const CustomTemplatePage = ({
         saveLayout,
     } = useLayoutSaving(slides);
 
+
+    useEffect(() => {
+        if (useTemplateV2Generation) {
+            showTemplateV2ModelWarningIfNeeded(llmConfig);
+        }
+
+        return () => {
+            dismissTemplateV2ModelWarning();
+        };
+    }, [llmConfig, useTemplateV2Generation]);
 
     useEffect(() => {
         const existingScript = document.querySelector('script[src*="tailwindcss.com"]');

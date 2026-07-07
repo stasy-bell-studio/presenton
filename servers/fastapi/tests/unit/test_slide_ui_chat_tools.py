@@ -5,10 +5,12 @@ from unittest.mock import AsyncMock, patch
 
 from llmai.shared import AssistantToolCall  # type: ignore[import-not-found]
 
+from constants.presentation import MAX_NUMBER_OF_SLIDES, MAX_OUTLINE_CONTENT_WORDS
 from models.sql.presentation import PresentationModel, PresentationVersion
 from models.sql.slide import SlideModel
 from services.chat.memory_layer import PresentationChatMemoryLayer
 from services.chat.tools import ChatTools
+from utils.outline_limits import count_outline_words
 
 
 def _run(coro):
@@ -935,3 +937,113 @@ def test_save_slide_for_template_v2_payload_persists_renderable_ui():
     title_element = saved_slide.ui["components"][0]["elements"][0]
     assert title_element["runs"][0]["text"] == "Thank You"
     assert title_element["text"] == "Thank You"
+
+
+def test_chat_add_outline_refuses_more_than_max_slides():
+    presentation_id = uuid.uuid4()
+    presentation = _template_v2_presentation(presentation_id)
+    presentation.outlines = {
+        "slides": [
+            {"content": f"## Slide {index}"}
+            for index in range(MAX_NUMBER_OF_SLIDES)
+        ]
+    }
+    session = _FakeSaveSlideSession(presentation)
+    memory = PresentationChatMemoryLayer(session, presentation_id)
+
+    result = _run(memory.add_outline(content="## Extra", index=None))
+
+    assert result["saved"] is False
+    assert result["slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert result["max_slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert session.commit_count == 0
+
+
+def test_chat_update_outline_trims_content_to_word_limit():
+    presentation_id = uuid.uuid4()
+    presentation = _template_v2_presentation(presentation_id)
+    presentation.outlines = {"slides": [{"content": "## Existing"}]}
+    session = _FakeSaveSlideSession(presentation)
+    memory = PresentationChatMemoryLayer(session, presentation_id)
+    content = " ".join(
+        f"word{i}" for i in range(MAX_OUTLINE_CONTENT_WORDS + 4)
+    )
+
+    with patch(
+        "services.chat.memory_layer.MEM0_PRESENTATION_MEMORY_SERVICE.store_generated_outlines",
+        new=AsyncMock(),
+    ):
+        result = _run(memory.update_outline(index=0, content=content))
+
+    assert result["saved"] is True
+    saved_content = presentation.outlines["slides"][0]["content"]
+    assert count_outline_words(saved_content) == MAX_OUTLINE_CONTENT_WORDS
+    assert f"word{MAX_OUTLINE_CONTENT_WORDS - 1}" in saved_content
+    assert f"word{MAX_OUTLINE_CONTENT_WORDS}" not in saved_content
+
+
+def test_chat_add_blank_slide_refuses_more_than_max_slides():
+    presentation_id = uuid.uuid4()
+    presentation = _template_v2_presentation(presentation_id)
+    session = _FakeSaveSlideSession(presentation)
+    session.slides = [
+        SlideModel(
+            presentation=presentation_id,
+            layout_group="template-v2",
+            layout="thanks",
+            index=index,
+            content={},
+            properties=None,
+            ui={},
+        )
+        for index in range(MAX_NUMBER_OF_SLIDES)
+    ]
+    memory = PresentationChatMemoryLayer(session, presentation_id)
+
+    result = _run(memory.add_blank_slide(index=None))
+
+    assert result["added"] is False
+    assert result["slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert result["max_slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert session.commit_count == 0
+
+
+def test_chat_save_slide_refuses_new_slide_at_max_slides():
+    presentation_id = uuid.uuid4()
+    presentation = _template_v2_presentation(presentation_id)
+    session = _FakeSaveSlideSession(presentation)
+    session.slides = [
+        SlideModel(
+            presentation=presentation_id,
+            layout_group="template-v2",
+            layout="thanks",
+            index=index,
+            content={},
+            properties=None,
+            ui={},
+        )
+        for index in range(MAX_NUMBER_OF_SLIDES)
+    ]
+    memory = PresentationChatMemoryLayer(session, presentation_id)
+
+    with patch.object(
+        memory,
+        "_get_presentation_icon_weight",
+        new=AsyncMock(return_value="regular"),
+    ), patch(
+        "services.chat.memory_layer.get_images_directory",
+        return_value="/tmp",
+    ):
+        result = _run(
+            memory.save_slide(
+                content={"hero": {"Title": "Extra"}},
+                layout_id="thanks",
+                index=MAX_NUMBER_OF_SLIDES,
+                replace_old_slide_at_index=False,
+            )
+        )
+
+    assert result["saved"] is False
+    assert result["slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert result["max_slide_count"] == MAX_NUMBER_OF_SLIDES
+    assert session.commit_count == 0

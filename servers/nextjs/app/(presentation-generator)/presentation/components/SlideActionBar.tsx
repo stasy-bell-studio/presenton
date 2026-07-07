@@ -36,6 +36,7 @@ import {
   BLANK_TEMPLATE_V2_LAYOUT,
 } from "../../_shared/blank-slide";
 import NewSlide from "./NewSlide";
+import { MAX_NUMBER_OF_SLIDES } from "@/utils/presentationLimits";
 
 interface SlideActionBarProps {
   slide: any;
@@ -90,6 +91,7 @@ const SlideActionBar = ({
     ? presentationData.slides
     : [];
   const slideCount = slides.length;
+  const hasReachedSlideLimit = slideCount >= MAX_NUMBER_OF_SLIDES;
   const currentIndex =
     typeof slide?.index === "number" ? slide.index : selectedSlide;
   const slideLayout = typeof slide?.layout === "string" ? slide.layout : "";
@@ -114,7 +116,19 @@ const SlideActionBar = ({
     );
   };
 
+  const notifySlideLimitReached = () => {
+    notify.warning(
+      "Slide limit reached",
+      `You can have up to ${MAX_NUMBER_OF_SLIDES} slides.`
+    );
+  };
+
   const handleBlankSlide = () => {
+    if (hasReachedSlideLimit) {
+      notifySlideLimitReached();
+      return;
+    }
+
     if (!templateId) {
       notify.error(
         "Could not add blank slide",
@@ -163,6 +177,11 @@ const SlideActionBar = ({
   };
 
   const handleDuplicateSlide = () => {
+    if (hasReachedSlideLimit) {
+      notifySlideLimitReached();
+      return;
+    }
+
     rememberSlides("DUPLICATE_SLIDE");
     dispatch(
       duplicatePresentationSlide({
@@ -224,6 +243,11 @@ const SlideActionBar = ({
   };
 
   const openTemplatePicker = () => {
+    if (hasReachedSlideLimit) {
+      notifySlideLimitReached();
+      return;
+    }
+
     if (!templateId) {
       notify.error(
         "Could not open templates",
@@ -276,7 +300,11 @@ const SlideActionBar = ({
           <button
             type="button"
             onClick={handleBlankSlide}
-            className="flex h-8 shrink-0 items-center gap-2 rounded-[6px] px-2 text-sm font-normal leading-none text-[#111324] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]"
+            disabled={hasReachedSlideLimit}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-2 rounded-[6px] px-2 text-sm font-normal leading-none text-[#111324] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]",
+              hasReachedSlideLimit && "cursor-not-allowed opacity-50"
+            )}
           >
             <span>Blank</span>
             <Plus className="h-4 w-4" strokeWidth={2.4} />
@@ -287,7 +315,11 @@ const SlideActionBar = ({
           <button
             type="button"
             onClick={openTemplatePicker}
-            className="flex h-8 shrink-0 items-center gap-2 rounded-[6px] px-2 text-sm font-normal leading-none text-[#111324] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]"
+            disabled={hasReachedSlideLimit}
+            className={cn(
+              "flex h-8 shrink-0 items-center gap-2 rounded-[6px] px-2 text-sm font-normal leading-none text-[#111324] transition-colors hover:bg-[#F7F6F9] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#5141e5]",
+              hasReachedSlideLimit && "cursor-not-allowed opacity-50"
+            )}
           >
             <span>Use Template</span>
             <Plus className="h-4 w-4" strokeWidth={2.4} />
@@ -360,6 +392,7 @@ const SlideActionBar = ({
                 className="z-[90] w-[188px] overflow-hidden rounded-[10px] border border-[#E6E6EC] bg-white py-2 font-syne shadow-[0_8px_24px_rgba(17,24,39,0.14)]"
               >
                 <DropdownMenu.Item
+                  disabled={hasReachedSlideLimit}
                   className={menuItemClass}
                   onSelect={handleDuplicateSlide}
                 >

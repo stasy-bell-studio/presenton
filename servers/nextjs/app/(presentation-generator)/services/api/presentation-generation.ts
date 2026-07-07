@@ -2,6 +2,10 @@ import { getHeader, getHeaderForFormData } from "./header";
 import { IconSearch, ImageGenerate, ImageSearch, PreviousGeneratedImagesResponse } from "./params";
 import { ApiResponseHandler } from "./api-error-handler";
 import { getApiUrl, resolveBackendAssetUrl } from "@/utils/api";
+import {
+  limitOutlines,
+  MAX_NUMBER_OF_SLIDES,
+} from "@/utils/presentationLimits";
 
 export class PresentationGenerationApi {
   static async uploadDoc(documents: File[]) {
@@ -81,6 +85,10 @@ export class PresentationGenerationApi {
     web_search?: boolean;
   }) {
     try {
+      const limitedSlideCount =
+        typeof n_slides === "number"
+          ? Math.min(Math.max(n_slides, 1), MAX_NUMBER_OF_SLIDES)
+          : null;
       const response = await fetch(
         getApiUrl(`/api/v1/ppt/presentation/create`),
         {
@@ -89,7 +97,7 @@ export class PresentationGenerationApi {
           body: JSON.stringify({
             content,
             version,
-            n_slides,
+            n_slides: limitedSlideCount,
             file_paths,
             language,
             tone,
@@ -156,12 +164,19 @@ export class PresentationGenerationApi {
 
   static async presentationPrepare(presentationData: any) {
     try {
+      const body =
+        Array.isArray(presentationData?.outlines)
+          ? {
+              ...presentationData,
+              outlines: limitOutlines(presentationData.outlines),
+            }
+          : presentationData;
       const response = await fetch(
         getApiUrl(`/api/v1/ppt/presentation/prepare`),
         {
           method: "POST",
           headers: getHeader(),
-          body: JSON.stringify(presentationData),
+          body: JSON.stringify(body),
           cache: "no-cache",
         }
       );
@@ -201,7 +216,7 @@ export class PresentationGenerationApi {
         {
           method: "PUT",
           headers: getHeader(),
-          body: JSON.stringify({ slides: outlines }),
+          body: JSON.stringify({ slides: limitOutlines(outlines) }),
           cache: "no-cache",
         }
       );

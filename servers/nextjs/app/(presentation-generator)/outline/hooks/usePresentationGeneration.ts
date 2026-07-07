@@ -9,6 +9,10 @@ import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils"
 import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 import { parseTemplateV2SelectionId } from "../utils/templateSelection";
+import {
+  limitOutlines,
+  MAX_NUMBER_OF_SLIDES,
+} from "@/utils/presentationLimits";
 
 const DEFAULT_LOADING_STATE: LoadingState = {
   message: "",
@@ -47,6 +51,14 @@ export const usePresentationGeneration = (
       return false;
     }
 
+    if (outlines.length > MAX_NUMBER_OF_SLIDES) {
+      notify.warning(
+        "Slide limit reached",
+        `Use ${MAX_NUMBER_OF_SLIDES} or fewer outline slides before generating.`
+      );
+      return false;
+    }
+
     return true;
   }, [outlines, selectedTemplate]);
 
@@ -77,6 +89,7 @@ export const usePresentationGeneration = (
       return;
     }
     if (!validateInputs()) return;
+    const preparedOutlines = limitOutlines(outlines);
 
     const selectedTemplateId =
       typeof selectedTemplate === "string"
@@ -104,7 +117,7 @@ export const usePresentationGeneration = (
     trackEvent(MixpanelEvent.Outline_Presentation_Generation_Started, {
       pathname,
       presentation_id: presentationId,
-      outline_count: outlines?.length || 0,
+      outline_count: preparedOutlines.length,
       template_id: selectedTemplateId,
       template_type: selectedTemplateType,
       template_name: selectedTemplateName,
@@ -129,7 +142,7 @@ export const usePresentationGeneration = (
 
         const response = await PresentationGenerationApi.presentationPrepare({
           presentation_id: presentationId,
-          outlines: outlines,
+          outlines: preparedOutlines,
           layout: selectedTemplateV2Id,
         });
 
@@ -208,7 +221,7 @@ export const usePresentationGeneration = (
 
       const response = await PresentationGenerationApi.presentationPrepare({
         presentation_id: presentationId,
-        outlines: outlines,
+        outlines: preparedOutlines,
         layout: layout,
       });
 
