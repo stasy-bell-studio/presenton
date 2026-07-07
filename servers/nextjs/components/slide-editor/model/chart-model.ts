@@ -76,6 +76,7 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
     x_axis_title: element.x_axis_title ?? element.xAxisTitle,
     y_axis_title: element.y_axis_title ?? element.yAxisTitle,
     data_labels: element.data_labels ?? element.dataLabels,
+    legend: element.legend ?? element.showLegend,
   };
 }
 
@@ -111,6 +112,11 @@ export function editorChartToRawChart(source: RawElement, chart: UnknownRecord) 
       ? chart.y_axis_title
       : chart.yAxisTitle ?? source.y_axis_title ?? source.yAxisTitle,
     data_labels: chart.data_labels ?? chart.dataLabels ?? source.data_labels,
+    legend:
+      chart.legend ??
+      chart.showLegend ??
+      source.legend ??
+      source.showLegend,
   };
 }
 
@@ -124,6 +130,7 @@ function withoutRemovedChartFields(element: UnknownRecord) {
   delete sanitized.chartType;
   delete sanitized.dataLabels;
   delete sanitized.gridColor;
+  delete sanitized.showLegend;
   delete sanitized.xAxis;
   delete sanitized.xAxisGrid;
   delete sanitized.xAxisTitle;

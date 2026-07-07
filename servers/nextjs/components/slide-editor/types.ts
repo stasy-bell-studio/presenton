@@ -286,6 +286,7 @@ export type ChartElement = ElementBase & {
   categories?: string[] | null;
   series?: ChartSeries[] | null;
   data_labels?: boolean | null;
+  legend?: boolean | null;
   source?: string | null;
 };
 

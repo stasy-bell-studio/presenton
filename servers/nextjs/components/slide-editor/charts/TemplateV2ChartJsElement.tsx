@@ -200,10 +200,14 @@ function createChartJsConfig(
   const titleFontSize = clamp(height * 0.044, 11, 26);
   const valueFontSize = clamp(height * 0.029, 8, 15);
   const chartDatasets = createChartJsDatasets(kind, datasets);
-  const showLegend =
+  const autoShowLegend =
     kind.pieLike ||
     datasets.length > 1 ||
     Boolean(datasets[0]?.name && datasets[0].name !== "Series 1");
+  const showLegend =
+    readBoolean(
+      "legend" in element ? element.legend : element.showLegend,
+    ) ?? autoShowLegend;
 
   return {
     type: kind.chartJsType,
@@ -227,7 +231,7 @@ function createChartJsConfig(
       maintainAspectRatio: false,
       normalized: true,
       plugins: {
-        legend: {
+        legend: showLegend ? {
           display: showLegend,
           labels: {
             boxHeight: Math.max(8, fontSize * 0.8),
@@ -242,6 +246,8 @@ function createChartJsConfig(
             usePointStyle: true,
           },
           position: "bottom",
+        } : {
+          display: false,
         },
         title: {
           color: titleColor,

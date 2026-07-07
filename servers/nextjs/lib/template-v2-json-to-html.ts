@@ -752,8 +752,12 @@ function chartConfig(item: JsonRecord): JsonRecord {
     normalizeChartColor(readString(item.gridColor ?? item.grid_color)) ??
     "#E5E7EB";
   const fontFamily = readString(font.family) ?? "Arial, Helvetica, sans-serif";
-  const showLegend =
+  const autoShowLegend =
     chartKind === "pie" || chartKind === "donut" || data.series.length > 1;
+  const showLegend = readOptionalBoolean(
+    item.legend ?? item.showLegend,
+    autoShowLegend
+  );
   const dataLabels = readOptionalBoolean(
     item.dataLabels ?? item.data_labels,
     false

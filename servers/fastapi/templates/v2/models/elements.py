@@ -301,6 +301,7 @@ class Chart(BaseModel):
     categories: Optional[list[str]] = None
     series: Optional[list[ChartSeries]] = None
     data_labels: Optional[bool] = None
+    legend: Optional[bool] = None
     x_axis_grid: Optional[bool] = None
     y_axis_grid: Optional[bool] = None
     grid_color: Optional[str] = None

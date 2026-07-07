@@ -413,6 +413,11 @@ function ChartCustomizePanel({
         icon={<Settings size={17} />}
         label="Settings"
       >
+        <ToggleRow
+          checked={chart.legend ?? defaultChartLegendVisible(chart)}
+          label="Show legend"
+          onChange={(legend) => onChange({ ...chart, legend })}
+        />
         <ChartSeriesColorControls chart={chart} onChange={onChange} />
         {hasAxes ? (
           <>
@@ -434,6 +439,16 @@ function ChartCustomizePanel({
         ) : null}
       </AccordionSection>
     </div>
+  );
+}
+
+function defaultChartLegendVisible(chart: ChartElement) {
+  const series = chart.series ?? [];
+  return (
+    chart.chart_type === "pie" ||
+    chart.chart_type === "donut" ||
+    series.length > 1 ||
+    Boolean(series[0]?.name && series[0].name !== "Series 1")
   );
 }
 

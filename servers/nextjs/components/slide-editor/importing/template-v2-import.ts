@@ -890,6 +890,7 @@ function adaptChart(raw: UnknownRecord): SlideElement {
     axis_color: readColor(readValue(raw, "axis_color")),
     grid_color: readColor(readValue(raw, "grid_color")),
     data_labels: dataLabels,
+    legend: readBoolean(raw, "legend"),
     colors,
     x_axis: readBoolean(raw, "x_axis"),
     y_axis: readBoolean(raw, "y_axis"),

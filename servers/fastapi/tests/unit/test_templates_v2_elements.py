@@ -79,6 +79,7 @@ def test_element_models_match_export_schema_changes():
         "show_values",
     }.intersection(Chart.model_fields)
     assert "axis_color" in Chart.model_fields
+    assert "legend" in Chart.model_fields
     assert {"base_color", "highlight_color"}.issubset(Infographic.model_fields)
 
     with pytest.raises(ValidationError, match="runs"):
@@ -211,9 +212,11 @@ def test_chart_rejects_tiny_explicit_size():
             "size": {"width": 640, "height": 300},
             "categories": ["GPT OSS 20B", "GPT OSS 120B"],
             "series": [{"name": "Score", "values": [20, 120]}],
+            "legend": False,
         }
     )
     assert chart.size.width == 640
+    assert chart.legend is False
 
 
 def test_pie_and_donut_ignore_additional_series():
