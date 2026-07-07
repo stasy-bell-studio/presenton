@@ -7,6 +7,9 @@ import dirtyjson  # type: ignore[import-untyped]
 from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-found]
 
 from services.chat.schemas import (
+    AddElementInput,
+    AddNewSlideInput,
+    AddNewSlideLayoutInput,
     AddOutlineInput,
     AddSlideComponentInput,
     DeleteSlideComponentInput,
@@ -14,16 +17,13 @@ from services.chat.schemas import (
     DeleteSlideInput,
     DeleteOutlineInput,
     GenerateAssetsInput,
-    GenerateIconInput,
-    GenerateImageInput,
-    GetContentSchemaFromLayoutIdInput,
     GetSlideAtIndexInput,
-    GetSlideElementsInput,
-    MoveOutlineInput,
     NoArgsInput,
     SaveSlideInput,
     SearchSlidesInput,
     SetPresentationThemeInput,
+    UpdateComponentInput,
+    UpdateSlideInput,
     UpdateSlideComponentInput,
     UpdateOutlineInput,
     UpdateSlideElementInput,
@@ -34,13 +34,6 @@ LOGGER = logging.getLogger(__name__)
 
 ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 ChatToolMode = Literal["presentation", "outline"]
-OUTLINE_TOOL_NAMES = {
-    "getOutlineDraft",
-    "addOutline",
-    "updateOutline",
-    "deleteOutline",
-    "moveOutline",
-}
 
 
 class ChatTools:
@@ -52,54 +45,32 @@ class ChatTools:
         self._memory = memory
         self._mode = mode
         self._tool_handlers: dict[str, ToolHandler] = {
-            "getPresentationOutline": self._get_presentation_outline,
-            "getOutlineDraft": self._get_outline_draft,
             "addOutline": self._add_outline,
             "updateOutline": self._update_outline,
             "deleteOutline": self._delete_outline,
-            "moveOutline": self._move_outline,
-            "searchSlides": self._search_slides,
+            "addNewSlide": self._add_new_slide,
+            "addNewSlideLayout": self._add_new_slide_layout,
+            "getTemplateSummary": self._get_template_summary,
+            "searchSlide": self._search_slides,
             "getSlideAtIndex": self._get_slide_at_index,
-            "getPresentationThemeCatalog": self._get_presentation_theme_catalog,
             "getAvailableLayouts": self._get_available_layouts,
-            "getContentSchemaFromLayoutId": self._get_content_schema_from_layout_id,
             "generateAssets": self._generate_assets,
-            "generateImage": self._generate_image,
-            "generateIcon": self._generate_icon,
             "saveSlide": self._save_slide,
+            "updateSlide": self._update_slide,
             "deleteSlide": self._delete_slide,
+            "addElement": self._add_element,
+            "updateElement": self._update_slide_element,
+            "deleteElement": self._delete_slide_element,
+            "addComponent": self._add_slide_component,
+            "createComponent": self._add_slide_component,
+            "updateComponent": self._update_component,
+            "deleteComponent": self._delete_slide_component,
+            "getPresentationTheme": self._get_presentation_theme_catalog,
             "setPresentationTheme": self._set_presentation_theme,
-            "getSlideElements": self._get_slide_elements,
-            "updateSlideElement": self._update_slide_element,
-            "updateSlideComponent": self._update_slide_component,
-            "deleteSlideComponent": self._delete_slide_component,
-            "deleteSlideElement": self._delete_slide_element,
-            "addSlideComponent": self._add_slide_component,
         }
 
     def get_tool_definitions(self) -> list[Tool]:
-        definitions = [
-            Tool(
-                name="getPresentationOutline",
-                description=(
-                    "Live database: current deck structure. "
-                    "Use for the **actual** slide list/order and compact previews—not for uploaded PDF text or pre-outline RAG. "
-                    "Falls back to stored outlines only if no slide rows exist. "
-                    "Return compact sections (no full slide JSON). Use for flow, sections, or 'what slides exist'."
-                ),
-                schema=NoArgsInput,
-                strict=True,
-            ),
-            Tool(
-                name="getOutlineDraft",
-                description=(
-                    "Read the stored outline draft from presentation.outlines with full "
-                    "markdown content. Use on the outline page before layouts are selected "
-                    "or whenever the user asks to edit outlines rather than rendered slides."
-                ),
-                schema=NoArgsInput,
-                strict=True,
-            ),
+        return [
             Tool(
                 name="addOutline",
                 description=(
@@ -128,21 +99,42 @@ class ChatTools:
                 strict=True,
             ),
             Tool(
-                name="moveOutline",
+                name="addNewSlide",
                 description=(
-                    "Move one outline item from fromIndex to toIndex. This reorders "
-                    "presentation.outlines only and does not require a layout."
+                    "Add a blank slide to the current presentation at a zero-based index "
+                    "or append when index is null."
                 ),
-                schema=MoveOutlineInput,
+                schema=AddNewSlideInput,
                 strict=True,
             ),
             Tool(
-                name="searchSlides",
+                name="addNewSlideLayout",
                 description=(
-                    "Live SQL slides: keyword/semantic style search with snippets and indices. "
-                    "Use to find on-slide text, topics, or which slide mentioned something. "
-                    "For source-document-only questions, rely on deck memory; use this when the question is about **slides as built**. "
-                    "Always provide both query and limit."
+                    "Add a new slide from an available layout. Use getAvailableLayouts "
+                    "first, then pass content as a JSON-serialized object matching the layout."
+                ),
+                schema=AddNewSlideLayoutInput,
+                strict=True,
+            ),
+            Tool(
+                name="getAvailableLayouts",
+                description="List available slide layout ids, names, and summaries.",
+                schema=NoArgsInput,
+                strict=True,
+            ),
+            Tool(
+                name="getTemplateSummary",
+                description=(
+                    "Read a compact summary of the current presentation template, "
+                    "layouts, current slides, and theme. Use before choosing where/how to edit."
+                ),
+                schema=NoArgsInput,
+                strict=True,
+            ),
+            Tool(
+                name="searchSlide",
+                description=(
+                    "Search current slides for text/topics and return slide indices and snippets."
                 ),
                 schema=SearchSlidesInput,
                 strict=True,
@@ -158,177 +150,107 @@ class ChatTools:
                 strict=True,
             ),
             Tool(
-                name="getPresentationThemeCatalog",
-                description=(
-                    "Read-only theme catalog for the current presentation. "
-                    "Returns currently applied color theme and all available color themes "
-                    "(built-in + saved custom themes). "
-                    "Use this for questions like 'which theme is applied' or "
-                    "'what themes are available'. "
-                    "Do NOT use getAvailableLayouts for theme questions."
-                ),
-                schema=NoArgsInput,
-                strict=True,
-            ),
-            Tool(
-                name="getAvailableLayouts",
-                description=(
-                    "List slide layout ids/descriptions for the presentation template. "
-                    "This is for content structure/layout selection only, not color themes."
-                ),
-                schema=NoArgsInput,
-                strict=True,
-            ),
-            Tool(
-                name="getContentSchemaFromLayoutId",
-                description=(
-                    "Fetch the JSON content schema for a layout id. Use before "
-                    "saving slide content to validate structure."
-                ),
-                schema=GetContentSchemaFromLayoutIdInput,
-                strict=True,
-            ),
-            Tool(
-                name="generateAssets",
-                description=(
-                    "Generate multiple media assets in one call. Use for all slide "
-                    "images and icons before saving content; include every needed "
-                    "asset in the assets array instead of calling image/icon tools "
-                    "one at a time."
-                ),
-                schema=GenerateAssetsInput,
-                strict=True,
-            ),
-            Tool(
                 name="saveSlide",
                 description=(
-                    "Save slide content for a layout. If replaceOldSlideAtIndex is "
-                    "true, replace that index; otherwise insert as a new slide. "
-                    "Pass content as a JSON-serialized object string and the server "
-                    "will validate it against layout schema before save. "
-                    "Returns saved:false with validation_errors when limits are exceeded—"
-                    "typically shorten strings to satisfy maxLength, then call saveSlide again."
+                    "Save full slide content for a layout. Use for complete slide payloads; "
+                    "visible element/component edits should use element/component tools."
                 ),
                 schema=SaveSlideInput,
                 strict=True,
             ),
             Tool(
+                name="updateSlide",
+                description="Replace an existing slide's layout/content by zero-based index.",
+                schema=UpdateSlideInput,
+                strict=True,
+            ),
+            Tool(
                 name="deleteSlide",
-                description=(
-                    "Delete an existing slide by zero-based index and reindex the "
-                    "remaining slides. Use when the user asks to remove a slide."
-                ),
+                description="Delete an existing slide by zero-based index and reindex the rest.",
                 schema=DeleteSlideInput,
                 strict=True,
             ),
             Tool(
-                name="setPresentationTheme",
+                name="addElement",
                 description=(
-                    "Change the deck theme using user-friendly requests like "
-                    "'dark', 'light', theme name/id, or 'another'. "
-                    "Can also apply customTheme payloads with colors/fonts and "
-                    "optionally save them for reuse. Applies theme at presentation level. "
-                    "Only use this when the user explicitly asks to change/apply/switch theme."
+                    "Add one rendered UI element to a slide, either inside a componentId "
+                    "or as a new free component when componentId is null."
                 ),
-                schema=SetPresentationThemeInput,
+                schema=AddElementInput,
                 strict=True,
             ),
             Tool(
-                name="getSlideElements",
+                name="updateElement",
                 description=(
-                    "Inspect the rendered UI layout of one slide by zero-based index. "
-                    "Rendered template slides display their `ui` layout (components with "
-                    "visible text/text-list/table/chart/image/container/shape/layout "
-                    "elements), NOT the schema `content`. Returns component ids, element "
-                    "types, whether content is editable, current content, limits, and "
-                    "concrete element paths. Call this before any element edit and use its "
-                    "paths verbatim. For content_editable:false elements, only use "
-                    "position/size here, or choose a content_editable descendant path. "
-                    "If it returns editable:false, edit that slide with "
-                    "getContentSchemaFromLayoutId + saveSlide instead."
-                ),
-                schema=GetSlideElementsInput,
-                strict=True,
-            ),
-            Tool(
-                name="updateSlideElement",
-                description=(
-                    "Update the visible content of one element in a rendered slide's ui "
-                    "layout, using an elementPath from getSlideElements: text.runs via "
-                    "text, text-list.items via items, one table cell via tableCell, a "
-                    "whole table via table {columns or headers, rows}, chart "
-                    "title/categories/series via chart, image/icon URLs via text (from "
-                    "generateAssets, generateImage, or generateIcon), or position/size "
-                    "for move/resize requests. For elements where getSlideElements reports "
-                    "content_editable:false, do not send text/items/table/chart; update "
-                    "position/size or target a content_editable descendant instead. "
-                    "Chart series must use values arrays, not "
-                    "data arrays. This changes what the user sees. Respect any max/min "
-                    "limits reported by getSlideElements. Never delete a table/chart just "
-                    "because a data update failed; retry with the correct payload shape."
+                    "Update visible element content or geometry using an elementPath returned "
+                    "by getSlideAtIndex. Supports text, lists, table, chart, image data, "
+                    "position, size, and toolbar-style element property patches."
                 ),
                 schema=UpdateSlideElementInput,
                 strict=True,
             ),
             Tool(
-                name="updateSlideComponent",
-                description=(
-                    "Move or resize one whole rendered slide component/block by zero-based "
-                    "slide index and componentId from getSlideElements. Use this for "
-                    "selected component requests like shrink this block, make this card "
-                    "wider, or move this callout."
-                ),
-                schema=UpdateSlideComponentInput,
+                name="deleteElement",
+                description="Delete one rendered UI element by elementPath.",
+                schema=DeleteSlideElementInput,
                 strict=True,
             ),
             Tool(
-                name="deleteSlideComponent",
+                name="addComponent",
+                description=(
+                    "Add an existing/new rendered UI component block to a slide. Component "
+                    "JSON must include id, description, position, size, and elements."
+                ),
+                schema=AddSlideComponentInput,
+                strict=True,
+            ),
+            Tool(
+                name="createComponent",
+                description=(
+                    "Create a grouped rendered UI component from provided component JSON "
+                    "and add it to a slide."
+                ),
+                schema=AddSlideComponentInput,
+                strict=True,
+            ),
+            Tool(
+                name="updateComponent",
+                description=(
+                    "Move, resize, replace, duplicate, reorder, group, or ungroup rendered "
+                    "UI components by componentId."
+                ),
+                schema=UpdateComponentInput,
+                strict=True,
+            ),
+            Tool(
+                name="deleteComponent",
                 description=(
                     "Remove one whole component (a block such as a numbered point, card, "
-                    "or callout) from a rendered slide's ui layout by zero-based slide "
-                    "index and componentId from getSlideElements. Use when the user asks "
-                    "to remove a block/content from a rendered slide."
+                    "or callout) from a rendered slide by componentId."
                 ),
                 schema=DeleteSlideComponentInput,
                 strict=True,
             ),
             Tool(
-                name="deleteSlideElement",
-                description=(
-                    "Remove a single element (an indexed elements[] or children[] entry) "
-                    "from a rendered slide's ui layout using an elementPath from "
-                    "getSlideElements. To remove an entire block, use deleteSlideComponent."
-                ),
-                schema=DeleteSlideElementInput,
+                name="getPresentationTheme",
+                description="Read the current presentation theme and available themes.",
+                schema=NoArgsInput,
                 strict=True,
             ),
             Tool(
-                name="addSlideComponent",
+                name="setPresentationTheme",
                 description=(
-                    "Add a new component (block) to a rendered slide's ui layout. Provide "
-                    "the component as a JSON-serialized object with id, description, "
-                    "position, size and a non-empty elements array. Mirror the shape of an "
-                    "existing component from getSlideElements(includeFullJson=true) so the "
-                    "new block matches the slide's styling. Coordinates use 1280 x 720 "
-                    "stage pixels, not normalized 0-1 values. For charts and tables, "
-                    "use a visible block around position {x:128,y:120} and size "
-                    "{width:1024,height:400+}; never create tiny 0.x-sized chart/table blocks."
+                    "Change the deck theme by theme name/id/query or customTheme payload."
                 ),
-                schema=AddSlideComponentInput,
+                schema=SetPresentationThemeInput,
                 strict=True,
             ),
-        ]
-        if self._mode == "outline":
-            return [
-                tool
-                for tool in definitions
-                if tool.name in OUTLINE_TOOL_NAMES
-            ]
-
-        return [
-            tool
-            for tool in definitions
-            if tool.name not in OUTLINE_TOOL_NAMES
+            Tool(
+                name="generateAssets",
+                description="Generate one or more image/icon assets for slide edits.",
+                schema=GenerateAssetsInput,
+                strict=True,
+            ),
         ]
 
     async def execute_tool_call(self, tool_call: AssistantToolCall) -> dict[str, Any]:
@@ -471,11 +393,38 @@ class ChatTools:
         payload = DeleteOutlineInput(**args)
         return await self._memory.delete_outline(index=payload.index)
 
-    async def _move_outline(self, args: dict[str, Any]) -> dict[str, Any]:
-        payload = MoveOutlineInput(**args)
-        return await self._memory.move_outline(
-            from_index=payload.from_index,
-            to_index=payload.to_index,
+    async def _add_new_slide(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddNewSlideInput(**args)
+        return await self._memory.add_blank_slide(index=payload.index)
+
+    async def _add_new_slide_layout(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload_args = json.loads(json.dumps(dict(args), ensure_ascii=False))
+        raw_content = payload_args.get("content")
+        if isinstance(raw_content, dict):
+            payload_args["content"] = json.dumps(raw_content, ensure_ascii=False)
+        payload = AddNewSlideLayoutInput(**payload_args)
+        return await self._save_slide(
+            {
+                "content": payload.content,
+                "layoutId": payload.layout_id,
+                "index": payload.index,
+                "replaceOldSlideAtIndex": False,
+            }
+        )
+
+    async def _update_slide(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload_args = json.loads(json.dumps(dict(args), ensure_ascii=False))
+        raw_content = payload_args.get("content")
+        if isinstance(raw_content, dict):
+            payload_args["content"] = json.dumps(raw_content, ensure_ascii=False)
+        payload = UpdateSlideInput(**payload_args)
+        return await self._save_slide(
+            {
+                "content": payload.content,
+                "layoutId": payload.layout_id,
+                "index": payload.index,
+                "replaceOldSlideAtIndex": True,
+            }
         )
 
     async def _get_available_layouts(self, _: dict[str, Any]) -> dict[str, Any]:
@@ -483,6 +432,17 @@ class ChatTools:
         return {
             "count": len(layouts),
             "layouts": layouts,
+        }
+
+    async def _get_template_summary(self, _: dict[str, Any]) -> dict[str, Any]:
+        outline = await self._get_presentation_outline({})
+        layouts = await self._get_available_layouts({})
+        theme = await self._get_presentation_theme_catalog({})
+        return {
+            "outline": outline,
+            "available_layouts": layouts,
+            "theme": theme,
+            "message": "Template summary fetched successfully.",
         }
 
     async def _get_presentation_theme_catalog(
@@ -507,38 +467,22 @@ class ChatTools:
             "content_schema": schema,
         }
 
-    async def _generate_image(self, args: dict[str, Any]) -> dict[str, Any]:
-        payload = GenerateImageInput(**args)
-        image_url = await self._memory.generate_image(payload.prompt)
-        return {
-            "prompt": payload.prompt,
-            "url": image_url,
-        }
-
-    async def _generate_icon(self, args: dict[str, Any]) -> dict[str, Any]:
-        payload = GenerateIconInput(**args)
-        icon_url = await self._memory.generate_icon(payload.query)
-        return {
-            "query": payload.query,
-            "url": icon_url,
-        }
-
     async def _generate_assets(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = GenerateAssetsInput(**args)
         generated_assets: list[dict[str, Any]] = []
 
         for index, asset in enumerate(payload.assets):
             if asset.kind == "image":
-                result = await self._generate_image({"prompt": asset.prompt})
+                url = await self._memory.generate_image(asset.prompt)
             else:
-                result = await self._generate_icon({"query": asset.prompt})
+                url = await self._memory.generate_icon(asset.prompt)
 
             generated_assets.append(
                 {
                     "index": index,
                     "kind": asset.kind,
                     "prompt": asset.prompt,
-                    "url": result.get("url"),
+                    "url": url,
                 }
             )
 
@@ -576,14 +520,42 @@ class ChatTools:
         return await self._memory.delete_slide(index=payload.index)
 
     async def _get_slide_elements(self, args: dict[str, Any]) -> dict[str, Any]:
-        payload = GetSlideElementsInput(**args)
+        payload = GetSlideAtIndexInput(
+            index=int(args.get("index") or 0),
+            includeFullContent=bool(args.get("includeFullJson")),
+        )
         return await self._memory.get_slide_ui_elements(
             index=payload.index,
-            include_full_json=bool(payload.include_full_json),
+            include_full_json=payload.include_full_content,
+        )
+
+    async def _add_element(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = AddElementInput(**args)
+        try:
+            parsed: Any = dirtyjson.loads(payload.element)
+        except Exception:
+            parsed = json.loads(payload.element)
+        element = json.loads(json.dumps(parsed, ensure_ascii=False))
+        if not isinstance(element, dict):
+            raise ValueError("'element' must be a JSON object.")
+        return await self._memory.add_slide_ui_element(
+            index=payload.index,
+            element=element,
+            component_id=payload.component_id,
+            insert_index=payload.insert_index,
         )
 
     async def _update_slide_element(self, args: dict[str, Any]) -> dict[str, Any]:
         payload = UpdateSlideElementInput(**args)
+        element_patch: dict[str, Any] | None = None
+        if payload.element is not None:
+            try:
+                parsed: Any = dirtyjson.loads(payload.element)
+            except Exception:
+                parsed = json.loads(payload.element)
+            element_patch = json.loads(json.dumps(parsed, ensure_ascii=False))
+            if not isinstance(element_patch, dict):
+                raise ValueError("'element' must be a JSON object.")
         return await self._memory.update_slide_ui_element(
             index=payload.index,
             element_path=payload.element_path,
@@ -604,6 +576,7 @@ class ChatTools:
                 if payload.chart is not None
                 else None
             ),
+            element_patch=element_patch,
             position=(
                 payload.position.model_dump()
                 if payload.position is not None
@@ -623,6 +596,31 @@ class ChatTools:
                 else None
             ),
             size=payload.size.model_dump() if payload.size is not None else None,
+        )
+
+    async def _update_component(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = UpdateComponentInput(**args)
+        replacement_component: dict[str, Any] | None = None
+        if payload.component is not None:
+            try:
+                parsed: Any = dirtyjson.loads(payload.component)
+            except Exception:
+                parsed = json.loads(payload.component)
+            replacement_component = json.loads(json.dumps(parsed, ensure_ascii=False))
+            if not isinstance(replacement_component, dict):
+                raise ValueError("'component' must be a JSON object.")
+        return await self._memory.update_slide_ui_component(
+            index=payload.index,
+            component_id=payload.component_id,
+            action=payload.action or "update",
+            component_ids=payload.component_ids,
+            position=(
+                payload.position.model_dump()
+                if payload.position is not None
+                else None
+            ),
+            size=payload.size.model_dump() if payload.size is not None else None,
+            replacement_component=replacement_component,
         )
 
     async def _delete_slide_component(self, args: dict[str, Any]) -> dict[str, Any]:

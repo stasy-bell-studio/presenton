@@ -7,6 +7,7 @@ import type {
   TemplateV2ToolbarBox,
   TemplateV2ToolbarSelection,
 } from "@/components/slide-editor/selection/toolbarTypes";
+import type { TemplateV2ToolbarViewportBounds } from "@/components/slide-editor/selection/toolbarPosition";
 
 type TemplateV2SelectionToolbarProps = {
   anchorBox: TemplateV2ToolbarBox | null;
@@ -18,6 +19,7 @@ type TemplateV2SelectionToolbarProps = {
   position: { left: number; top: number } | null;
   selection: TemplateV2ToolbarSelection;
   selectionKey: string;
+  toolbarBounds: TemplateV2ToolbarViewportBounds | null;
   onDeleteSelection: () => void;
   onDuplicateSelection: () => void;
   onLayoutChange: (changes: Record<string, unknown>) => void;
@@ -36,6 +38,7 @@ export function TemplateV2SelectionToolbar({
   position,
   selection,
   selectionKey,
+  toolbarBounds,
   onDeleteSelection,
   onDuplicateSelection,
   onLayoutChange,
@@ -51,6 +54,7 @@ export function TemplateV2SelectionToolbar({
       box={anchorBox}
       element={layoutTarget?.element ?? null}
       position={position ?? undefined}
+      bounds={toolbarBounds}
       componentActions={
         selection?.kind === "component"
           ? {

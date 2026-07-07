@@ -8,12 +8,6 @@ export interface ChatMessageRequest {
   conversation_id?: string;
 }
 
-export interface TemplateV2ChatMessageRequest {
-  template_id: string;
-  message: string;
-  conversation_id?: string;
-}
-
 export interface ChatMessageResponse {
   conversation_id?: string;
   response: string;
@@ -28,12 +22,6 @@ export interface ChatHistoryMessage {
 
 export interface ChatHistoryData {
   presentation_id: string;
-  conversation_id: string;
-  messages: ChatHistoryMessage[];
-}
-
-export interface TemplateV2ChatHistoryData {
-  template_id: string;
   conversation_id: string;
   messages: ChatHistoryMessage[];
 }
@@ -101,7 +89,7 @@ type ChatStreamData =
 
 async function streamChatMessage(
   endpoint: string,
-  payload: ChatMessageRequest | TemplateV2ChatMessageRequest,
+  payload: ChatMessageRequest,
   handlers: ChatStreamHandlers = {},
   options?: { signal?: AbortSignal }
 ): Promise<ChatMessageResponse> {
@@ -313,7 +301,7 @@ export class PresentationChatApi {
     presentationId: string
   ): Promise<ChatConversationSummary[]> {
     const u = new URL(
-      buildAbsoluteApiRequestUrl("/api/v1/ppt/chat/conversations")
+      buildAbsoluteApiRequestUrl("/api/v2/chat/conversations")
     );
     u.searchParams.set("presentation_id", presentationId);
     const response = await fetch(u.toString(), {
@@ -330,7 +318,7 @@ export class PresentationChatApi {
     presentationId: string,
     conversationId: string
   ): Promise<ChatHistoryData> {
-    const u = new URL(buildAbsoluteApiRequestUrl("/api/v1/ppt/chat/history"));
+    const u = new URL(buildAbsoluteApiRequestUrl("/api/v2/chat/history"));
     u.searchParams.set("presentation_id", presentationId);
     u.searchParams.set("conversation_id", conversationId);
     const response = await fetch(u.toString(), {
@@ -346,7 +334,7 @@ export class PresentationChatApi {
   static async sendMessage(
     payload: ChatMessageRequest
   ): Promise<ChatMessageResponse> {
-    const response = await fetch(getApiUrl("/api/v1/ppt/chat/message"), {
+    const response = await fetch(getApiUrl("/api/v2/chat/message"), {
       method: "POST",
       headers: getHeader(),
       body: JSON.stringify(payload),
@@ -365,68 +353,10 @@ export class PresentationChatApi {
     options?: { signal?: AbortSignal }
   ): Promise<ChatMessageResponse> {
     return streamChatMessage(
-      "/api/v1/ppt/chat/message/stream",
+      "/api/v2/chat/message/stream",
       payload,
       handlers,
       options
     );
-  }
-}
-
-export class TemplateV2ChatApi {
-  static async listConversations(
-    templateId: string
-  ): Promise<ChatConversationSummary[]> {
-    const u = new URL(buildAbsoluteApiRequestUrl("/api/v2/chat/conversations"));
-    u.searchParams.set("template_id", templateId);
-    const response = await fetch(u.toString(), {
-      headers: getHeader(),
-      cache: "no-cache",
-    });
-    return await ApiResponseHandler.handleResponse(
-      response,
-      "Failed to list chat conversations"
-    );
-  }
-
-  static async getHistory(
-    templateId: string,
-    conversationId: string
-  ): Promise<TemplateV2ChatHistoryData> {
-    const u = new URL(buildAbsoluteApiRequestUrl("/api/v2/chat/history"));
-    u.searchParams.set("template_id", templateId);
-    u.searchParams.set("conversation_id", conversationId);
-    const response = await fetch(u.toString(), {
-      headers: getHeader(),
-      cache: "no-cache",
-    });
-    return await ApiResponseHandler.handleResponse(
-      response,
-      "Failed to load chat history"
-    );
-  }
-
-  static async sendMessage(
-    payload: TemplateV2ChatMessageRequest
-  ): Promise<ChatMessageResponse> {
-    const response = await fetch(getApiUrl("/api/v2/chat/message"), {
-      method: "POST",
-      headers: getHeader(),
-      body: JSON.stringify(payload),
-      cache: "no-cache",
-    });
-
-    return await ApiResponseHandler.handleResponse(
-      response,
-      "Failed to send chat message"
-    );
-  }
-
-  static async streamMessage(
-    payload: TemplateV2ChatMessageRequest,
-    handlers: ChatStreamHandlers = {},
-    options?: { signal?: AbortSignal }
-  ): Promise<ChatMessageResponse> {
-    return streamChatMessage("/api/v2/chat/message/stream", payload, handlers, options);
   }
 }

@@ -15,7 +15,17 @@ import {
 import { EDITOR_STAGE_HEIGHT, EDITOR_STAGE_WIDTH } from "@/components/slide-editor/types";
 import type { ShapeSlideElement } from "@/components/slide-editor/state/state";
 import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredColorInput";
+import {
+  FloatingToolbar,
+  FloatingToolbarPanel,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
+import {
+  numericInputMode,
+  preventInvalidNumberInput,
+  sanitizeNumericInput,
+} from "@/components/slide-editor/toolbar/numericInput";
 
 type ShapePanel =
   | "type"
@@ -44,11 +54,13 @@ const DEFAULT_SHAPE_SHADOW = {
 };
 
 export function ShapeToolbar({
+  anchorBox,
   element,
   index,
   scale,
   onChange,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: ShapeSlideElement;
   index: number;
   scale: number;
@@ -72,10 +84,6 @@ export function ShapeToolbar({
   const radius = isRectangle
     ? Math.min(maxRadius, averageBorderRadius(element.border_radius))
     : 0;
-  const toolbarLeft = Math.max(
-    8,
-    Math.min(box.x * scale, EDITOR_STAGE_WIDTH * scale - 380),
-  );
 
   const update = (changes: Partial<ShapeSlideElement>) => {
     onChange(index, { ...element, ...changes } as ShapeSlideElement);
@@ -94,16 +102,18 @@ export function ShapeToolbar({
   };
 
   return (
-    <div
-      data-template-v2-floating-toolbar="true"
-      data-inline-edit-ignore="true"
-      style={{
-        left: toolbarLeft,
-        top: Math.max(8, box.y * scale - 52),
-      }}
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[10000] inline-flex items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+    <FloatingToolbar
+      anchorBox={
+        anchorBox ?? {
+          x: box.x * scale,
+          y: box.y * scale,
+          width: box.w * scale,
+          height: box.h * scale,
+        }
+      }
+      fallbackWidth={380}
+      inlineEditIgnore
+      className="inline-flex items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <div className="relative">
         <button
@@ -396,7 +406,7 @@ export function ShapeToolbar({
           </Panel>
         ) : null}
       </div>
-    </div>
+    </FloatingToolbar>
   );
 }
 
@@ -436,14 +446,14 @@ export function Panel({
   className?: string;
 }) {
   return (
-    <div
+    <FloatingToolbarPanel
       className={cn(
         "absolute left-1/2 top-[calc(100%+10px)] z-10 box-border -translate-x-1/2 rounded-lg bg-white shadow-[0_0_4px_rgba(0,0,0,0.16)]",
         className,
       )}
     >
       {children}
-    </div>
+    </FloatingToolbarPanel>
   );
 }
 
@@ -501,6 +511,10 @@ export function NumberField({
   value: number;
 }) {
   const [draft, setDraft] = useState(() => formatNumber(value));
+  const numericInputOptions = {
+    allowDecimal: true,
+    min,
+  };
 
   useEffect(() => {
     setDraft(formatNumber(value));
@@ -524,11 +538,16 @@ export function NumberField({
         <input
           aria-label={label}
           type="text"
-          inputMode="decimal"
+          inputMode={numericInputMode(numericInputOptions)}
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) =>
+            setDraft(
+              sanitizeNumericInput(event.target.value, numericInputOptions),
+            )
+          }
           onBlur={commit}
           onKeyDown={(event) => {
+            if (preventInvalidNumberInput(event, numericInputOptions)) return;
             if (event.key === "Enter") {
               event.preventDefault();
               commit();

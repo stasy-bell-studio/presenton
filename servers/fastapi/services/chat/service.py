@@ -426,13 +426,18 @@ class PresentationChatService:
     ) -> dict[str, Any] | None:
         if tool_name not in {
             "getSlideAtIndex",
+            "addNewSlide",
+            "addNewSlideLayout",
             "saveSlide",
+            "updateSlide",
             "deleteSlide",
-            "getSlideElements",
-            "updateSlideElement",
-            "deleteSlideComponent",
-            "deleteSlideElement",
-            "addSlideComponent",
+            "addElement",
+            "updateElement",
+            "deleteElement",
+            "addComponent",
+            "createComponent",
+            "updateComponent",
+            "deleteComponent",
         }:
             return None
 
@@ -480,13 +485,18 @@ class PresentationChatService:
     ) -> dict[str, Any] | None:
         if tool_name not in {
             "getSlideAtIndex",
+            "addNewSlide",
+            "addNewSlideLayout",
             "saveSlide",
+            "updateSlide",
             "deleteSlide",
-            "getSlideElements",
-            "updateSlideElement",
-            "deleteSlideComponent",
-            "deleteSlideElement",
-            "addSlideComponent",
+            "addElement",
+            "updateElement",
+            "deleteElement",
+            "addComponent",
+            "createComponent",
+            "updateComponent",
+            "deleteComponent",
         }:
             return None
         if not tool_result.get("ok"):
@@ -564,26 +574,28 @@ class PresentationChatService:
     @staticmethod
     def _tool_start_message(tool_name: str) -> str:
         labels = {
-            "getPresentationOutline": "Reading the presentation outline",
-            "getOutlineDraft": "Reading the outline draft",
             "addOutline": "Adding an outline slide",
             "updateOutline": "Updating the outline slide",
             "deleteOutline": "Deleting the outline slide",
-            "moveOutline": "Reordering outline slides",
-            "searchSlides": "Searching relevant slides",
+            "addNewSlide": "Adding a blank slide",
+            "addNewSlideLayout": "Adding slide from layout",
+            "getTemplateSummary": "Reading template summary",
+            "searchSlide": "Searching relevant slides",
             "getSlideAtIndex": "Opening the requested slide",
-            "getPresentationThemeCatalog": "Checking available themes",
             "getAvailableLayouts": "Checking available layouts",
-            "getContentSchemaFromLayoutId": "Checking the layout schema",
             "generateAssets": "Generating slide assets",
             "saveSlide": "Saving the slide",
+            "updateSlide": "Updating the slide",
             "deleteSlide": "Deleting the slide",
+            "addElement": "Adding slide element",
+            "updateElement": "Updating slide element",
+            "deleteElement": "Removing slide element",
+            "addComponent": "Adding slide component",
+            "createComponent": "Creating slide component",
+            "updateComponent": "Updating slide component",
+            "deleteComponent": "Removing slide component",
+            "getPresentationTheme": "Checking available themes",
             "setPresentationTheme": "Applying presentation theme",
-            "getSlideElements": "Inspecting slide elements",
-            "updateSlideElement": "Updating slide element",
-            "deleteSlideComponent": "Removing slide block",
-            "deleteSlideElement": "Removing slide element",
-            "addSlideComponent": "Adding slide block",
         }
         return labels.get(tool_name, f"Running {tool_name}")
 

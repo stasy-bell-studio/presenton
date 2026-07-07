@@ -29,6 +29,7 @@ const DEFAULT_TEXT_EDIT_STYLE: TemplateV2TextEditStyle = {
   lineHeight: 1.15,
   letterSpacing: 0,
   wrap: "word",
+  opacity: 1,
   horizontal: "left",
   vertical: "top",
 };
@@ -202,6 +203,7 @@ function textEditStyleToFont(font: TemplateV2TextEditStyle): Font {
     line_height: font.lineHeight,
     letter_spacing: font.letterSpacing,
     wrap: readFontWrap(font.wrap),
+    opacity: font.opacity,
   };
 }
 

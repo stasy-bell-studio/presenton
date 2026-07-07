@@ -1228,7 +1228,9 @@ function transformStyle(item: JsonRecord): string {
 
 function fontStyle(fontValue: unknown): string {
   const font = readRecord(fontValue);
-  let style = `color:${escapeCssColor(readString(font.color) ?? "#111827")};`;
+  let style = `color:${escapeCssColor(
+    colorWithOpacity(readString(font.color) ?? "#111827", readNumber(font.opacity))
+  )};`;
   const family = readString(font.family);
   const size = readNumber(font.size);
   if (family) style += `font-family:${escapeCssFont(family)};`;

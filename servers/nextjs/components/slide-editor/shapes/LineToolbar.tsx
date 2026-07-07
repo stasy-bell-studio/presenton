@@ -8,6 +8,10 @@ import {
 import { cn } from "@/lib/utils";
 import { EDITOR_STAGE_HEIGHT, EDITOR_STAGE_WIDTH } from "@/components/slide-editor/types";
 import type { LineSlideElement } from "@/components/slide-editor/state/state";
+import {
+  FloatingToolbar,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
 import { withHash } from "@/components/slide-editor/utils/color";
 import {
@@ -49,11 +53,13 @@ const DEFAULT_LINE_SHADOW = {
 };
 
 export function LineToolbar({
+  anchorBox,
   element,
   index,
   scale,
   onChange,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: LineSlideElement;
   index: number;
   scale: number;
@@ -66,11 +72,6 @@ export function LineToolbar({
   const shadow = element.shadow ?? DEFAULT_LINE_SHADOW;
   const shadowEnabled = element.shadow != null;
   const currentStyle = lineStyleFromDash(stroke.dash);
-  const toolbarLeft = Math.max(
-    8,
-    Math.min(position.x * scale, EDITOR_STAGE_WIDTH * scale - 430),
-  );
-
   const update = (changes: Partial<LineSlideElement>) => {
     onChange(index, { ...element, ...changes });
   };
@@ -84,16 +85,18 @@ export function LineToolbar({
   };
 
   return (
-    <div
-      data-template-v2-floating-toolbar="true"
-      data-inline-edit-ignore="true"
-      style={{
-        left: toolbarLeft,
-        top: Math.max(8, position.y * scale - 52),
-      }}
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      className="fixed z-[10000] inline-flex h-10 items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+    <FloatingToolbar
+      anchorBox={
+        anchorBox ?? {
+          x: position.x * scale,
+          y: position.y * scale,
+          width: size.width * scale,
+          height: size.height * scale,
+        }
+      }
+      fallbackWidth={430}
+      inlineEditIgnore
+      className="inline-flex h-10 items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
     >
       <div className="relative">
         <button
@@ -362,7 +365,7 @@ export function LineToolbar({
           </Panel>
         ) : null}
       </div>
-    </div>
+    </FloatingToolbar>
   );
 }
 

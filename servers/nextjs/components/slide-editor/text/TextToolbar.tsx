@@ -46,7 +46,16 @@ import {
   type TextSelectionRange,
 } from "@/components/slide-editor/text/text-runs";
 import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredColorInput";
+import {
+  FloatingToolbarBoundsProvider,
+  FloatingToolbarPanel,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
+import {
+  numericInputMode,
+  preventInvalidNumberInput,
+  sanitizeNumericInput,
+} from "@/components/slide-editor/toolbar/numericInput";
 
 const EMPTY_TEMPLATE_FONTS: TemplateFontOption[] = [];
 
@@ -71,6 +80,7 @@ const TEXT_TOOLBAR_GAP = 8;
 type TextToolbarPanel = "settings";
 type FontPickerSource = "template" | "google";
 type ToolbarSurfaceRect = {
+  height: number;
   left: number;
   top: number;
   width: number;
@@ -139,6 +149,7 @@ export function TextToolbar({
   const horizontalAlignment = element.alignment?.horizontal ?? "left";
   const letterSpacing = font.letterSpacing ?? 0;
   const lineHeight = font.lineHeight ?? DEFAULT_LINE_HEIGHT;
+  const opacity = font.opacity ?? 1;
   const HorizontalAlignmentIcon =
     HORIZONTAL_ALIGNMENT_ICONS[horizontalAlignment];
   const templateFontFamilySet = new Set(
@@ -159,6 +170,7 @@ export function TextToolbar({
     TEXT_TOOLBAR_FALLBACK_HEIGHT,
   );
   const [surfaceRect, setSurfaceRect] = useState<ToolbarSurfaceRect>({
+    height: 0,
     left: 0,
     top: 0,
     width: 0,
@@ -201,6 +213,10 @@ export function TextToolbar({
     const currentSize = Number.isFinite(font.size) ? font.size : 12;
     commitFontSize(currentSize + delta);
   };
+  const fontSizeInputOptions = {
+    allowDecimal: true,
+    min: MIN_FONT_SIZE,
+  };
 
   const updateAlignment = (
     alignment: NonNullable<TextSlideElement["alignment"]>,
@@ -215,10 +231,8 @@ export function TextToolbar({
   };
 
   const updateOpacity = (nextOpacity: number) => {
-    onChange(index, {
-      ...element,
-      opacity: nextOpacity,
-    });
+    if (!Number.isFinite(nextOpacity)) return;
+    updateFont({ opacity: clampMetric(nextOpacity, 0, 1) });
   };
   const updateLetterSpacing = (nextLetterSpacing: number) => {
     if (!Number.isFinite(nextLetterSpacing)) return;
@@ -280,6 +294,7 @@ export function TextToolbar({
             ? nextSurfaceRect.height / surface.offsetHeight
             : 1;
         setSurfaceRect({
+          height: nextSurfaceRect.height,
           left: nextSurfaceRect.left,
           top: nextSurfaceRect.top,
           width: nextSurfaceRect.width,
@@ -334,190 +349,206 @@ export function TextToolbar({
     TEXT_TOOLBAR_EDGE_PADDING,
     surfaceRect.top + anchorY - toolbarHeight - TEXT_TOOLBAR_GAP,
   );
+  const toolbarBounds =
+    surfaceRect.width > 0 && surfaceRect.height > 0
+      ? {
+          bottom: surfaceRect.top + surfaceRect.height,
+          left: surfaceRect.left,
+          right: surfaceRect.left + surfaceRect.width,
+          top: surfaceRect.top,
+        }
+      : null;
 
   const toolbarNode = (
-    <div
-      ref={toolbarRef}
-      data-inline-edit-ignore="true"
-      data-template-v2-floating-toolbar="true"
-      style={{
-        position: "fixed",
-        zIndex: 10000,
-        left: toolbarLeft,
-        top: toolbarTop,
-        pointerEvents: "auto",
-        visibility: surfaceRect.width > 0 ? "visible" : "hidden",
-      }}
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-    >
-      <div style={textToolbarStyles.toolbar}>
-        <FontFamilyPicker
-          selectedFamily={font.family}
-          templateFonts={templateFonts}
-          googleFonts={googleFontOptions}
-          onSelect={updateFontFamily}
-        />
-        <Divider />
-        <div style={textToolbarStyles.fontSizeControl}>
-          <input
-            aria-label="Font size"
-            title="Font size"
-            type="text"
-            inputMode="decimal"
-            value={formatToolbarFontSize(font.size)}
-            onChange={(event) => updateFontSize(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "ArrowUp") {
-                event.preventDefault();
-                stepFontSize(1);
-              }
-              if (event.key === "ArrowDown") {
-                event.preventDefault();
-                stepFontSize(-1);
-              }
-            }}
-            style={textToolbarStyles.fontSizeInput}
+    <FloatingToolbarBoundsProvider bounds={toolbarBounds}>
+      <div
+        ref={toolbarRef}
+        data-inline-edit-ignore="true"
+        data-template-v2-floating-toolbar="true"
+        style={{
+          position: "fixed",
+          zIndex: 10000,
+          left: toolbarLeft,
+          top: toolbarTop,
+          pointerEvents: "auto",
+          visibility: surfaceRect.width > 0 ? "visible" : "hidden",
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
+        <div style={textToolbarStyles.toolbar}>
+          <FontFamilyPicker
+            selectedFamily={font.family}
+            templateFonts={templateFonts}
+            googleFonts={googleFontOptions}
+            onSelect={updateFontFamily}
           />
-          <span style={textToolbarStyles.fontSizeStepper}>
-            <button
-              type="button"
-              aria-label="Increase font size"
-              title="Increase font size"
-              onClick={() => stepFontSize(1)}
-              style={textToolbarStyles.fontSizeStepButton}
-            >
-              <span style={textToolbarStyles.fontSizeArrowUp} />
-            </button>
-            <button
-              type="button"
-              aria-label="Decrease font size"
-              title="Decrease font size"
-              onClick={() => stepFontSize(-1)}
-              style={textToolbarStyles.fontSizeStepButton}
-            >
-              <span style={textToolbarStyles.fontSizeArrowDown} />
-            </button>
-          </span>
-        </div>
-        <Divider />
-        <label
-          aria-label="Text color"
-          title="Text color"
-          style={textToolbarStyles.colorControl}
-          onMouseEnter={() => setHoveredControl("color")}
-          onMouseLeave={() => setHoveredControl(null)}
-        >
-          <span
-            aria-hidden="true"
-            style={{
-              ...textToolbarStyles.colorDot,
-              background: withHash(font.color),
-            }}
-          />
-          <DeferredColorInput
+          <Divider />
+          <div style={textToolbarStyles.fontSizeControl}>
+            <input
+              aria-label="Font size"
+              title="Font size"
+              type="text"
+              inputMode={numericInputMode(fontSizeInputOptions)}
+              value={formatToolbarFontSize(font.size)}
+              onChange={(event) =>
+                updateFontSize(
+                  sanitizeNumericInput(event.target.value, fontSizeInputOptions),
+                )
+              }
+              onKeyDown={(event) => {
+                if (preventInvalidNumberInput(event, fontSizeInputOptions)) return;
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  stepFontSize(1);
+                }
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  stepFontSize(-1);
+                }
+              }}
+              style={textToolbarStyles.fontSizeInput}
+            />
+            <span style={textToolbarStyles.fontSizeStepper}>
+              <button
+                type="button"
+                aria-label="Increase font size"
+                title="Increase font size"
+                onClick={() => stepFontSize(1)}
+                style={textToolbarStyles.fontSizeStepButton}
+              >
+                <span style={textToolbarStyles.fontSizeArrowUp} />
+              </button>
+              <button
+                type="button"
+                aria-label="Decrease font size"
+                title="Decrease font size"
+                onClick={() => stepFontSize(-1)}
+                style={textToolbarStyles.fontSizeStepButton}
+              >
+                <span style={textToolbarStyles.fontSizeArrowDown} />
+              </button>
+            </span>
+          </div>
+          <Divider />
+          <label
             aria-label="Text color"
-            value={font.color}
-            onCommit={(color) => updateFont({ color })}
-            style={textToolbarStyles.hiddenInput}
-          />
-        </label>
-        <Divider />
-        <div style={textToolbarStyles.modeGroup}>
-          <ToolbarButton
-            title="Bold"
-            controlId="bold"
-            hoveredControl={hoveredControl}
-            pressed={font.bold ?? false}
-            setHoveredControl={setHoveredControl}
-            onClick={() => updateFont({ bold: !(font.bold ?? false) })}
+            title="Text color"
+            style={textToolbarStyles.colorControl}
+            onMouseEnter={() => setHoveredControl("color")}
+            onMouseLeave={() => setHoveredControl(null)}
           >
-            <Bold size={18} strokeWidth={2.25} aria-hidden="true" />
-          </ToolbarButton>
-          <ToolbarButton
-            title="Italic"
-            controlId="italic"
-            hoveredControl={hoveredControl}
-            pressed={font.italic ?? false}
-            setHoveredControl={setHoveredControl}
-            onClick={() => updateFont({ italic: !(font.italic ?? false) })}
-          >
-            <Italic size={18} strokeWidth={2.25} aria-hidden="true" />
-          </ToolbarButton>
-          <ToolbarButton
-            title="Underline"
-            controlId="underline"
-            hoveredControl={hoveredControl}
-            pressed={font.underline ?? false}
-            setHoveredControl={setHoveredControl}
-            onClick={() =>
-              updateFont({ underline: !(font.underline ?? false) })
-            }
-          >
-            <Underline size={18} strokeWidth={2.25} aria-hidden="true" />
-          </ToolbarButton>
-          <ToolbarButton
-            title="Horizontal alignment"
-            controlId="horizontal-alignment"
-            hoveredControl={hoveredControl}
-            setHoveredControl={setHoveredControl}
-            onClick={() =>
-              updateAlignment({
-                horizontal:
-                  horizontalAlignment === "left"
-                    ? "center"
-                    : horizontalAlignment === "center"
-                      ? "right"
-                      : "left",
-              })
-            }
-          >
-            <HorizontalAlignmentIcon
-              size={18}
-              strokeWidth={2.2}
+            <span
               aria-hidden="true"
+              style={{
+                ...textToolbarStyles.colorDot,
+                background: withHash(font.color),
+              }}
             />
-          </ToolbarButton>
-        </div>
-        <Divider />
-        <ToolbarButton
-          title="Link"
-          controlId="link"
-          hoveredControl={hoveredControl}
-          setHoveredControl={setHoveredControl}
-        >
-          <Link size={18} strokeWidth={2.4} aria-hidden="true" />
-        </ToolbarButton>
-        <Divider />
-        <div style={textToolbarStyles.settingsControlWrap}>
+            <DeferredColorInput
+              aria-label="Text color"
+              value={font.color}
+              onCommit={(color) => updateFont({ color })}
+              style={textToolbarStyles.hiddenInput}
+            />
+          </label>
+          <Divider />
+          <div style={textToolbarStyles.modeGroup}>
+            <ToolbarButton
+              title="Bold"
+              controlId="bold"
+              hoveredControl={hoveredControl}
+              pressed={font.bold ?? false}
+              setHoveredControl={setHoveredControl}
+              onClick={() => updateFont({ bold: !(font.bold ?? false) })}
+            >
+              <Bold size={18} strokeWidth={2.25} aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Italic"
+              controlId="italic"
+              hoveredControl={hoveredControl}
+              pressed={font.italic ?? false}
+              setHoveredControl={setHoveredControl}
+              onClick={() => updateFont({ italic: !(font.italic ?? false) })}
+            >
+              <Italic size={18} strokeWidth={2.25} aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Underline"
+              controlId="underline"
+              hoveredControl={hoveredControl}
+              pressed={font.underline ?? false}
+              setHoveredControl={setHoveredControl}
+              onClick={() =>
+                updateFont({ underline: !(font.underline ?? false) })
+              }
+            >
+              <Underline size={18} strokeWidth={2.25} aria-hidden="true" />
+            </ToolbarButton>
+            <ToolbarButton
+              title="Horizontal alignment"
+              controlId="horizontal-alignment"
+              hoveredControl={hoveredControl}
+              setHoveredControl={setHoveredControl}
+              onClick={() =>
+                updateAlignment({
+                  horizontal:
+                    horizontalAlignment === "left"
+                      ? "center"
+                      : horizontalAlignment === "center"
+                        ? "right"
+                        : "left",
+                })
+              }
+            >
+              <HorizontalAlignmentIcon
+                size={18}
+                strokeWidth={2.2}
+                aria-hidden="true"
+              />
+            </ToolbarButton>
+          </div>
+          <Divider />
           <ToolbarButton
-            title="Settings"
-            controlId="settings"
+            title="Link"
+            controlId="link"
             hoveredControl={hoveredControl}
             setHoveredControl={setHoveredControl}
-            onClick={() =>
-              setOpenPanel((current) =>
-                current === "settings" ? null : "settings",
-              )
-            }
           >
-            <Settings size={18} strokeWidth={2.3} aria-hidden="true" />
+            <Link size={18} strokeWidth={2.4} aria-hidden="true" />
           </ToolbarButton>
-          {openPanel === "settings" ? (
-            <TextSettingsPanel
-              opacity={element.opacity ?? 1}
-              letterSpacing={letterSpacing}
-              listMarker={listMarker}
-              lineHeight={lineHeight}
-              onOpacityChange={updateOpacity}
-              onLetterSpacingChange={updateLetterSpacing}
-              onListMarkerChange={onListMarkerChange}
-              onLineHeightChange={updateLineHeight}
-            />
-          ) : null}
+          <Divider />
+          <div style={textToolbarStyles.settingsControlWrap}>
+            <ToolbarButton
+              title="Settings"
+              controlId="settings"
+              hoveredControl={hoveredControl}
+              setHoveredControl={setHoveredControl}
+              onClick={() =>
+                setOpenPanel((current) =>
+                  current === "settings" ? null : "settings",
+                )
+              }
+            >
+              <Settings size={18} strokeWidth={2.3} aria-hidden="true" />
+            </ToolbarButton>
+            {openPanel === "settings" ? (
+              <TextSettingsPanel
+                opacity={opacity}
+                letterSpacing={letterSpacing}
+                listMarker={listMarker}
+                lineHeight={lineHeight}
+                onOpacityChange={updateOpacity}
+                onLetterSpacingChange={updateLetterSpacing}
+                onListMarkerChange={onListMarkerChange}
+                onLineHeightChange={updateLineHeight}
+              />
+            ) : null}
+          </div>
         </div>
       </div>
-    </div>
+    </FloatingToolbarBoundsProvider>
   );
 
   return (
@@ -706,7 +737,7 @@ function FontFamilyPicker({
         />
       </button>
       {open ? (
-        <div
+        <FloatingToolbarPanel
           ref={menuPanelRef}
           role="listbox"
           aria-label="Font family"
@@ -755,7 +786,7 @@ function FontFamilyPicker({
             onSelect={selectFamily}
             onSwap={swapFontSource}
           />
-        </div>
+        </FloatingToolbarPanel>
       ) : null}
     </div>
   );
@@ -869,7 +900,7 @@ function TextSettingsPanel({
   const showListControls = listMarker != null && onListMarkerChange;
 
   return (
-    <div
+    <FloatingToolbarPanel
       data-inline-edit-ignore="true"
       style={{
         ...textToolbarStyles.settingsPanel,
@@ -935,7 +966,7 @@ function TextSettingsPanel({
           </div>
         </>
       ) : null}
-    </div>
+    </FloatingToolbarPanel>
   );
 }
 

@@ -45,6 +45,7 @@ import type {
 } from "../../services/api/chat";
 import ToolTip from "@/components/ToolTip";
 import { cn } from "@/lib/utils";
+import type { TemplateV2SurfaceSelectedDetail } from "@/components/slide-editor/events/events";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   {
@@ -298,17 +299,7 @@ type ChatProps = {
   resourceLabel?: string;
   variant?: "presentation" | "outline" | "template-v2";
   currentSlide?: number;
-  selectedTemplateV2Target?: {
-    kind: "component" | "element";
-    slideIndex?: number | null;
-    componentIndex?: number;
-    componentId?: string;
-    componentLabel?: string;
-    elementPath?: string;
-    elementType?: string;
-    elementName?: string;
-    targetLabel?: string;
-  } | null;
+  selectedTemplateV2Target?: TemplateV2SurfaceSelectedDetail["selection"];
   onClearChatSlideReference?: () => void;
   onClearChatTargetReference?: () => void;
   onBeforeSend?: () => Promise<void> | void;
@@ -466,75 +457,63 @@ const AssistantMarker = () => (
 );
 
 const TOOL_LABELS: Record<string, string> = {
-  getPresentationOutline: "Outline reader",
-  getOutlineDraft: "Outline draft reader",
   addOutline: "Outline adder",
   updateOutline: "Outline editor",
   deleteOutline: "Outline remover",
-  moveOutline: "Outline reorderer",
-  searchSlides: "Slide search",
-  getSlideAtIndex: "Slide reader",
-  getPresentationThemeCatalog: "Theme catalog",
+  addNewSlide: "Blank slide adder",
+  addNewSlideLayout: "Layout slide adder",
   getAvailableLayouts: "Layout finder",
-  getContentSchemaFromLayoutId: "Schema checker",
-  generateAssets: "Asset generator",
-  saveSlide: "Slide saver",
-  deleteSlide: "Slide remover",
-  setPresentationTheme: "Theme applier",
   getTemplateSummary: "Template reader",
-  addSlideLayout: "Template slide adder",
-  getSlideLayout: "Template slide reader",
-  searchTemplateContent: "Template search",
-  getEditableElements: "Element finder",
-  updateElementContent: "Content updater",
+  searchSlide: "Slide search",
+  getSlideAtIndex: "Slide reader",
+  saveSlide: "Slide saver",
+  updateSlide: "Slide updater",
+  deleteSlide: "Slide remover",
+  addElement: "Element adder",
+  updateElement: "Element updater",
+  deleteElement: "Element remover",
+  addComponent: "Component adder",
+  createComponent: "Component creator",
+  updateComponent: "Component updater",
   deleteComponent: "Component remover",
-  ungroupComponent: "Component ungrouper",
-  swapLayoutItems: "Item swapper",
-  swapComponentVariant: "Variant swapper",
-  getSlideElements: "Element finder",
-  updateSlideElement: "Content updater",
-  updateSlideComponent: "Block updater",
-  deleteSlideComponent: "Block remover",
-  deleteSlideElement: "Element remover",
-  addSlideComponent: "Block adder",
+  getPresentationTheme: "Theme reader",
+  setPresentationTheme: "Theme applier",
+  generateAssets: "Asset generator",
 };
 
 const MUTATING_TOOLS = new Set([
   "addOutline",
   "updateOutline",
   "deleteOutline",
-  "moveOutline",
+  "addNewSlide",
+  "addNewSlideLayout",
   "saveSlide",
+  "updateSlide",
   "deleteSlide",
-  "setPresentationTheme",
-  "addSlideLayout",
-  "updateElementContent",
+  "addElement",
+  "updateElement",
+  "deleteElement",
+  "addComponent",
+  "createComponent",
+  "updateComponent",
   "deleteComponent",
-  "ungroupComponent",
-  "swapLayoutItems",
-  "swapComponentVariant",
-  "updateSlideElement",
-  "updateSlideComponent",
-  "deleteSlideComponent",
-  "deleteSlideElement",
-  "addSlideComponent",
+  "setPresentationTheme",
 ]);
 // Only focus slides when the agent is actively mutating them.
 // Read/open traces (e.g. getSlideAtIndex) can happen ahead of edits and feel jumpy.
 const SLIDE_FOCUS_TOOLS = new Set([
+  "addNewSlide",
+  "addNewSlideLayout",
   "saveSlide",
+  "updateSlide",
   "deleteSlide",
-  "addSlideLayout",
-  "updateElementContent",
+  "addElement",
+  "updateElement",
+  "deleteElement",
+  "addComponent",
+  "createComponent",
+  "updateComponent",
   "deleteComponent",
-  "ungroupComponent",
-  "swapLayoutItems",
-  "swapComponentVariant",
-  "updateSlideElement",
-  "updateSlideComponent",
-  "deleteSlideComponent",
-  "deleteSlideElement",
-  "addSlideComponent",
 ]);
 const SLIDE_FOCUS_STATUSES = new Set(["start"]);
 const MIN_SLIDE_FOCUS_DWELL_MS = 700;
@@ -636,9 +615,6 @@ const humanizeTraceMessage = (message: string, tool?: string) => {
   if (lower.includes("found requested data")) {
     if (tool === "getSlideAtIndex") {
       return "Found the requested slide details.";
-    }
-    if (tool === "getPresentationOutline") {
-      return "Found the requested outline details.";
     }
     return "Found the requested information.";
   }
@@ -763,34 +739,24 @@ const humanActivityForTool = (
 ) => {
   const isDone = state === "success";
   switch (tool) {
-    case "searchSlides":
-    case "searchTemplateContent":
+    case "searchSlide":
       return isDone ? "Found the relevant content." : "Looking through the content.";
     case "getSlideAtIndex":
-    case "getSlideLayout":
       return isDone ? "Checked the slide." : "Checking the slide.";
-    case "getEditableElements":
-    case "getSlideElements":
-      return isDone ? "Found what can be edited." : "Finding editable parts.";
-    case "updateElementContent":
-    case "updateSlideElement":
-    case "updateSlideComponent":
-    case "addSlideLayout":
+    case "addNewSlide":
+    case "addNewSlideLayout":
+    case "updateElement":
+    case "updateComponent":
+    case "addElement":
+    case "addComponent":
+    case "createComponent":
+    case "updateSlide":
     case "saveSlide":
       return isDone ? "Applied the change." : "Applying the change.";
     case "deleteComponent":
-    case "deleteSlideComponent":
-    case "deleteSlideElement":
+    case "deleteElement":
     case "deleteSlide":
       return isDone ? "Removed the selected item." : "Removing the selected item.";
-    case "ungroupComponent":
-      return isDone ? "Separated the selected items." : "Separating the selected items.";
-    case "swapLayoutItems":
-      return isDone ? "Swapped the selected items." : "Swapping the selected items.";
-    case "swapComponentVariant":
-      return isDone ? "Updated the component style." : "Trying a better component style.";
-    case "addSlideComponent":
-      return isDone ? "Added the new block." : "Adding the new block.";
     case "generateAssets":
       return isDone ? "Prepared the visual assets." : "Preparing visual assets.";
     case "setPresentationTheme":
@@ -1097,12 +1063,12 @@ const Chat = ({
 
     if (variant === "outline") {
       contextLines.push(
-        "UI context: the user is editing the outline draft before template/layout selection. Use outline draft tools for outline add/edit/delete/reorder requests; do not use layout or finished-slide tools for outline-only edits."
+        "UI context: the user is editing the outline draft. Use addOutline, updateOutline, and deleteOutline for outline edits."
       );
     }
     if (variant === "template-v2") {
       contextLines.push(
-        "UI context: the user is editing a rendered TemplateV2 presentation. Visible tools in this UI are deck/slide tools and rendered slide UI tools: getPresentationOutline, searchSlides, getSlideAtIndex, getAvailableLayouts, getContentSchemaFromLayoutId, saveSlide, deleteSlide, getSlideElements, updateSlideElement, updateSlideComponent, deleteSlideComponent, deleteSlideElement, addSlideComponent, generateAssets. Hidden/unavailable in this UI: getOutlineDraft, addOutline, updateOutline, deleteOutline, moveOutline, and reusable-template-only tools. For deck-level requests like adding/removing/reordering slides, use saveSlide/deleteSlide. For visible edits inside an existing slide, inspect the slide UI with getSlideElements and use the rendered slide element/component tools. Do not ask for template IDs or layout IDs unless no visible tool can infer a reasonable default."
+        "UI context: the user is editing a rendered TemplateV2 presentation with the v2 assistant. Use getTemplateSummary, searchSlide, getSlideAtIndex, addNewSlide, addNewSlideLayout, saveSlide, updateSlide, deleteSlide, addElement, updateElement, deleteElement, addComponent, createComponent, updateComponent, deleteComponent, getPresentationTheme, setPresentationTheme, and generateAssets. For visible edits inside an existing slide, inspect with getSlideAtIndex and use the returned componentId/elementPath exactly. Use updateElement for element toolbar-style properties and updateComponent for component move, resize, duplicate, layer order, group, and ungroup actions. When adding or creating rendered elements/components, keep their position and size strictly inside the 1280x720 visible slide window."
       );
     }
 
@@ -1114,7 +1080,20 @@ const Chat = ({
       );
     }
 
-    if (selectedTemplateV2Target) {
+    if (selectedTemplateV2Target?.kind === "multi-component") {
+      const target = selectedTemplateV2Target;
+      const componentIds = target.componentIds?.filter(Boolean) ?? [];
+      const labels =
+        target.componentLabels?.filter(Boolean) ??
+        target.components.map((component) => component.componentLabel).filter(Boolean);
+      contextLines.push(
+        `UI context: the user has selected ${target.components.length} TemplateV2 components${
+          labels.length ? ` (${labels.join(", ")})` : ""
+        }${
+          componentIds.length ? ` with componentIds=${componentIds.join(",")}` : ""
+        }. These selected components are the primary target for short edits like "these", "group these", "remove these", "move them", or "resize them"; do not apply those requests to the whole slide unless the user explicitly says slide. For grouping selected components, inspect the selected slide with getSlideAtIndex, then call updateComponent with action=group, componentId set to one selected component id, and componentIds set to all selected component ids exactly.`
+      );
+    } else if (selectedTemplateV2Target) {
       const target = selectedTemplateV2Target;
       const targetParts = [
         `kind=${target.kind}`,
@@ -1134,14 +1113,14 @@ const Chat = ({
       contextLines.push(
         `UI context: the user has selected this TemplateV2 ${target.kind}: ${targetParts.join(
           ", "
-        )}. This selected ${target.kind} is the primary target for short edits like "this", "it", "make it smaller", "rewrite it", or "remove it"; do not apply those requests to the whole slide unless the user explicitly says slide. For visible slide edits, inspect the selected slide with getSlideElements and use matching componentId/elementPath exactly. If the selected element is content_editable:false, use position/size for that element or target a content_editable descendant for text/content changes.`
+        )}. This selected ${target.kind} is the primary target for short edits like "this", "it", "make it smaller", "rewrite it", or "remove it"; do not apply those requests to the whole slide unless the user explicitly says slide. For visible slide edits, inspect the selected slide with getSlideAtIndex and use matching componentId/elementPath exactly. If the selected element is content_editable:false, use position/size for that element or target a content_editable descendant for text/content changes.`
       );
     }
 
     if (images.length > 0) {
       contextLines.push(
         [
-          "UI context: the user attached image(s) to chat for this request. If they ask to add or replace an image, use updateElementContent on an image element with the exact image URL. If extracted text is provided, use it only for requests that ask to read or analyze the image.",
+          "UI context: the user attached image(s) to chat for this request. If they ask to add or replace an image, use addElement/updateElement with the exact image URL. If extracted text is provided, use it only for requests that ask to read or analyze the image.",
           ...images.map(
             (image, index) =>
               [
@@ -1864,12 +1843,15 @@ const Chat = ({
   const chatSlideReference =
     typeof currentSlide === "number" ? `Slide ${currentSlide + 1}` : "";
   const chatTargetReference = selectedTemplateV2Target
-    ? selectedTemplateV2Target.targetLabel ||
-      selectedTemplateV2Target.componentLabel ||
-      selectedTemplateV2Target.elementName ||
-      selectedTemplateV2Target.elementType ||
-      selectedTemplateV2Target.componentId ||
-      selectedTemplateV2Target.kind
+    ? selectedTemplateV2Target.kind === "multi-component"
+      ? selectedTemplateV2Target.targetLabel ||
+        `${selectedTemplateV2Target.components.length} components selected`
+      : selectedTemplateV2Target.targetLabel ||
+        selectedTemplateV2Target.componentLabel ||
+        selectedTemplateV2Target.elementName ||
+        selectedTemplateV2Target.elementType ||
+        selectedTemplateV2Target.componentId ||
+        selectedTemplateV2Target.kind
     : "";
 
   return (

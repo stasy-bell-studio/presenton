@@ -7,17 +7,24 @@ import {
   updateChartColorTarget,
 } from "@/components/slide-editor/charts/chart-data";
 import { ChartColorPaletteCard } from "@/components/slide-editor/charts/ChartColorPalette";
+import {
+  FloatingToolbar,
+  FloatingToolbarPanel,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
 
 const DEFAULT_CHART_TOOLBAR_SIZE = { width: 2.5, height: 2.5 };
 
 export function ChartToolbar({
+  anchorBox,
   element,
   index,
   scale,
   onChange,
   onEdit,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: ChartSlideElement;
   index: number;
   scale: number;
@@ -35,13 +42,20 @@ export function ChartToolbar({
     element.source.startsWith("presenton-default-");
 
   return (
-    <div data-inline-edit-ignore="true"
-      style={{
-        ...inlineStyles.toolbar,
-        left: Math.max(8, (element.position?.x ?? 0) * scale),
-        top: Math.max(8, (element.position?.y ?? 0) * scale - 48),
-      }}
-      onMouseDown={(event) => event.stopPropagation()}>
+    <FloatingToolbar
+      anchorBox={
+        anchorBox ?? {
+          x: (element.position?.x ?? 0) * scale,
+          y: (element.position?.y ?? 0) * scale,
+          width: (element.size?.width ?? DEFAULT_CHART_TOOLBAR_SIZE.width) * scale,
+          height:
+            (element.size?.height ?? DEFAULT_CHART_TOOLBAR_SIZE.height) * scale,
+        }
+      }
+      fallbackWidth={330}
+      inlineEditIgnore
+      style={inlineStyles.toolbar}
+    >
       <div
         style={{
           display: "inline-flex",
@@ -102,44 +116,48 @@ export function ChartToolbar({
           <Palette size={16} strokeWidth={2} />
         </button>
         {paletteOpen && activeTarget ? (
-          <ChartColorPaletteCard
-            value={activeTarget.color}
-            header={
-              colorTargets.length > 1 ? (
-                <div style={toolbarPaletteStyles.targetList}>
-                  {colorTargets.map((target) => (
-                    <button
-                      key={`${target.mode}-${target.index}`}
-                      type="button"
-                      title={target.label}
-                      style={{
-                        ...toolbarPaletteStyles.targetButton,
-                        ...(target.index === activeTarget.index
-                          ? toolbarPaletteStyles.targetButtonActive
-                          : {}),
-                      }}
-                      onClick={() => setActiveColorIndex(target.index)}
-                    >
-                      <span
+          <FloatingToolbarPanel>
+            <ChartColorPaletteCard
+              value={activeTarget.color}
+              header={
+                colorTargets.length > 1 ? (
+                  <div style={toolbarPaletteStyles.targetList}>
+                    {colorTargets.map((target) => (
+                      <button
+                        key={`${target.mode}-${target.index}`}
+                        type="button"
+                        title={target.label}
                         style={{
-                          ...toolbarPaletteStyles.targetDot,
-                          background: `#${target.color}`,
+                          ...toolbarPaletteStyles.targetButton,
+                          ...(target.index === activeTarget.index
+                            ? toolbarPaletteStyles.targetButtonActive
+                            : {}),
                         }}
-                      />
-                      <span style={toolbarPaletteStyles.targetLabel}>
-                        {target.label}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null
-            }
-            onChange={(color) =>
-              onChange(index, updateChartColorTarget(element, activeTarget.index, color))
-            }
-            onClose={() => setPaletteOpen(false)}
-            style={toolbarPaletteStyles.paletteCard}
-          />
+                        onClick={() => setActiveColorIndex(target.index)}
+                      >
+                        <span
+                          style={{
+                            ...toolbarPaletteStyles.targetDot,
+                            background: `#${target.color}`,
+                          }}
+                        />
+                        <span style={toolbarPaletteStyles.targetLabel}>
+                          {target.label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null
+              }
+              onChange={(color) =>
+                onChange(
+                  index,
+                  updateChartColorTarget(element, activeTarget.index, color),
+                )
+              }
+              onClose={() => setPaletteOpen(false)}
+            />
+          </FloatingToolbarPanel>
         ) : null}
       </div>
 
@@ -151,17 +169,11 @@ export function ChartToolbar({
       >
         <Download size={16} strokeWidth={2} />
       </button>
-    </div>
+    </FloatingToolbar>
   );
 }
 
 const toolbarPaletteStyles = {
-  paletteCard: {
-    left: 0,
-    position: "absolute",
-    top: 36,
-    zIndex: 30,
-  },
   targetButton: {
     alignItems: "center",
     background: "#FFFFFF",

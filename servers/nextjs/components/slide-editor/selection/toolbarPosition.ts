@@ -14,6 +14,13 @@ type Bounds = Size & {
   y?: number;
 };
 
+export type TemplateV2ToolbarViewportBounds = {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+};
+
 const STAGE_WIDTH = 1280;
 const STAGE_HEIGHT = 720;
 const COMPACT_SELECTION_TOOLBAR_WIDTH = 420;
@@ -69,6 +76,19 @@ export function getTemplateV2SelectionToolbarPosition({
     anchorBox,
     toolbarWidth: toolbarWidthForTarget(layoutTarget),
   });
+}
+
+export function getTemplateV2SelectionToolbarBounds(
+  root: HTMLElement | null,
+): TemplateV2ToolbarViewportBounds | null {
+  if (typeof window === "undefined" || !root) return null;
+  const rect = root.getBoundingClientRect();
+  return {
+    bottom: rect.bottom,
+    left: rect.left,
+    right: rect.right,
+    top: rect.top,
+  };
 }
 
 function toolbarWidthForTarget(

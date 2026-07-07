@@ -6,13 +6,19 @@ import {
   selectedDesignVariableOptionIndex,
 } from "@/components/slide-editor/model/design-variables";
 import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
+import {
+  FloatingToolbar,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 
 export function DesignVariablesToolbar({
+  anchorBox,
   element,
   index,
   scale,
   onChange,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: SlideElement;
   index: number;
   scale: number;
@@ -22,7 +28,18 @@ export function DesignVariablesToolbar({
   if (variables.length === 0) return null;
 
   return (
-    <div style={{ ...inlineStyles.toolbar, left: Math.max(8, (element.position?.x ?? 0) * scale), top: Math.max(8, (element.position?.y ?? 0) * scale - 48) }} onMouseDown={(event) => event.stopPropagation()}>
+    <FloatingToolbar
+      anchorBox={
+        anchorBox ?? {
+          x: (element.position?.x ?? 0) * scale,
+          y: (element.position?.y ?? 0) * scale,
+          width: (element.size?.width ?? 1) * scale,
+          height: (element.size?.height ?? 1) * scale,
+        }
+      }
+      fallbackWidth={160}
+      style={inlineStyles.toolbar}
+    >
       {variables.map((variable) => {
         const selectedIndex = selectedDesignVariableOptionIndex(element, variable);
         const label = designVariableNameLabel(variable.name);
@@ -53,6 +70,6 @@ export function DesignVariablesToolbar({
           </select>
         );
       })}
-    </div>
+    </FloatingToolbar>
   );
 }

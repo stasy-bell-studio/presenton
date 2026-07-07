@@ -27,6 +27,11 @@ import {
   uniformBorderRadius,
 } from "@/components/slide-editor/model/element-model";
 import type { ImageSlideElement } from "@/components/slide-editor/state/state";
+import {
+  FloatingToolbar,
+  FloatingToolbarPanel,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
 import { resolveBackendAssetSource } from "@/utils/api";
 
@@ -116,12 +121,14 @@ function cropControlsPosition(frame: CropFrame) {
 }
 
 export function ImageToolbar({
+  anchorBox,
   element,
   index,
   scale,
   onChange,
   onUpload,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: ImageSlideElement;
   index: number;
   scale: number;
@@ -214,16 +221,19 @@ export function ImageToolbar({
 
   return (
     <>
-      <div
-        data-template-v2-floating-toolbar="true"
-        data-inline-edit-ignore="true"
-        style={{
-          left: Math.max(8, box.x * scale),
-          top: Math.max(8, box.y * scale - 64),
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        className="fixed z-[10000] inline-flex items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]">
+      <FloatingToolbar
+        anchorBox={
+          anchorBox ?? {
+            x: box.x * scale,
+            y: box.y * scale,
+            width: box.w * scale,
+            height: box.h * scale,
+          }
+        }
+        fallbackWidth={330}
+        inlineEditIgnore
+        className="inline-flex items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
+      >
         <div className="relative">
           <button
             type="button"
@@ -388,7 +398,7 @@ export function ImageToolbar({
             </Panel>
           ) : null}
         </div>
-      </div>
+      </FloatingToolbar>
       {openPanel === "crop" ? (
         <>
           <CropOverlay
@@ -696,14 +706,14 @@ function Panel({
   className?: string;
 }) {
   return (
-    <div
+    <FloatingToolbarPanel
       className={cn(
         "absolute left-1/2 top-[calc(100%+8px)] z-10 box-border -translate-x-1/2 rounded-lg bg-white shadow-[0_0_4px_rgba(0,0,0,0.16)]",
         className,
       )}
     >
       {children}
-    </div>
+    </FloatingToolbarPanel>
   );
 }
 

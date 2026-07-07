@@ -1045,7 +1045,30 @@ export function surfaceSelectionTarget(
   slideIndex: number | null,
 ): TemplateV2SurfaceSelectedDetail["selection"] {
   if (!selection) return null;
-  if (selection.kind === "multi-component") return null;
+  if (selection.kind === "multi-component") {
+    const components = selection.componentIndexes.map((componentIndex) => {
+      const component = asRecord(readArray(ui.components)[componentIndex]);
+      const componentLabel = componentDisplayLabel(component, componentIndex);
+      return {
+        kind: "component" as const,
+        slideIndex,
+        componentIndex,
+        componentId: readString(component?.id) || undefined,
+        componentLabel,
+        targetLabel: componentLabel,
+      };
+    });
+    return {
+      kind: "multi-component",
+      slideIndex,
+      components,
+      componentIds: components
+        .map((component) => component.componentId)
+        .filter((value): value is string => Boolean(value)),
+      componentLabels: components.map((component) => component.componentLabel),
+      targetLabel: `${components.length} components selected`,
+    };
+  }
   if (selection.kind === "component") {
     const component = asRecord(readArray(ui.components)[selection.componentIndex]);
     const componentLabel = componentDisplayLabel(component, selection.componentIndex);

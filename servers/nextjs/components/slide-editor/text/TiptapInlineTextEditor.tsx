@@ -33,6 +33,7 @@ type RunStyleAttrs = {
   lineHeight?: number | null;
   letterSpacing?: number | null;
   wrap?: Font["wrap"] | null;
+  opacity?: number | null;
 };
 
 const RunStyle = Mark.create({
@@ -55,6 +56,7 @@ const RunStyle = Mark.create({
       lineHeight: attribute(),
       letterSpacing: attribute(),
       wrap: attribute(),
+      opacity: attribute(),
     };
   },
   parseHTML() {
@@ -559,6 +561,7 @@ function fontToRunStyleAttrs(font: Font): RunStyleAttrs {
     lineHeight: font.line_height,
     letterSpacing: font.letter_spacing,
     wrap: font.wrap,
+    opacity: font.opacity,
   };
 }
 
@@ -574,6 +577,7 @@ function fontFromRunStyleAttrs(attrs: RunStyleAttrs, baseFont: Font): Font {
     line_height: attrs.lineHeight ?? baseFont.line_height,
     letter_spacing: attrs.letterSpacing ?? baseFont.letter_spacing,
     wrap: attrs.wrap ?? baseFont.wrap,
+    opacity: attrs.opacity ?? baseFont.opacity,
   };
 }
 
@@ -592,6 +596,7 @@ function runStyleAttrsToCss(attrs: RunStyleAttrs) {
     attrs.lineHeight != null ? `line-height:${attrs.lineHeight}` : null,
     attrs.letterSpacing != null ? `letter-spacing:${attrs.letterSpacing}px` : null,
     attrs.wrap === "none" ? "white-space:pre" : null,
+    attrs.opacity != null ? `opacity:${attrs.opacity}` : null,
   ].filter(Boolean);
   return styles.join(";");
 }

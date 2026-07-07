@@ -31,20 +31,31 @@ export type TemplateV2InsertElementsDetail = {
   handled?: boolean;
 };
 
+export type TemplateV2SingleSurfaceSelection = {
+  kind: "component" | "element";
+  slideIndex?: number | null;
+  componentIndex?: number;
+  componentId?: string;
+  componentLabel?: string;
+  elementPath?: string;
+  elementType?: string;
+  elementName?: string;
+  targetLabel?: string;
+};
+
+export type TemplateV2MultiSurfaceSelection = {
+  kind: "multi-component";
+  slideIndex?: number | null;
+  components: TemplateV2SingleSurfaceSelection[];
+  componentIds?: string[];
+  componentLabels?: string[];
+  targetLabel?: string;
+};
+
 export type TemplateV2SurfaceSelectedDetail = {
   slideId?: string | number | null;
   slideIndex?: number | null;
-  selection?: {
-    kind: "component" | "element";
-    slideIndex?: number | null;
-    componentIndex?: number;
-    componentId?: string;
-    componentLabel?: string;
-    elementPath?: string;
-    elementType?: string;
-    elementName?: string;
-    targetLabel?: string;
-  } | null;
+  selection?: TemplateV2SingleSurfaceSelection | TemplateV2MultiSurfaceSelection | null;
 };
 
 export type TemplateV2ActivateSurfaceDetail = {

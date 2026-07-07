@@ -16,6 +16,11 @@ import {
 } from "lucide-react";
 import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredColorInput";
 import {
+  numericInputMode,
+  preventInvalidNumberInput,
+  sanitizeNumericInput,
+} from "@/components/slide-editor/toolbar/numericInput";
+import {
   DEFAULT_CHART_COLORS,
   chartColorTargetMode,
   chartDataFromSeries,
@@ -758,6 +763,10 @@ function EditableDataTable({
   const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
   const selectedSeriesIndex = Math.min(activeSeriesIndex, safeSeries.length - 1);
   const selectedSeries = safeSeries[selectedSeriesIndex];
+  const chartValueInputOptions = {
+    allowDecimal: true,
+    allowNegative: true,
+  };
 
   const updateCategory = (rowIndex: number, value: string) => {
     onUpdate(
@@ -947,10 +956,40 @@ function EditableDataTable({
                     >
                       <input
                         className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-3"
-                        type="number"
+                        type="text"
+                        inputMode={numericInputMode(chartValueInputOptions)}
                         value={item.values[rowIndex] ?? 0}
+                        onKeyDown={(event) => {
+                          if (
+                            preventInvalidNumberInput(
+                              event,
+                              chartValueInputOptions,
+                            )
+                          ) {
+                            return;
+                          }
+                          if (
+                            event.key === "ArrowUp" ||
+                            event.key === "ArrowDown"
+                          ) {
+                            event.preventDefault();
+                            const direction = event.key === "ArrowUp" ? 1 : -1;
+                            updateValue(
+                              seriesIndex,
+                              rowIndex,
+                              String((item.values[rowIndex] ?? 0) + direction),
+                            );
+                          }
+                        }}
                         onChange={(event) =>
-                          updateValue(seriesIndex, rowIndex, event.target.value)
+                          updateValue(
+                            seriesIndex,
+                            rowIndex,
+                            sanitizeNumericInput(
+                              event.target.value,
+                              chartValueInputOptions,
+                            ),
+                          )
                         }
                       />
                     </td>

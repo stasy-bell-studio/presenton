@@ -916,7 +916,6 @@ Primary files:
 Rendering:
 
 - `TemplateV2TableElement` renders table cells in Konva.
-- It has a special default table renderer for default generated table shape.
 - Cell text is rendered using rich text layout helpers.
 - `SelectedTableCellOutline` draws active cell outline.
 
@@ -1042,7 +1041,7 @@ SVG icon recoloring uses `buildSvgUpdateUrl()` from `lib/svg-color.ts`.
 | Konva element renderer | `surface/nodes.tsx` | `RawElementNode`, `RawElementVisual` |
 | Text rendering | `surface/nodes.tsx`, `text/template-v2-text.ts` | `RawRichTextElement`, `layoutRichText`, `rawRenderTextRuns` |
 | Image rendering | `surface/nodes.tsx` | `RawImageElement`, `useLoadedKonvaImage`, `imageCornerRadii` |
-| Table rendering | `tables/TemplateV2TableElement.tsx` | `TemplateV2TableElement`, `RawDefaultTableElement`, `TableCellText` |
+| Table rendering | `tables/TemplateV2TableElement.tsx` | `TemplateV2TableElement`, `TableCellText` |
 | Chart rendering | `charts/TemplateV2ChartElement.tsx` | `TemplateV2ChartElement`, chart-specific raw renderers |
 | Flex/grid layout | `layout/flowLayout.ts` | `layoutFlowChildren`, `layoutFlexChildren`, `layoutGridChildren` |
 | HTML preview | `TemplateV2LayoutPreview.tsx` | `renderImage`, `renderText`, `renderFlex`, `renderGrid`, `renderChart` |

@@ -12,6 +12,11 @@ import type {
   TemplateV2LayoutElement,
   TemplateV2LayoutToolbarBox,
 } from "@/components/slide-editor/layout/LayoutToolbar";
+import {
+  numericInputMode,
+  preventInvalidNumberInput,
+  sanitizeNumericInput,
+} from "@/components/slide-editor/toolbar/numericInput";
 
 type RawRecord = Record<string, unknown>;
 type ContainerPanelId = "fill" | "stroke" | "radius" | "padding" | "shadow";
@@ -105,6 +110,20 @@ function CompactNumberInput({
   onCommit: (value: number) => void;
   label: string;
 }) {
+  const numericInputOptions = {
+    allowDecimal: true,
+    min,
+  };
+  const commitNumber = (nextValue: number) => {
+    if (!Number.isFinite(nextValue)) return;
+    const bounded = clampNumber(
+      nextValue,
+      min ?? -Infinity,
+      max ?? Infinity,
+    );
+    onCommit(bounded);
+  };
+
   return (
     <label className="flex items-center justify-between gap-3">
       <span className="font-manrope text-[12px] font-medium leading-6 text-[#191919]">
@@ -118,20 +137,23 @@ function CompactNumberInput({
         ) : null}
         <input
           aria-label={label}
-          type="number"
+          type="text"
+          inputMode={numericInputMode(numericInputOptions)}
           value={Number.isFinite(value) ? value : 0}
-          min={min}
-          max={max}
-          step={step}
+          onKeyDown={(event) => {
+            if (preventInvalidNumberInput(event, numericInputOptions)) return;
+            if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+              event.preventDefault();
+              const direction = event.key === "ArrowUp" ? 1 : -1;
+              commitNumber(value + step * direction);
+            }
+          }}
           onChange={(event) => {
-            const nextValue = Number(event.target.value);
-            if (!Number.isFinite(nextValue)) return;
-            const bounded = clampNumber(
-              nextValue,
-              min ?? -Infinity,
-              max ?? Infinity,
+            const sanitizedValue = sanitizeNumericInput(
+              event.target.value,
+              numericInputOptions,
             );
-            onCommit(bounded);
+            commitNumber(Number(sanitizedValue));
           }}
           className="w-full border-0 bg-transparent p-0 text-[12px] leading-none text-[#191919] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />

@@ -52,7 +52,6 @@ export function BulletsToolbar({
       {
         ...element,
         font: nextTextElement.font,
-        opacity: nextTextElement.opacity,
       },
       nextTextElement.runs,
     ) as BulletsSlideElement;

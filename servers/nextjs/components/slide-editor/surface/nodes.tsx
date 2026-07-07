@@ -878,7 +878,7 @@ function RawRichTextElement({
                 width={segment.width}
                 height={lineMetric.height}
                 text={segment.text}
-                fill={withHash(segment.font.color)}
+                fill={textFill(segment.font)}
                 fontFamily={`${segment.font.family}, Helvetica, sans-serif`}
                 fontSize={segment.font.size}
                 fontStyle={`${segment.font.bold ? "bold" : "normal"} ${segment.font.italic ? "italic" : ""
@@ -919,7 +919,7 @@ function RawRichTextElement({
             x={tok.x}
             y={tok.y}
             text={tok.text}
-            fill={withHash(tok.font.color)}
+            fill={textFill(tok.font)}
             fontFamily={`${tok.font.family}, Helvetica, sans-serif`}
             fontSize={tok.font.size}
             fontStyle={`${tok.font.bold ? "bold" : "normal"} ${tok.font.italic ? "italic" : ""}`}
@@ -960,7 +960,7 @@ function RawRichTextElement({
       width={textNodeWidth}
       height={textNodeHeight}
       text={displayContent}
-      fill={withHash(font.color)}
+      fill={textFill(font)}
       fontFamily={`${font.family}, Helvetica, sans-serif`}
       fontSize={font.size}
       fontStyle={`${font.bold ? "bold" : "normal"} ${font.italic ? "italic" : ""}`}
@@ -974,6 +974,10 @@ function RawRichTextElement({
       listening={interactive}
     />
   );
+}
+
+function textFill(font: { color: string; opacity?: number | null }) {
+  return colorWithOpacity(withHash(font.color), font.opacity ?? 1);
 }
 
 function RawImageElement({

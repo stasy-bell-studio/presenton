@@ -35,6 +35,8 @@ from utils.process_slides import (
 
 LOGGER = logging.getLogger(__name__)
 MAX_SCHEMA_ERRORS = 10
+SLIDE_STAGE_WIDTH = 1280.0
+SLIDE_STAGE_HEIGHT = 720.0
 # Keep URL runtime fields during validation because many slide schemas require them.
 # Speaker note is handled separately and should not affect JSON-schema checks.
 RUNTIME_CONTENT_FIELDS = {"__speaker_note__"}
@@ -404,6 +406,13 @@ class PresentationChatMemoryLayer:
         }
         if include_full_content:
             response["content"] = slide.content
+            response["ui"] = slide.ui
+        ui = self._slide_ui_layout(slide)
+        if ui is not None:
+            response["ui_summary"] = await self.get_slide_ui_elements(
+                index=slide.index,
+                include_full_json=False,
+            )
         return response
 
     async def get_outline_draft(self) -> dict[str, Any]:
@@ -615,6 +624,65 @@ class PresentationChatMemoryLayer:
         if icons:
             return normalize_slide_asset_url(icons[0])
         return normalize_slide_asset_url("/static/icons/placeholder.svg")
+
+    async def add_blank_slide(self, *, index: int | None = None) -> dict[str, Any]:
+        presentation = await self._sql_session.get(PresentationModel, self._presentation_id)
+        if not presentation:
+            return {"added": False, "message": "Presentation not found."}
+
+        slides_result = await self._sql_session.scalars(
+            select(SlideModel)
+            .where(SlideModel.presentation == self._presentation_id)
+            .order_by(SlideModel.index)
+        )
+        slides = list(slides_result)
+        insert_index = (
+            len(slides)
+            if index is None
+            else min(max(0, index), len(slides))
+        )
+        for slide in sorted(
+            [slide for slide in slides if slide.index >= insert_index],
+            key=lambda each: each.index,
+            reverse=True,
+        ):
+            slide.index += 1
+            self._sql_session.add(slide)
+
+        blank_ui = {
+            "id": "__blank_slide__",
+            "description": "Empty slide.",
+            "background": "#FFFFFF",
+            "components": [],
+            "elements": [
+                {
+                    "type": "rectangle",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 1280, "height": 720},
+                    "fill": {"color": "#FFFFFF"},
+                    "decorative": True,
+                }
+            ],
+        }
+        new_slide = SlideModel(
+            presentation=self._presentation_id,
+            layout_group=self._resolve_layout_group(presentation=presentation),
+            layout="__blank_slide__",
+            index=insert_index,
+            content={},
+            speaker_note="",
+            ui=blank_ui,
+        )
+        self._sql_session.add(new_slide)
+        await self._sql_session.commit()
+        await self._sql_session.refresh(new_slide)
+        return {
+            "added": True,
+            "message": f"Blank slide added at index {insert_index}.",
+            "slide_id": str(new_slide.id),
+            "index": insert_index,
+            "slide_number": insert_index + 1,
+        }
 
     async def save_slide(
         self,
@@ -838,10 +906,9 @@ class PresentationChatMemoryLayer:
     async def get_slide_ui_elements(
         self, *, index: int, include_full_json: bool = False
     ) -> dict[str, Any]:
-        # Imported lazily: the services.chat.v2 package eagerly imports the v2 chat
-        # service, which imports this module's package, so a top-level import would
-        # create a circular import during startup.
-        from services.chat.v2.tools import (
+        # Imported lazily so chat startup does not load rendered-slide helper code
+        # unless the assistant actually inspects UI elements.
+        from services.chat.slide_ui_helpers import (
             _collect_editable_elements,
             _compact_components,
         )
@@ -861,7 +928,7 @@ class PresentationChatMemoryLayer:
                 "slide_number": slide.index + 1,
                 "message": (
                     "This slide is not a rendered template (ui) slide. Use "
-                    "getContentSchemaFromLayoutId + saveSlide to edit it instead."
+                    "saveSlide or updateSlide to edit it instead."
                 ),
             }
 
@@ -897,10 +964,11 @@ class PresentationChatMemoryLayer:
         table_cell: dict[str, Any] | None = None,
         table: dict[str, Any] | None = None,
         chart: dict[str, Any] | None = None,
+        element_patch: dict[str, Any] | None = None,
         position: dict[str, Any] | None = None,
         size: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        from services.chat.v2.tools import (
+        from services.chat.slide_ui_helpers import (
             _apply_image_element_value,
             _component_id_for_path,
             _content_update_requested_for_type,
@@ -927,6 +995,14 @@ class PresentationChatMemoryLayer:
         ui = copy.deepcopy(ui)
         element = _resolve_element_path(ui, element_path)
         element_type = str(element.get("type") or "")
+        element_updated = False
+        if element_patch is not None:
+            if "type" in element_patch and not isinstance(element_patch.get("type"), str):
+                raise ValueError("element.type must be a string when provided.")
+            self._merge_ui_patch(element, element_patch)
+            self._sync_ui_text_fields(element)
+            element_type = str(element.get("type") or element_type)
+            element_updated = True
         content_update_requested = _content_update_requested_for_type(
             element_type,
             text=text,
@@ -976,7 +1052,7 @@ class PresentationChatMemoryLayer:
             raise ValueError(f"Element type '{element_type}' is not content-editable.")
 
         geometry_updated = self._update_ui_box(element, position=position, size=size)
-        if not content_update_requested and not geometry_updated:
+        if not content_update_requested and not geometry_updated and not element_updated:
             raise ValueError("No element content or geometry update was provided.")
 
         await self._save_slide_ui(slide, ui)
@@ -1000,8 +1076,11 @@ class PresentationChatMemoryLayer:
         *,
         index: int,
         component_id: str,
+        action: str | None = None,
+        component_ids: list[str] | None = None,
         position: dict[str, Any] | None = None,
         size: dict[str, Any] | None = None,
+        replacement_component: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         slide = await self._get_slide_by_index(index)
         if not slide:
@@ -1018,6 +1097,44 @@ class PresentationChatMemoryLayer:
         if not isinstance(components, list):
             return {"updated": False, "message": "Slide has no components list."}
 
+        normalized_action = self._normalize_component_action(action)
+
+        if normalized_action == "ungroup":
+            return await self._ungroup_slide_ui_component(
+                slide=slide,
+                ui=ui,
+                components=components,
+                component_id=component_id,
+            )
+        if normalized_action == "group":
+            return await self._group_slide_ui_components(
+                slide=slide,
+                ui=ui,
+                components=components,
+                component_id=component_id,
+                component_ids=component_ids or [component_id],
+            )
+        if normalized_action == "duplicate":
+            return await self._duplicate_slide_ui_component(
+                slide=slide,
+                ui=ui,
+                components=components,
+                component_id=component_id,
+            )
+        if normalized_action in {
+            "bring-to-front",
+            "bring-forward",
+            "send-backward",
+            "send-to-back",
+        }:
+            return await self._reorder_slide_ui_component(
+                slide=slide,
+                ui=ui,
+                components=components,
+                component_id=component_id,
+                action=normalized_action,
+            )
+
         component = next(
             (
                 candidate
@@ -1031,7 +1148,25 @@ class PresentationChatMemoryLayer:
                 "updated": False,
                 "message": f"Component '{component_id}' was not found.",
             }
-        if not self._update_ui_box(component, position=position, size=size):
+        updated = False
+        if replacement_component is not None:
+            if not isinstance(replacement_component.get("elements"), list):
+                raise ValueError("replacement component must include elements.")
+            replacement = copy.deepcopy(replacement_component)
+            replacement["id"] = component_id
+            replacement.setdefault("description", component.get("description"))
+            replacement.setdefault("position", component.get("position"))
+            replacement.setdefault("size", component.get("size"))
+            component_index = components.index(component)
+            components[component_index] = replacement
+            component = replacement
+            self._sync_ui_text_fields(component)
+            self._normalize_added_visual_block(component)
+            self._fit_component_to_stage(component)
+            updated = True
+        if self._update_ui_box(component, position=position, size=size):
+            updated = True
+        if not updated:
             raise ValueError("No component geometry update was provided.")
 
         await self._save_slide_ui(slide, ui)
@@ -1043,6 +1178,292 @@ class PresentationChatMemoryLayer:
             "position": component.get("position"),
             "size": component.get("size"),
             "message": f"Updated component '{component_id}' on slide {slide.index + 1}.",
+        }
+
+    async def _ungroup_slide_ui_component(
+        self,
+        *,
+        slide: SlideModel,
+        ui: dict[str, Any],
+        components: list[Any],
+        component_id: str,
+    ) -> dict[str, Any]:
+        from services.chat.slide_ui_helpers import _ungrouped_components_from_component
+
+        component_index, component = next(
+            (
+                (idx, candidate)
+                for idx, candidate in enumerate(components)
+                if isinstance(candidate, dict) and candidate.get("id") == component_id
+            ),
+            (None, None),
+        )
+        if component_index is None or not isinstance(component, dict):
+            return {
+                "updated": False,
+                "message": f"Component '{component_id}' was not found.",
+            }
+
+        parts = _ungrouped_components_from_component(
+            component,
+            component_index,
+            used_ids={
+                str(item.get("id"))
+                for idx, item in enumerate(components)
+                if idx != component_index and isinstance(item, dict)
+            },
+        )
+        if len(parts) < 2:
+            raise ValueError("Component does not contain multiple safely separable elements.")
+
+        components[component_index : component_index + 1] = parts
+        await self._save_slide_ui(slide, ui)
+        return {
+            "updated": True,
+            "action": "ungrouped",
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "created_component_ids": [part["id"] for part in parts],
+            "message": f"Ungrouped component '{component_id}' on slide {slide.index + 1}.",
+        }
+
+    async def _group_slide_ui_components(
+        self,
+        *,
+        slide: SlideModel,
+        ui: dict[str, Any],
+        components: list[Any],
+        component_id: str,
+        component_ids: list[str],
+    ) -> dict[str, Any]:
+        requested_ids = []
+        for raw_id in [component_id, *component_ids]:
+            if raw_id and raw_id not in requested_ids:
+                requested_ids.append(raw_id)
+        if len(requested_ids) < 2:
+            raise ValueError("Grouping requires at least two component ids.")
+
+        selected: list[tuple[int, dict[str, Any]]] = []
+        for idx, component in enumerate(components):
+            if isinstance(component, dict) and component.get("id") in requested_ids:
+                selected.append((idx, component))
+        found_ids = {str(component.get("id")) for _, component in selected}
+        missing_ids = [item for item in requested_ids if item not in found_ids]
+        if missing_ids:
+            raise ValueError(f"Component(s) not found: {', '.join(missing_ids)}")
+
+        boxes = [
+            self._component_box(component)
+            for _, component in selected
+        ]
+        if any(box is None for box in boxes):
+            raise ValueError("Cannot group components without valid position and size.")
+        typed_boxes = [box for box in boxes if box is not None]
+        left = min(box["x"] for box in typed_boxes)
+        top = min(box["y"] for box in typed_boxes)
+        right = max(box["x"] + box["width"] for box in typed_boxes)
+        bottom = max(box["y"] + box["height"] for box in typed_boxes)
+
+        grouped_elements: list[dict[str, Any]] = []
+        for (_, component), box in zip(selected, typed_boxes):
+            elements = component.get("elements")
+            if not isinstance(elements, list):
+                continue
+            for element in elements:
+                if not isinstance(element, dict):
+                    continue
+                copied = copy.deepcopy(element)
+                element_position = copied.get("position")
+                if isinstance(element_position, dict):
+                    copied["position"] = {
+                        "x": float(box["x"]) + float(element_position.get("x") or 0) - left,
+                        "y": float(box["y"]) + float(element_position.get("y") or 0) - top,
+                    }
+                else:
+                    copied["position"] = {
+                        "x": float(box["x"]) - left,
+                        "y": float(box["y"]) - top,
+                    }
+                grouped_elements.append(copied)
+
+        if not grouped_elements:
+            raise ValueError("Cannot group components with no elements.")
+
+        first_index = min(idx for idx, _ in selected)
+        selected_indices = {idx for idx, _ in selected}
+        group_id = self._unique_ui_component_id(component_id or "group", [
+            component
+            for idx, component in enumerate(components)
+            if idx not in selected_indices
+        ])
+        group_component = {
+            "id": group_id,
+            "description": "Grouped component",
+            "position": {"x": left, "y": top},
+            "size": {"width": right - left, "height": bottom - top},
+            "elements": grouped_elements,
+        }
+
+        next_components = [
+            component
+            for idx, component in enumerate(components)
+            if idx not in selected_indices
+        ]
+        next_components.insert(first_index, group_component)
+        ui["components"] = next_components
+        await self._save_slide_ui(slide, ui)
+        return {
+            "updated": True,
+            "action": "grouped",
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": group_id,
+            "grouped_component_ids": requested_ids,
+            "message": f"Grouped {len(selected)} components on slide {slide.index + 1}.",
+        }
+
+    async def _duplicate_slide_ui_component(
+        self,
+        *,
+        slide: SlideModel,
+        ui: dict[str, Any],
+        components: list[Any],
+        component_id: str,
+    ) -> dict[str, Any]:
+        component_index, component = self._find_ui_component(components, component_id)
+        if component_index is None or not isinstance(component, dict):
+            return {
+                "updated": False,
+                "message": f"Component '{component_id}' was not found.",
+            }
+
+        duplicate = copy.deepcopy(component)
+        duplicate_id = self._unique_ui_component_id(f"{component_id}_copy", components)
+        duplicate["id"] = duplicate_id
+        position = duplicate.get("position")
+        if isinstance(position, dict):
+            duplicate["position"] = {
+                **position,
+                "x": float(position.get("x") or 0) + 16,
+                "y": float(position.get("y") or 0) + 16,
+            }
+        components.insert(component_index + 1, duplicate)
+        await self._save_slide_ui(slide, ui)
+        return {
+            "updated": True,
+            "action": "duplicated",
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": duplicate_id,
+            "source_component_id": component_id,
+            "message": f"Duplicated component '{component_id}' on slide {slide.index + 1}.",
+        }
+
+    async def _reorder_slide_ui_component(
+        self,
+        *,
+        slide: SlideModel,
+        ui: dict[str, Any],
+        components: list[Any],
+        component_id: str,
+        action: str,
+    ) -> dict[str, Any]:
+        component_index, component = self._find_ui_component(components, component_id)
+        if component_index is None or component is None:
+            return {
+                "updated": False,
+                "message": f"Component '{component_id}' was not found.",
+            }
+
+        target_index = self._component_layer_target_index(
+            component_index,
+            len(components),
+            action,
+        )
+        if target_index == component_index:
+            return {
+                "updated": False,
+                "action": action,
+                "index": slide.index,
+                "slide_number": slide.index + 1,
+                "component_id": component_id,
+                "message": f"Component '{component_id}' is already at that layer.",
+            }
+
+        moved = components.pop(component_index)
+        components.insert(target_index, moved)
+        await self._save_slide_ui(slide, ui)
+        return {
+            "updated": True,
+            "action": action,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "component_index": target_index,
+            "message": f"Reordered component '{component_id}' on slide {slide.index + 1}.",
+        }
+
+    @staticmethod
+    def _normalize_component_action(action: str | None) -> str:
+        return {
+            "bringToFront": "bring-to-front",
+            "bringForward": "bring-forward",
+            "sendBackward": "send-backward",
+            "sendToBack": "send-to-back",
+        }.get(action or "update", action or "update")
+
+    @staticmethod
+    def _component_layer_target_index(
+        component_index: int,
+        component_count: int,
+        action: str,
+    ) -> int:
+        if component_count <= 1:
+            return component_index
+        if action == "send-to-back":
+            return 0
+        if action == "send-backward":
+            return max(0, component_index - 1)
+        if action == "bring-forward":
+            return min(component_count - 1, component_index + 1)
+        if action == "bring-to-front":
+            return component_count - 1
+        return component_index
+
+    @staticmethod
+    def _find_ui_component(
+        components: list[Any],
+        component_id: str,
+    ) -> tuple[int | None, dict[str, Any] | None]:
+        return next(
+            (
+                (idx, candidate)
+                for idx, candidate in enumerate(components)
+                if isinstance(candidate, dict) and candidate.get("id") == component_id
+            ),
+            (None, None),
+        )
+
+    @staticmethod
+    def _component_box(component: dict[str, Any]) -> dict[str, float] | None:
+        position = component.get("position")
+        size = component.get("size")
+        if not isinstance(position, dict) or not isinstance(size, dict):
+            return None
+        x = position.get("x")
+        y = position.get("y")
+        width = size.get("width")
+        height = size.get("height")
+        if not all(isinstance(value, (int, float)) for value in (x, y, width, height)):
+            return None
+        if width <= 0 or height <= 0:
+            return None
+        return {
+            "x": float(x),
+            "y": float(y),
+            "width": float(width),
+            "height": float(height),
         }
 
     async def delete_slide_ui_component(
@@ -1088,7 +1509,7 @@ class PresentationChatMemoryLayer:
     async def delete_slide_ui_element(
         self, *, index: int, element_path: str
     ) -> dict[str, Any]:
-        from services.chat.v2.tools import _component_id_for_path
+        from services.chat.slide_ui_helpers import _component_id_for_path
 
         slide = await self._get_slide_by_index(index)
         if not slide:
@@ -1108,7 +1529,7 @@ class PresentationChatMemoryLayer:
                 "message": (
                     f"Could not delete element at '{element_path}'. Only indexed "
                     "elements[] / children[] entries can be removed; to remove a whole "
-                    "component use deleteSlideComponent."
+                    "component use deleteComponent."
                 ),
             }
 
@@ -1171,6 +1592,7 @@ class PresentationChatMemoryLayer:
         # actually visible regardless of which field the model populated.
         self._sync_ui_text_fields(new_component)
         self._normalize_added_visual_block(new_component)
+        self._fit_component_to_stage(new_component)
 
         position = (
             len(components)
@@ -1190,6 +1612,113 @@ class PresentationChatMemoryLayer:
                 f"Added component '{new_id}' to slide {slide.index + 1}."
             ),
         }
+
+    async def add_slide_ui_element(
+        self,
+        *,
+        index: int,
+        element: dict[str, Any],
+        component_id: str | None = None,
+        insert_index: int | None = None,
+    ) -> dict[str, Any]:
+        slide = await self._get_slide_by_index(index)
+        if not slide:
+            return {"added": False, "message": f"No slide found at index {max(0, index)}."}
+        ui = self._slide_ui_layout(slide)
+        if ui is None:
+            return {
+                "added": False,
+                "message": "This slide has no editable ui layout; use saveSlide instead.",
+            }
+
+        ui = copy.deepcopy(ui)
+        components = ui.get("components")
+        if not isinstance(components, list):
+            return {"added": False, "message": "Slide has no components list."}
+
+        new_element = copy.deepcopy(element)
+        if component_id:
+            component_index, component = next(
+                (
+                    (idx, candidate)
+                    for idx, candidate in enumerate(components)
+                    if isinstance(candidate, dict) and candidate.get("id") == component_id
+                ),
+                (None, None),
+            )
+            if component_index is None or not isinstance(component, dict):
+                return {
+                    "added": False,
+                    "message": f"Component '{component_id}' was not found.",
+                }
+            elements = component.setdefault("elements", [])
+            if not isinstance(elements, list):
+                raise ValueError("Target component has no elements list.")
+            position = len(elements) if insert_index is None else min(max(0, insert_index), len(elements))
+            elements.insert(position, new_element)
+            path = f"components[{component_index}].elements[{position}]"
+        else:
+            position_box = new_element.get("position") if isinstance(new_element.get("position"), dict) else {}
+            size_box = new_element.get("size") if isinstance(new_element.get("size"), dict) else {}
+            component = {
+                "id": self._unique_ui_component_id(
+                    str(new_element.get("name") or new_element.get("type") or "element"),
+                    components,
+                ),
+                "description": f"Element {new_element.get('type') or ''} added via assistant.".strip(),
+                "position": {
+                    "x": float(position_box.get("x") or 128),
+                    "y": float(position_box.get("y") or 120),
+                },
+                "size": {
+                    "width": float(size_box.get("width") or 320),
+                    "height": float(size_box.get("height") or 120),
+                },
+                "elements": [new_element],
+            }
+            new_element["position"] = {"x": 0, "y": 0}
+            self._fit_component_to_stage(component)
+            if isinstance(component.get("size"), dict):
+                new_element["size"] = copy.deepcopy(component["size"])
+            component_position = len(components) if insert_index is None else min(max(0, insert_index), len(components))
+            components.insert(component_position, component)
+            component_id = str(component["id"])
+            path = f"components[{component_position}].elements[0]"
+
+        self._sync_ui_text_fields(new_element)
+        await self._save_slide_ui(slide, ui)
+        return {
+            "added": True,
+            "index": slide.index,
+            "slide_number": slide.index + 1,
+            "component_id": component_id,
+            "element_path": path,
+            "message": f"Added element on slide {slide.index + 1}.",
+        }
+
+    @staticmethod
+    def _unique_ui_component_id(base: str, components: list[Any]) -> str:
+        normalized = re.sub(r"[^a-z0-9]+", "_", base.strip().lower()).strip("_") or "component"
+        used = {
+            str(component.get("id"))
+            for component in components
+            if isinstance(component, dict) and component.get("id")
+        }
+        candidate = normalized[:80]
+        suffix = 2
+        while candidate in used:
+            suffix_text = f"_{suffix}"
+            candidate = f"{normalized[: 80 - len(suffix_text)]}{suffix_text}"
+            suffix += 1
+        return candidate
+
+    @staticmethod
+    def _merge_ui_patch(target: dict[str, Any], patch: dict[str, Any]) -> None:
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(target.get(key), dict):
+                PresentationChatMemoryLayer._merge_ui_patch(target[key], value)
+            else:
+                target[key] = copy.deepcopy(value)
 
     @staticmethod
     def _sync_ui_text_fields(node: Any) -> None:
@@ -1246,6 +1775,26 @@ class PresentationChatMemoryLayer:
                     "width": float(component_size["width"]),
                     "height": float(component_size["height"]),
                 }
+
+    @staticmethod
+    def _fit_component_to_stage(component: dict[str, Any]) -> None:
+        position = component.get("position")
+        size = component.get("size")
+        if not isinstance(position, dict) or not isinstance(size, dict):
+            return
+        x = position.get("x")
+        y = position.get("y")
+        width = size.get("width")
+        height = size.get("height")
+        if not all(isinstance(value, (int, float)) for value in (x, y, width, height)):
+            return
+        width = min(max(1.0, float(width)), SLIDE_STAGE_WIDTH)
+        height = min(max(1.0, float(height)), SLIDE_STAGE_HEIGHT)
+        component["size"] = {"width": width, "height": height}
+        component["position"] = {
+            "x": min(max(0.0, float(x)), SLIDE_STAGE_WIDTH - width),
+            "y": min(max(0.0, float(y)), SLIDE_STAGE_HEIGHT - height),
+        }
 
     @staticmethod
     def _insert_visual_kind(component: dict[str, Any]) -> str | None:

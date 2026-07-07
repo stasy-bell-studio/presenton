@@ -20,6 +20,11 @@ import {
 } from "@/components/slide-editor/model/element-model";
 import type { TableCell } from "@/components/slide-editor/types";
 import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredColorInput";
+import {
+  FloatingToolbar,
+  FloatingToolbarPanel,
+  type FloatingToolbarBox,
+} from "@/components/slide-editor/toolbar/FloatingToolbar";
 
 type TableCellAlignment = NonNullable<TableCell["alignment"]>;
 
@@ -27,12 +32,14 @@ const TABLE_CELL_ALIGNMENTS = ["left", "center", "right"] as const satisfies
   readonly TableCellAlignment[];
 
 export function TableToolbar({
+  anchorBox,
   element,
   index,
   scale,
   selectedCell,
   onChange,
 }: {
+  anchorBox?: FloatingToolbarBox | null;
   element: TableSlideElement;
   index: number;
   scale: number;
@@ -177,12 +184,12 @@ export function TableToolbar({
       rows: element.rows.map((row, rowIndex) =>
         rowIndex === activeRow - 1
           ? Array.from(
-              { length: columnCount },
-              (_, colIndex) =>
-                colIndex === activeColumn
-                  ? patchCell(row[colIndex])
-                  : row[colIndex] ?? { runs: [] },
-            )
+            { length: columnCount },
+            (_, colIndex) =>
+              colIndex === activeColumn
+                ? patchCell(row[colIndex])
+                : row[colIndex] ?? { runs: [] },
+          )
           : row,
       ),
     });
@@ -200,7 +207,7 @@ export function TableToolbar({
     const activeIndex = TABLE_CELL_ALIGNMENTS.indexOf(activeCellAlignment);
     const nextAlignment =
       TABLE_CELL_ALIGNMENTS[
-        (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
+      (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
       ] ?? "left";
     updateActiveCell((cell) => ({
       ...(cell ?? { runs: [] }),
@@ -214,16 +221,19 @@ export function TableToolbar({
 
   return (
     <>
-      <div
-        ref={toolbarRef}
-        style={{
-          ...toolbarPositionStyle,
-          left: box.x * scale + (box.w * scale) / 2,
-          top: Math.max(8, box.y * scale - 58),
-        }}
-        onMouseDown={(event) => event.stopPropagation()}
+      <FloatingToolbar
+        anchorBox={
+          anchorBox ?? {
+            x: box.x * scale,
+            y: box.y * scale,
+            width: box.w * scale,
+            height: box.h * scale,
+          }
+        }
+        fallbackWidth={290}
+        inlineEditIgnore
       >
-        <div style={toolbarShellStyle}>
+        <div ref={toolbarRef} style={toolbarShellStyle}>
           <button
             type="button"
             aria-label="Cell background color"
@@ -301,7 +311,7 @@ export function TableToolbar({
             onMoveColumnRight={() => runMenuAction(() => moveColumn("right"))}
           />
         </div>
-      </div>
+      </FloatingToolbar>
       <TableEdgeAddButtons
         box={box}
         canAddColumn={canAddColumn}
@@ -346,7 +356,7 @@ function TableToolbarMenu({
   if (!menuOpen) return null;
 
   return (
-    <div style={menuStyle}>
+    <FloatingToolbarPanel style={menuStyle}>
       <MenuItem
         disabled={!canDeleteRow}
         icon={<Rows3 size={20} strokeWidth={2.2} />}
@@ -384,7 +394,7 @@ function TableToolbarMenu({
         label="Move Column Left"
         onClick={onMoveColumnLeft}
       />
-    </div>
+    </FloatingToolbarPanel>
   );
 }
 
@@ -484,7 +494,7 @@ function nextAlignmentLabel(alignment: TableCellAlignment) {
   const activeIndex = TABLE_CELL_ALIGNMENTS.indexOf(alignment);
   return (
     TABLE_CELL_ALIGNMENTS[
-      (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
+    (activeIndex + 1) % TABLE_CELL_ALIGNMENTS.length
     ] ?? "left"
   );
 }
@@ -502,12 +512,6 @@ const toolbarShellStyle: CSSProperties = {
   boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
   fontFamily:
     "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-};
-
-const toolbarPositionStyle: CSSProperties = {
-  position: "absolute",
-  zIndex: 10,
-  transform: "translateX(-50%)",
 };
 
 const iconButtonStyle: CSSProperties = {
@@ -539,7 +543,11 @@ const dividerStyle: CSSProperties = {
 const colorDotStyle: CSSProperties = {
   width: 20,
   height: 20,
+  boxSizing: "border-box",
   borderRadius: 999,
+  border: "1px solid rgba(15, 23, 42, 0.26)",
+  boxShadow:
+    "inset 0 0 0 1px rgba(255, 255, 255, 0.68), 0 1px 3px rgba(15, 23, 42, 0.22)",
   display: "block",
 };
 
@@ -551,17 +559,12 @@ const hiddenColorInputStyle: CSSProperties = {
 };
 
 const menuStyle: CSSProperties = {
-  position: "absolute",
-  top: 52,
-  left: "50%",
-  transform: "translateX(-50%)",
   width: 260,
   padding: "14px 0",
   borderRadius: 14,
   border: "1px solid #E7E8EC",
   background: "#FFFFFF",
   boxShadow: "0 20px 52px rgba(15, 23, 42, 0.22)",
-  zIndex: 12,
 };
 
 const menuItemStyle: CSSProperties = {

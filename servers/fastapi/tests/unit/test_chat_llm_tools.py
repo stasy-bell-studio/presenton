@@ -9,7 +9,6 @@ from llmai.shared import Tool  # type: ignore[import-not-found]
 from enums.llm_provider import LLMProvider
 from services.chat.llm_tools import build_chat_llm_tools
 from services.chat.tools import ChatTools
-from services.chat.v2.tools import TemplateV2ChatTools
 
 
 def _sample_function_tools() -> list[Tool]:
@@ -77,12 +76,36 @@ def test_chat_tool_handler_rejects_web_search():
     assert "webSearch" not in chat_tools._tool_handlers
 
 
+def test_chat_tools_expose_only_v2_tool_names():
+    assert [tool.name for tool in ChatTools(Mock()).get_tool_definitions()] == [
+        "addOutline",
+        "updateOutline",
+        "deleteOutline",
+        "addNewSlide",
+        "addNewSlideLayout",
+        "getAvailableLayouts",
+        "getTemplateSummary",
+        "searchSlide",
+        "getSlideAtIndex",
+        "saveSlide",
+        "updateSlide",
+        "deleteSlide",
+        "addElement",
+        "updateElement",
+        "deleteElement",
+        "addComponent",
+        "createComponent",
+        "updateComponent",
+        "deleteComponent",
+        "getPresentationTheme",
+        "setPresentationTheme",
+        "generateAssets",
+    ]
+
+
 def test_chat_tools_emit_openai_strict_compatible_schemas():
     client = OpenAIClient(config=OpenAIClientConfig(api_key="test"))
-    tools = [
-        *ChatTools(Mock()).get_tool_definitions(),
-        *TemplateV2ChatTools(Mock()).get_tool_definitions(),
-    ]
+    tools = ChatTools(Mock()).get_tool_definitions()
 
     for tool in tools:
         schema = client._openai_schema(

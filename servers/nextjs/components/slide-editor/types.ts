@@ -76,6 +76,7 @@ export type Font = {
   letter_spacing?: number | null;
   wrap?: TextWrap | null;
   ellipsis?: boolean | null;
+  opacity?: number | null;
 };
 
 export type Fill = {

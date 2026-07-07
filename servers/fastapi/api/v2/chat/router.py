@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.chat import (
     ChatConversationListItem,
     ChatHistoryMessageItem,
+    ChatHistoryResponse,
+    ChatMessageRequest,
     ChatMessageResponse,
-    TemplateV2ChatHistoryResponse,
-    TemplateV2ChatMessageRequest,
 )
 from models.sse_response import (
     SSECompleteResponse,
@@ -20,22 +20,20 @@ from models.sse_response import (
     SSETraceResponse,
 )
 from services.chat import sql_chat_history
-from services.chat.service import ChatTurnResult
-from services.chat.v2 import TemplateV2ChatService
+from services.chat import ChatTurnResult, PresentationChatService
 from services.database import get_async_session
 
 
-CHAT_V2_ROUTER = APIRouter(prefix="/chat", tags=["Template V2 Chat"])
+CHAT_V2_ROUTER = APIRouter(prefix="/chat", tags=["Chat V2"])
 
 
 @CHAT_V2_ROUTER.get("/conversations", response_model=list[ChatConversationListItem])
-async def list_template_v2_chat_conversations(
-    template_id: uuid.UUID = Query(..., description="Template V2 id"),
+async def list_chat_conversations(
+    presentation_id: uuid.UUID = Query(..., description="Presentation id"),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
     raw = await sql_chat_history.list_conversations(
-        sql_session,
-        template_v2_id=template_id,
+        sql_session, presentation_id=presentation_id
     )
     return [
         ChatConversationListItem(
@@ -47,19 +45,19 @@ async def list_template_v2_chat_conversations(
     ]
 
 
-@CHAT_V2_ROUTER.get("/history", response_model=TemplateV2ChatHistoryResponse)
-async def get_template_v2_chat_history(
-    template_id: uuid.UUID = Query(..., description="Template V2 id"),
+@CHAT_V2_ROUTER.get("/history", response_model=ChatHistoryResponse)
+async def get_chat_history(
+    presentation_id: uuid.UUID = Query(..., description="Presentation id"),
     conversation_id: uuid.UUID = Query(..., description="Conversation thread id"),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
     rows = await sql_chat_history.load_messages_with_meta(
         sql_session,
-        template_v2_id=template_id,
+        presentation_id=presentation_id,
         conversation_id=conversation_id,
     )
-    return TemplateV2ChatHistoryResponse(
-        template_id=template_id,
+    return ChatHistoryResponse(
+        presentation_id=presentation_id,
         conversation_id=conversation_id,
         messages=[
             ChatHistoryMessageItem(
@@ -75,13 +73,13 @@ async def get_template_v2_chat_history(
 
 
 @CHAT_V2_ROUTER.post("/message", response_model=ChatMessageResponse)
-async def template_v2_chat_message(
-    payload: TemplateV2ChatMessageRequest,
+async def chat_message(
+    payload: ChatMessageRequest,
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    service = TemplateV2ChatService(
+    service = PresentationChatService(
         sql_session=sql_session,
-        template_id=payload.template_id,
+        presentation_id=payload.presentation_id,
         conversation_id=payload.conversation_id,
     )
     result = await service.generate_reply(payload.message)
@@ -93,13 +91,13 @@ async def template_v2_chat_message(
 
 
 @CHAT_V2_ROUTER.post("/message/stream")
-async def template_v2_chat_message_stream(
-    payload: TemplateV2ChatMessageRequest,
+async def chat_message_stream(
+    payload: ChatMessageRequest,
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    service = TemplateV2ChatService(
+    service = PresentationChatService(
         sql_session=sql_session,
-        template_id=payload.template_id,
+        presentation_id=payload.presentation_id,
         conversation_id=payload.conversation_id,
     )
 

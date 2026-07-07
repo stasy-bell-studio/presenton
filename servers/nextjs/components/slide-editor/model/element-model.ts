@@ -35,6 +35,7 @@ export type ResolvedFont = {
   letterSpacing?: number | null;
   wrap?: Font["wrap"];
   ellipsis?: boolean | null;
+  opacity?: number | null;
 };
 
 export const DEFAULT_FONT_FAMILY = "Arial";
@@ -125,6 +126,7 @@ export function elementFont(element: {
     letterSpacing: element.font?.letter_spacing ?? null,
     wrap: element.font?.wrap ?? null,
     ellipsis: element.font?.ellipsis ?? null,
+    opacity: element.font?.opacity ?? null,
   };
 }
 

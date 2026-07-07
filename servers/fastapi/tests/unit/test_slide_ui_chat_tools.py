@@ -113,10 +113,10 @@ def test_get_slide_elements_reports_editable_layout():
     slide = _slide()
     tools, _ = _tools(slide)
 
-    result = _call(tools, "getSlideElements", {"index": 0})
+    result = _call(tools, "getSlideAtIndex", {"index": 0, "includeFullContent": True})
 
     assert result["ok"] is True
-    payload = result["result"]
+    payload = result["result"]["slide"]["ui_summary"]
     assert payload["editable"] is True
     assert payload["component_count"] == 2
     assert payload["editable_count"] == 2
@@ -130,7 +130,7 @@ def test_update_slide_element_edits_ui_text():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[0].elements[0]",
@@ -176,7 +176,7 @@ def test_update_slide_element_moves_image_without_content_fields():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -204,7 +204,7 @@ def test_update_slide_element_sets_image_url_from_text():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -226,7 +226,7 @@ def test_update_slide_element_generates_image_from_prompt(mock_generate_image):
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -248,7 +248,7 @@ def test_update_slide_element_edits_ui_size():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[0].elements[0]",
@@ -262,6 +262,50 @@ def test_update_slide_element_edits_ui_size():
         "width": 80.0,
         "height": 24.0,
     }
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_applies_toolbar_style_patch():
+    slide = _slide()
+    slide.ui["components"].append(
+        {
+            "id": "shape-block",
+            "description": "Shape block.",
+            "position": {"x": 0, "y": 120},
+            "size": {"width": 100, "height": 80},
+            "elements": [
+                {
+                    "type": "rectangle",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 100, "height": 80},
+                    "fill": {"color": "#FFFFFF", "opacity": 1},
+                    "stroke": {"color": "#111111", "width": 0},
+                }
+            ],
+        }
+    )
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[2].elements[0]",
+            "element": json.dumps(
+                {
+                    "fill": {"color": "#FF0000", "opacity": 0.5},
+                    "stroke": {"width": 2},
+                }
+            ),
+        },
+    )
+
+    element = slide.ui["components"][2]["elements"][0]
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert element["fill"] == {"color": "#FF0000", "opacity": 0.5}
+    assert element["stroke"] == {"color": "#111111", "width": 2}
     assert session.commit_count == 1
 
 
@@ -296,7 +340,11 @@ def test_get_slide_elements_reports_visible_flex_and_resizes_it():
     )
     tools, session = _tools(slide)
 
-    elements = _call(tools, "getSlideElements", {"index": 0})["result"]["elements"]
+    elements = _call(
+        tools,
+        "getSlideAtIndex",
+        {"index": 0, "includeFullContent": True},
+    )["result"]["slide"]["ui_summary"]["elements"]
     by_path = {element["path"]: element for element in elements}
 
     flex = by_path["components[2].elements[0]"]
@@ -309,7 +357,7 @@ def test_get_slide_elements_reports_visible_flex_and_resizes_it():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -347,7 +395,7 @@ def test_update_slide_element_accepts_chart_data_alias_and_type():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -399,7 +447,7 @@ def test_update_slide_element_accepts_whole_table_payload():
 
     result = _call(
         tools,
-        "updateSlideElement",
+        "updateElement",
         {
             "index": 0,
             "elementPath": "components[2].elements[0]",
@@ -432,7 +480,7 @@ def test_update_slide_component_edits_ui_size():
 
     result = _call(
         tools,
-        "updateSlideComponent",
+        "updateComponent",
         {
             "index": 0,
             "componentId": "hero",
@@ -449,11 +497,168 @@ def test_update_slide_component_edits_ui_size():
     assert session.commit_count == 1
 
 
+def test_update_component_groups_components():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {
+            "index": 0,
+            "componentId": "hero",
+            "action": "group",
+            "componentIds": ["hero", "body"],
+        },
+    )
+
+    component = slide.ui["components"][0]
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert result["result"]["action"] == "grouped"
+    assert component["id"] == "hero"
+    assert component["position"] == {"x": 0.0, "y": 0.0}
+    assert component["size"] == {"width": 100.0, "height": 110.0}
+    assert len(component["elements"]) == 2
+    assert [item["id"] for item in slide.ui["components"]] == ["hero"]
+    assert session.commit_count == 1
+
+
+def test_update_component_ungroups_component():
+    slide = _slide()
+    slide.ui["components"] = [
+        {
+            "id": "combo",
+            "description": "Two element group.",
+            "position": {"x": 10, "y": 20},
+            "size": {"width": 200, "height": 100},
+            "elements": [
+                {
+                    "type": "text",
+                    "name": "Heading",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 120, "height": 30},
+                    "runs": [{"text": "Heading"}],
+                },
+                {
+                    "type": "text",
+                    "name": "Body",
+                    "position": {"x": 0, "y": 40},
+                    "size": {"width": 180, "height": 40},
+                    "runs": [{"text": "Body"}],
+                },
+            ],
+        }
+    ]
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {"index": 0, "componentId": "combo", "action": "ungroup"},
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert result["result"]["action"] == "ungrouped"
+    assert result["result"]["created_component_ids"] == ["combo_part_1", "combo_part_2"]
+    assert [item["id"] for item in slide.ui["components"]] == [
+        "combo_part_1",
+        "combo_part_2",
+    ]
+    assert slide.ui["components"][1]["position"] == {"x": 10.0, "y": 60.0}
+    assert session.commit_count == 1
+
+
+def test_update_component_ungroups_container_child():
+    slide = _slide()
+    slide.ui["components"] = [
+        {
+            "id": "card",
+            "description": "Container card.",
+            "position": {"x": 20, "y": 30},
+            "size": {"width": 240, "height": 120},
+            "elements": [
+                {
+                    "type": "container",
+                    "fill": {"color": "#FFFFFF"},
+                    "padding": {"left": 12, "top": 8, "right": 12, "bottom": 8},
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 240, "height": 120},
+                    "child": {
+                        "type": "text",
+                        "name": "Card title",
+                        "runs": [{"text": "Nested title"}],
+                    },
+                }
+            ],
+        }
+    ]
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {"index": 0, "componentId": "card", "action": "ungroup"},
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert result["result"]["created_component_ids"] == [
+        "card_part_1",
+        "card_part_2",
+    ]
+    assert slide.ui["components"][1]["position"] == {"x": 32.0, "y": 38.0}
+    assert slide.ui["components"][1]["size"] == {"width": 216.0, "height": 104.0}
+    assert session.commit_count == 1
+
+
+def test_update_component_duplicates_component():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {"index": 0, "componentId": "hero", "action": "duplicate"},
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert result["result"]["action"] == "duplicated"
+    assert result["result"]["component_id"] == "hero_copy"
+    assert [item["id"] for item in slide.ui["components"]] == [
+        "hero",
+        "hero_copy",
+        "body",
+    ]
+    assert slide.ui["components"][1]["position"] == {"x": 16.0, "y": 16.0}
+    assert session.commit_count == 1
+
+
+def test_update_component_reorders_layer():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {"index": 0, "componentId": "hero", "action": "bringToFront"},
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert result["result"]["action"] == "bring-to-front"
+    assert [item["id"] for item in slide.ui["components"]] == ["body", "hero"]
+    assert result["result"]["component_index"] == 1
+    assert session.commit_count == 1
+
+
 def test_delete_slide_component_removes_block_from_ui():
     slide = _slide()
     tools, _ = _tools(slide)
 
-    result = _call(tools, "deleteSlideComponent", {"index": 0, "componentId": "body"})
+    result = _call(tools, "deleteComponent", {"index": 0, "componentId": "body"})
 
     assert result["ok"] is True
     assert result["result"]["deleted"] is True
@@ -466,7 +671,7 @@ def test_delete_slide_element_removes_indexed_element():
 
     result = _call(
         tools,
-        "deleteSlideElement",
+        "deleteElement",
         {"index": 0, "elementPath": "components[1].elements[0]"},
     )
 
@@ -496,13 +701,42 @@ def test_add_slide_component_appends_block():
 
     result = _call(
         tools,
-        "addSlideComponent",
+        "addComponent",
         {"index": 0, "component": json.dumps(component)},
     )
 
     assert result["ok"] is True
     assert result["result"]["added"] is True
     assert [c["id"] for c in slide.ui["components"]] == ["hero", "body", "note"]
+
+
+def test_add_slide_component_clamps_to_visible_stage():
+    slide = _slide()
+    tools, _ = _tools(slide)
+    component = {
+        "id": "offscreen",
+        "description": "Bad geometry component.",
+        "position": {"x": 1400, "y": -40},
+        "size": {"width": 2000, "height": 900},
+        "elements": [
+            {
+                "type": "text",
+                "name": "Offscreen",
+                "runs": [{"text": "Visible now"}],
+            }
+        ],
+    }
+
+    result = _call(
+        tools,
+        "addComponent",
+        {"index": 0, "component": json.dumps(component)},
+    )
+
+    added = slide.ui["components"][-1]
+    assert result["ok"] is True
+    assert added["position"] == {"x": 0.0, "y": 0.0}
+    assert added["size"] == {"width": 1280.0, "height": 720.0}
 
 
 def test_add_slide_component_expands_tiny_chart_block():
@@ -529,7 +763,7 @@ def test_add_slide_component_expands_tiny_chart_block():
 
     result = _call(
         tools,
-        "addSlideComponent",
+        "addComponent",
         {"index": 0, "component": json.dumps(component)},
     )
 
@@ -570,7 +804,7 @@ def test_add_slide_component_expands_tiny_table_block():
 
     result = _call(
         tools,
-        "addSlideComponent",
+        "addComponent",
         {"index": 0, "component": json.dumps(component)},
     )
 
@@ -588,10 +822,10 @@ def test_ui_tool_reports_non_ui_slide():
     slide.ui = None
     tools, _ = _tools(slide)
 
-    result = _call(tools, "getSlideElements", {"index": 0})
+    result = _call(tools, "getSlideAtIndex", {"index": 0, "includeFullContent": True})
 
     assert result["ok"] is True
-    assert result["result"]["editable"] is False
+    assert "ui_summary" not in result["result"]["slide"]
 
 
 def _template_v2_presentation(presentation_id: uuid.UUID) -> PresentationModel:

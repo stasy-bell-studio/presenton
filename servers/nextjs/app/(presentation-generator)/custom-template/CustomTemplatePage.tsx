@@ -421,6 +421,7 @@ const CustomTemplatePage = ({
         libreStatus,
     } = useLibreOfficeGate(router);
 
+
     const { selectedFile, handleFileSelect, removeFile } = useFileUpload();
 
 
@@ -476,9 +477,9 @@ const CustomTemplatePage = ({
         if (selectedFile) {
             const data = await fontUploadAndPreview(selectedFile);
             if (data) {
-                console.log("data", data.fonts);
+
                 const normalizedFonts = normalizeBackendAssetUrls(data.fonts);
-                console.log("normalizedFonts", normalizedFonts);
+
                 loadFontAssets(normalizedFonts);
             }
         }

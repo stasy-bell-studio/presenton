@@ -12,8 +12,10 @@ def test_build_system_prompt_includes_trimmed_memory_blocks():
         chat_memory_context="\nEarlier user request\n",
     )
 
-    assert "Deck memory (semantic / long-term" in system_prompt
-    assert "Chat memory (earlier messages in this conversation only):" in system_prompt
+    assert "Deck memory (background only; may be partial or stale):" in system_prompt
+    assert "Chat memory (earlier messages in this conversation):" in system_prompt
+    assert "Common prompts" in system_prompt
+    assert "If grouped text or elements still cannot be moved cleanly inside the group" in system_prompt
     assert "\nPrior deck decision\n" in system_prompt
     assert "\nEarlier user request\n" in system_prompt
 
@@ -21,6 +23,6 @@ def test_build_system_prompt_includes_trimmed_memory_blocks():
 def test_build_system_prompt_omits_empty_memory_blocks():
     system_prompt = build_system_prompt("", " ")
 
-    assert "Deck memory (semantic / long-term" not in system_prompt
-    assert "Chat memory (earlier messages in this conversation only):" not in system_prompt
-    assert "Tool-use protocol (live SQL slide data)" in system_prompt
+    assert "Deck memory (background only; may be partial or stale):" not in system_prompt
+    assert "Chat memory (earlier messages in this conversation):" not in system_prompt
+    assert "Tool Protocol" in system_prompt

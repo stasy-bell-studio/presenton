@@ -79,59 +79,65 @@ const TOOLBAR_RENDERERS: Partial<
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  image: ({ element, index, onChange, onEditImage, path, scale }) =>
+  image: ({ anchorBox, element, index, onChange, onEditImage, path, scale }) =>
     element.type === "image" ? (
       <ImageToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
         onUpload={(index) => onEditImage(index, path)}
       />
     ) : null,
-  rectangle: ({ element, index, onChange, path, scale }) =>
+  rectangle: ({ anchorBox, element, index, onChange, path, scale }) =>
     element.type === "rectangle" || element.type === "ellipse" ? (
       <ShapeToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  ellipse: ({ element, index, onChange, path, scale }) =>
+  ellipse: ({ anchorBox, element, index, onChange, path, scale }) =>
     element.type === "rectangle" || element.type === "ellipse" ? (
       <ShapeToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  line: ({ element, index, onChange, path, scale }) =>
+  line: ({ anchorBox, element, index, onChange, path, scale }) =>
     element.type === "line" ? (
       <LineToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  chart: ({ element, index, onChange, onEditChart, path, scale }) =>
+  chart: ({ anchorBox, element, index, onChange, onEditChart, path, scale }) =>
     element.type === "chart" ? (
       <ChartToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         onChange={(index, element) => onChange(index, element, path)}
         onEdit={onEditChart ? (index) => onEditChart(index, path) : undefined}
       />
     ) : null,
 
-  table: ({ element, index, onChange, path, scale, selectedTableCell }) =>
+  table: ({ anchorBox, element, index, onChange, path, scale, selectedTableCell }) =>
     element.type === "table" ? (
       <TableToolbar
         element={element}
         index={index}
+        anchorBox={anchorBox}
         scale={scale}
         selectedCell={
           (selectedTableCell?.elementPath ??
@@ -152,6 +158,7 @@ export function ElementToolbar(props: ElementToolbarProps) {
       <DesignVariablesToolbar
         element={props.element}
         index={props.index}
+        anchorBox={props.anchorBox}
         scale={props.scale}
         onChange={(index, element) =>
           props.onChange(index, element, props.path)

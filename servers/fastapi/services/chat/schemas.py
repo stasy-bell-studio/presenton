@@ -103,6 +103,15 @@ class GenerateAssetsInput(StrictSchemaModel):
     assets: list[GenerateAssetItemInput] = Field(min_length=1, max_length=12)
 
 
+class AddNewSlideInput(OpenAIStrictSchemaModel):
+    index: int | None = Field(
+        ...,
+        ge=0,
+        le=1000,
+        description="Zero-based insert index. Use null to append.",
+    )
+
+
 class SaveSlideInput(StrictSchemaModel):
     content: str = Field(
         min_length=2,
@@ -130,6 +139,35 @@ class SaveSlideInput(StrictSchemaModel):
             raise ValueError("'content' must be a JSON object.")
 
         return value
+
+
+class AddNewSlideLayoutInput(StrictSchemaModel):
+    content: str = Field(
+        min_length=2,
+        max_length=200000,
+        description="A JSON-serialized object matching the selected layout schema.",
+    )
+    layout_id: str = Field(alias="layoutId", min_length=1, max_length=200)
+    index: int = Field(ge=0, le=1000)
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        try:
+            parsed: Any = dirtyjson.loads(value)
+        except Exception:
+            parsed = json.loads(value)
+
+        if not isinstance(parsed, dict):
+            raise ValueError("'content' must be a JSON object.")
+
+        return value
+
+
+class UpdateSlideInput(AddNewSlideLayoutInput):
+    pass
 
 
 class DeleteSlideInput(StrictSchemaModel):
@@ -249,7 +287,7 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
         min_length=1,
         max_length=500,
         description=(
-            "Element path returned by getSlideElements, for example "
+            "Element path returned by getSlideAtIndex, for example "
             "components[0].elements[1].children[0]."
         ),
     )
@@ -277,6 +315,17 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     table: SlideElementTableInput | None = Field(
         ...,
         description="Whole table update with columns/headers and rows.",
+    )
+    element: str | None = Field(
+        ...,
+        min_length=2,
+        max_length=120000,
+        description=(
+            "Optional JSON-serialized element patch for toolbar-style properties "
+            "such as fill, stroke, font, alignment, opacity, chart_type, crop, "
+            "border_radius, padding, shadow, or line dash. Object values are merged "
+            "into the current element."
+        ),
     )
     position: SlideElementPositionInput | None = Field(
         ...,
@@ -335,6 +384,35 @@ class DeleteSlideElementInput(StrictSchemaModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
+class AddElementInput(OpenAIStrictSchemaModel):
+    index: int = Field(..., ge=0, le=1000)
+    element: str = Field(
+        ...,
+        min_length=2,
+        max_length=120000,
+        description=(
+            "A JSON-serialized rendered UI element object. Use 1280 x 720 stage "
+            "pixels and keep new free-component geometry fully inside that window."
+        ),
+    )
+    component_id: str | None = Field(
+        ...,
+        alias="componentId",
+        min_length=1,
+        max_length=120,
+        description="Optional target component id. Use null to add as a new free component.",
+    )
+    insert_index: int | None = Field(
+        ...,
+        alias="insertIndex",
+        ge=0,
+        le=1000,
+        description="Zero-based insert position. Use null to append.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
 class AddSlideComponentInput(OpenAIStrictSchemaModel):
     index: int = Field(..., ge=0, le=1000)
     component: str = Field(
@@ -345,8 +423,9 @@ class AddSlideComponentInput(OpenAIStrictSchemaModel):
             "A JSON-serialized component object to add to the slide: "
             '{"id": "...", "description": "...", "position": {"x": 128, "y": 120}, '
             '"size": {"width": 1024, "height": 410}, "elements": [ ... ]}. '
-            "Use 1280 x 720 stage pixels, not normalized 0-1 values. "
-            "Copy the shape of an existing component from getSlideElements(includeFullJson=true)."
+            "Use 1280 x 720 stage pixels, not normalized 0-1 values, and keep "
+            "position/size fully inside that visible window. "
+            "Copy the shape of an existing component from getSlideAtIndex(includeFullContent=true)."
         ),
     )
     insert_index: int | None = Field(
@@ -355,6 +434,58 @@ class AddSlideComponentInput(OpenAIStrictSchemaModel):
         ge=0,
         le=1000,
         description="Zero-based position among components. Use null to append at the end.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
+class UpdateComponentInput(OpenAIStrictSchemaModel):
+    index: int = Field(..., ge=0, le=1000)
+    component_id: str = Field(..., alias="componentId", min_length=1, max_length=120)
+    action: Literal[
+        "update",
+        "group",
+        "ungroup",
+        "duplicate",
+        "bring-to-front",
+        "bring-forward",
+        "send-backward",
+        "send-to-back",
+        "bringToFront",
+        "bringForward",
+        "sendBackward",
+        "sendToBack",
+    ] | None = Field(
+        ...,
+        description=(
+            "Use update for move/resize/replace, group to combine components, "
+            "ungroup to split one component, duplicate to copy a component, or "
+            "a layer action to reorder it."
+        ),
+    )
+    component_ids: list[str] | None = Field(
+        ...,
+        alias="componentIds",
+        min_length=2,
+        max_length=20,
+        description=(
+            "Component ids to group. Include componentId in this list; ignored for "
+            "update and ungroup."
+        ),
+    )
+    position: SlideElementPositionInput | None = Field(
+        ...,
+        description="Optional component position update for move requests.",
+    )
+    size: SlideElementSizeInput | None = Field(
+        ...,
+        description="Optional component size update for resize/shrink/grow requests.",
+    )
+    component: str | None = Field(
+        ...,
+        min_length=2,
+        max_length=200000,
+        description="Optional JSON-serialized replacement component.",
     )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)

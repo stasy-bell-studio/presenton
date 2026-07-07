@@ -1169,6 +1169,11 @@ function templateV2TargetKey(
     return `slide:${slideIndex ?? ""}:component:${target.componentId ?? target.componentIndex ?? ""
       }`;
   }
+  if (target?.kind === "multi-component") {
+    return `slide:${slideIndex ?? ""}:multi:${target.components
+      .map((component) => component.componentId ?? component.componentIndex ?? "")
+      .join(".")}`;
+  }
   return null;
 }
 
