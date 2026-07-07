@@ -30,6 +30,10 @@ import { RootState } from "@/store/store";
 import { ImagesApi } from "../../services/api/images";
 import CurrentConfig from "./CurrentConfig";
 import { LLMConfig } from "@/types/llm_config";
+import {
+  clampSlideCountValue,
+  parseLimitedSlideCount,
+} from "@/utils/presentationLimits";
 
 const STOCK_IMAGE_PROVIDERS = new Set(["pexels", "pixabay"]);
 const FILE_TYPE_WORD = new Set([".doc", ".docx", ".docm", ".odt", ".rtf"]);
@@ -154,8 +158,7 @@ const UploadPage = () => {
     const trimmedInstructions = (config.instructions || "").trim();
     const attachmentCategories = Array.from(new Set(files.map(getFileCategory))).sort();
     const imageGenerationEnabled = !llmConfig?.DISABLE_IMAGE_GENERATION;
-    const parsedSlides =
-      config.slides && /^\d+$/.test(config.slides) ? Number(config.slides) : null;
+    const parsedSlides = parseLimitedSlideCount(config.slides);
 
     return {
       pathname,
@@ -192,7 +195,11 @@ const UploadPage = () => {
   };
 
   const handleConfigChange = (key: keyof PresentationConfig, value: unknown) => {
-    setConfig((prev) => ({ ...prev, [key]: value } as PresentationConfig));
+    const nextValue =
+      key === "slides" && typeof value === "string"
+        ? clampSlideCountValue(value)
+        : value;
+    setConfig((prev) => ({ ...prev, [key]: nextValue } as PresentationConfig));
   };
 
   const ensureStockImageProviderReady = async (): Promise<boolean> => {
@@ -342,7 +349,7 @@ const UploadPage = () => {
     const createResponse = await PresentationGenerationApi.createPresentation({
       content: config?.prompt ?? "",
       version: "v1-standard",
-      n_slides: config?.slides ? parseInt(config.slides, 10) : null,
+      n_slides: parseLimitedSlideCount(config?.slides),
       file_paths: [],
       language: selectedLanguage,
       tone: config?.tone,

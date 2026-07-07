@@ -16,6 +16,8 @@ import {
 import { OutlineItem } from "./OutlineItem";
 import { Button } from "@/components/ui/button";
 import { FileText, Loader2 } from "lucide-react";
+import { MAX_NUMBER_OF_SLIDES } from "@/utils/presentationLimits";
+import { cn } from "@/lib/utils";
 
 interface OutlineContentProps {
   outlines: { content: string }[] | null;
@@ -38,6 +40,8 @@ const OutlineContent: React.FC<OutlineContentProps> = ({
   onDragEnd,
   onAddSlide,
 }) => {
+  const hasReachedSlideLimit =
+    (outlines?.length ?? 0) >= MAX_NUMBER_OF_SLIDES;
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -111,12 +115,25 @@ const OutlineContent: React.FC<OutlineContentProps> = ({
           <Button
             variant="outline"
             onClick={() => {
+              if (hasReachedSlideLimit) return;
               onAddSlide();
             }}
-            disabled={isLoading || isStreaming}
-            className="w-full my-4 text-blue-600 border-blue-200"
+            disabled={isLoading || isStreaming || hasReachedSlideLimit}
+            aria-disabled={isLoading || isStreaming || hasReachedSlideLimit}
+            title={
+              hasReachedSlideLimit
+                ? `Maximum ${MAX_NUMBER_OF_SLIDES} slides`
+                : undefined
+            }
+            className={cn(
+              "w-full my-4 text-blue-600 border-blue-200",
+              hasReachedSlideLimit &&
+                "cursor-not-allowed border-gray-200 text-gray-400 opacity-60 hover:bg-white hover:text-gray-400"
+            )}
           >
-            + Add Slide
+            {hasReachedSlideLimit
+              ? `Maximum ${MAX_NUMBER_OF_SLIDES} slides reached`
+              : "+ Add Slide"}
           </Button>
         </div>
       )}

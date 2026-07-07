@@ -14,6 +14,7 @@ from llmai.shared import (
 )
 
 from models.presentation_outline_model import PresentationOutlineModel
+from constants.presentation import MAX_NUMBER_OF_SLIDES, MAX_OUTLINE_CONTENT_WORDS
 from utils.get_dynamic_models import get_presentation_outline_model_with_n_slides
 from utils.llm_calls.generate_web_search_query import generate_web_search_query
 from utils.llm_client_error_handler import handle_llm_client_exceptions
@@ -95,6 +96,8 @@ def get_system_prompt(
         "Generate flow based on user **content** and use **context** just for reference.\n"
         "Presentation title should be plain text, not markdown. It should be a concise title for the presentation.\n"
         "Each slide content should contain the content for that slide.\n"
+        f"Never generate more than {MAX_NUMBER_OF_SLIDES} slide outlines, even if the user asks for more. "
+        f"Each slide outline must be {MAX_OUTLINE_CONTENT_WORDS} words or fewer.\n"
         f"{verbosity_instruction}\n"
         "Follow user instructions strictly and literally without reinterpretation or generalization.\n"
         "Apply slide-specific instructions only to the exact slide mentioned and only once. "
@@ -141,7 +144,7 @@ def _resolve_prompt_language(language: Optional[str]) -> str:
 
 def _resolve_prompt_n_slides(n_slides: Optional[int]) -> str:
     if n_slides is None:
-        return "auto-detect"
+        return f"auto-detect, maximum {MAX_NUMBER_OF_SLIDES}"
     return str(n_slides)
 
 
@@ -161,6 +164,8 @@ def get_user_prompt(
     return (
         f"Content: {content or ''}\n"
         f"Number of Slides: {display_slides}\n"
+        f"Maximum Slide Outlines: {MAX_NUMBER_OF_SLIDES}\n"
+        f"Maximum Words Per Outline: {MAX_OUTLINE_CONTENT_WORDS}\n"
         f"Language: {display_language}\n"
         f"Tone: {tone or ''}\n"
         f"Today's Date: {datetime.now().strftime('%Y-%m-%d')}\n"

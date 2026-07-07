@@ -18,6 +18,7 @@ import {
   type ChangeEvent,
 } from "react";
 import { marked } from "marked";
+import { trimTextToWordLimit } from "@/utils/presentationLimits";
 
 interface OutlineItemProps {
   sortableId: string;
@@ -58,10 +59,11 @@ export function OutlineItem({
 
   const handleSlideChange = (newOutline: any) => {
     if (isStreaming) return;
+    const limitedOutline = trimTextToWordLimit(String(newOutline ?? ""));
     const newData = outlines?.map((each: any, idx: any) => {
       if (idx === index - 1) {
         return {
-          content: newOutline,
+          content: limitedOutline,
         };
       }
       return each;

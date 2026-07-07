@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants.presentation import MAX_NUMBER_OF_SLIDES
 from models.presentation_outline_model import PresentationOutlineModel
 from models.sql.presentation import PresentationModel
 from models.sse_response import (
@@ -27,6 +28,7 @@ from utils.outline_utils import (
     get_no_of_outlines_to_generate_for_n_slides,
     get_presentation_title_from_presentation_outline,
 )
+from utils.outline_limits import normalize_outline_payload
 from utils.llm_calls.generate_presentation_outlines import (
     OutlineGenerationStatus,
     generate_ppt_outline,
@@ -207,7 +209,12 @@ async def stream_outlines(
             ).to_string()
             return
 
-        presentation_outlines = PresentationOutlineModel(**presentation_outlines_json)
+        presentation_outlines = PresentationOutlineModel(
+            **normalize_outline_payload(
+                presentation_outlines_json,
+                MAX_NUMBER_OF_SLIDES,
+            )
+        )
 
         if (
             n_slides_to_generate is not None

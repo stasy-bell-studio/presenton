@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 
 MAX_NUMBER_OF_SLIDES = 50
+MAX_OUTLINE_CONTENT_WORDS = 500
 
 _PREFERRED_TEMPLATE_ORDER = [
     "general",
