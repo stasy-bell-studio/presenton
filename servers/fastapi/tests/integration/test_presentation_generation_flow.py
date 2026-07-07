@@ -10,6 +10,7 @@ from fastapi import HTTPException
 from api.v1.ppt.endpoints import presentation as presentation_endpoint
 from models.generate_presentation_request import GeneratePresentationRequest
 from models.presentation_and_path import PresentationAndPath
+from models.presentation_from_template import EditPresentationRequest, SlideContentUpdate
 from models.presentation_outline_model import SlideOutlineModel
 from models.presentation_structure_model import PresentationStructureModel
 from models.sql.presentation import PresentationModel, PresentationVersion
@@ -39,6 +40,31 @@ def _mock_layout() -> PresentationLayoutModel:
             SlideLayoutModel(id="layout-2", name="Body", json_schema={"title": "body"}),
         ],
     )
+
+
+def _template_v2_layout_payload() -> dict:
+    return {
+        "layouts": [
+            {
+                "id": "template-layout-1",
+                "description": "Hero layout",
+                "components": [
+                    {
+                        "id": "hero",
+                        "description": "Hero content",
+                        "elements": [
+                            {
+                                "type": "text",
+                                "decorative": False,
+                                "name": "headline",
+                                "runs": [{"text": "Original headline"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
 
 
 def test_generate_presentation_handler_full_flow_uses_mocked_dependencies(fake_async_session):
@@ -131,6 +157,97 @@ def test_generate_presentation_handler_full_flow_uses_mocked_dependencies(fake_a
     assert all(slide.ui is None for slide in fake_async_session.added_all)
 
 
+def test_generate_presentation_handler_uses_template_v2_layout():
+    template_id = uuid.uuid4()
+    presentation_id = uuid.uuid4()
+    template = TemplateV2(
+        id=template_id,
+        name="Custom V2",
+        layouts=_template_v2_layout_payload(),
+        assets={"fonts": {"Inter": "https://example.com/inter.css"}},
+    )
+    session = FakeAsyncSession(get_results={template_id: template})
+    request = GeneratePresentationRequest(
+        content="Create a one-slide deck about climate risk.",
+        n_slides=1,
+        language="English",
+        export_as="pptx",
+        template=f"custom-{template_id}",
+    )
+
+    async def fake_outline_stream(*_args, **_kwargs):
+        yield '{"slides":[{"content":"## Climate risk"}]}'
+
+    with patch.object(
+        presentation_endpoint.MEM0_PRESENTATION_MEMORY_SERVICE,
+        "store_generation_context",
+        new=AsyncMock(),
+    ), patch.object(
+        presentation_endpoint.MEM0_PRESENTATION_MEMORY_SERVICE,
+        "store_generated_outlines",
+        new=AsyncMock(),
+    ), patch.object(
+        presentation_endpoint,
+        "generate_ppt_outline",
+        side_effect=fake_outline_stream,
+    ), patch.object(
+        presentation_endpoint,
+        "generate_presentation_structure",
+        new=AsyncMock(return_value=PresentationStructureModel(slides=[0])),
+    ), patch.object(
+        presentation_endpoint,
+        "get_slide_content_from_type_and_outline",
+        new=AsyncMock(return_value={"hero": {"headline": "V2 headline"}}),
+    ), patch.object(
+        presentation_endpoint,
+        "process_slide_and_fetch_assets",
+        new=AsyncMock(return_value=[]),
+    ), patch.object(
+        presentation_endpoint,
+        "get_images_directory",
+        return_value="/tmp",
+    ), patch.object(
+        presentation_endpoint,
+        "ImageGenerationService",
+        return_value=Mock(),
+    ), patch.object(
+        presentation_endpoint,
+        "export_presentation",
+        new=AsyncMock(
+            return_value=PresentationAndPath(
+                presentation_id=presentation_id,
+                path="/tmp/generated/deck.pptx",
+            )
+        ),
+    ), patch.object(
+        presentation_endpoint.CONCURRENT_SERVICE,
+        "run_task",
+        new=Mock(),
+    ), patch.object(
+        presentation_endpoint,
+        "random",
+        new=Mock(randint=Mock(return_value=0)),
+    ):
+        _run(
+            presentation_endpoint.generate_presentation_handler(
+                request=request,
+                presentation_id=presentation_id,
+                async_status=None,
+                sql_session=session,
+            )
+        )
+
+    presentation = next(
+        item for item in session.added if isinstance(item, PresentationModel)
+    )
+    slide = next(item for item in session.added_all if isinstance(item, SlideModel))
+    assert presentation.version == PresentationVersion.V2_STANDARD
+    assert presentation.layout == _template_v2_layout_payload()
+    assert presentation.fonts == {"Inter": "https://example.com/inter.css"}
+    assert slide.layout_group == f"template-v2-{template_id}"
+    assert slide.ui["components"][0]["elements"][0]["runs"][0]["text"] == "V2 headline"
+
+
 def test_create_presentation_requires_and_stores_version(fake_async_session):
     presentation = _run(
         presentation_endpoint.create_presentation(
@@ -143,6 +260,44 @@ def test_create_presentation_requires_and_stores_version(fake_async_session):
     assert presentation.version == PresentationVersion.V2_STANDARD
     assert fake_async_session.added == [presentation]
     assert fake_async_session.commit_count == 1
+
+
+def test_check_api_request_accepts_custom_prefixed_template_v2_id():
+    template_id = uuid.uuid4()
+    template = TemplateV2(
+        id=template_id,
+        name="Custom V2",
+        layouts=_template_v2_layout_payload(),
+    )
+    session = FakeAsyncSession(get_results={template_id: template})
+    request = GeneratePresentationRequest(
+        content="Create a deck.",
+        n_slides=1,
+        template=f"custom-{template_id}",
+    )
+
+    _run(presentation_endpoint.check_if_api_request_is_valid(request, session))
+
+    assert request.template == f"template-v2-{template_id}"
+
+
+def test_check_api_request_rejects_custom_id_without_template_v2(fake_async_session):
+    request = GeneratePresentationRequest(
+        content="Create a deck.",
+        n_slides=1,
+        template=f"custom-{uuid.uuid4()}",
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        _run(
+            presentation_endpoint.check_if_api_request_is_valid(
+                request,
+                fake_async_session,
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Template not found. Please use a valid template."
 
 
 def test_prepare_presentation_preserves_payload_icon_weight():
@@ -403,6 +558,7 @@ def test_get_presentation_preserves_template_v2_detail_payload():
     response = _run(
         presentation_endpoint.get_presentation(
             id=presentation_id,
+            request=FakeRequest(),
             sql_session=session,
         )
     )
@@ -590,3 +746,134 @@ def test_generate_presentation_handler_rejects_invalid_llm_json(fake_async_sessi
 
     assert exc.value.status_code == 400
     assert "Failed to generate presentation outlines" in exc.value.detail
+
+
+class _SlidesAsyncSession(FakeAsyncSession):
+    def __init__(self, *args, slides: list[SlideModel], **kwargs):
+        super().__init__(*args, **kwargs)
+        self._slides = slides
+
+    async def scalars(self, *_args, **_kwargs):
+        return self._slides
+
+
+async def _fake_export_presentation(presentation_id, *_args, **_kwargs):
+    return PresentationAndPath(
+        presentation_id=presentation_id,
+        path="/tmp/generated/deck.pptx",
+    )
+
+
+def test_edit_presentation_hydrates_template_v2_slide_ui():
+    presentation_id = uuid.uuid4()
+    template_id = uuid.uuid4()
+    layout_payload = _template_v2_layout_payload()
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        layout=layout_payload,
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+    )
+    slide = SlideModel(
+        presentation=presentation_id,
+        layout_group=f"template-v2-{template_id}",
+        layout="template-layout-1",
+        index=0,
+        content={"hero": {"headline": "Old headline"}},
+        ui=layout_payload["layouts"][0],
+    )
+    session = _SlidesAsyncSession(
+        get_results={presentation_id: presentation},
+        slides=[slide],
+    )
+    request = EditPresentationRequest(
+        presentation_id=presentation_id,
+        slides=[
+            SlideContentUpdate(
+                index=0,
+                content={"hero": {"headline": "Updated headline"}},
+            )
+        ],
+    )
+
+    with patch.object(
+        presentation_endpoint,
+        "export_presentation",
+        new=_fake_export_presentation,
+    ):
+        _run(
+            presentation_endpoint.edit_presentation_with_new_content(
+                request_http=FakeRequest(),
+                data=request,
+                sql_session=session,
+            )
+        )
+
+    new_slide = next(item for item in session.added_all if isinstance(item, SlideModel))
+    title_element = new_slide.ui["components"][0]["elements"][0]
+    assert title_element["runs"][0]["text"] == "Updated headline"
+
+
+def test_derive_presentation_hydrates_template_v2_slide_ui():
+    presentation_id = uuid.uuid4()
+    template_id = uuid.uuid4()
+    layout_payload = _template_v2_layout_payload()
+    presentation = PresentationModel(
+        id=presentation_id,
+        version=PresentationVersion.V2_STANDARD,
+        content="deck",
+        n_slides=1,
+        language="English",
+        layout=layout_payload,
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+    )
+    slide = SlideModel(
+        presentation=presentation_id,
+        layout_group=f"template-v2-{template_id}",
+        layout="template-layout-1",
+        index=0,
+        content={"hero": {"headline": "Old headline"}},
+        ui=layout_payload["layouts"][0],
+    )
+    session = _SlidesAsyncSession(
+        get_results={presentation_id: presentation},
+        slides=[slide],
+    )
+    request = EditPresentationRequest(
+        presentation_id=presentation_id,
+        slides=[
+            SlideContentUpdate(
+                index=0,
+                content={"hero": {"headline": "Derived headline"}},
+            )
+        ],
+    )
+
+    with patch.object(
+        presentation_endpoint,
+        "export_presentation",
+        new=_fake_export_presentation,
+    ):
+        _run(
+            presentation_endpoint.derive_presentation_from_existing_one(
+                request_http=FakeRequest(),
+                data=request,
+                sql_session=session,
+            )
+        )
+
+    new_presentation = next(
+        item for item in session.added if isinstance(item, PresentationModel)
+    )
+    new_slide = next(item for item in session.added_all if isinstance(item, SlideModel))
+    title_element = new_slide.ui["components"][0]["elements"][0]
+    assert new_presentation.version == PresentationVersion.V2_STANDARD
+    assert new_slide.presentation == new_presentation.id
+    assert title_element["runs"][0]["text"] == "Derived headline"

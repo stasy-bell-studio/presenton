@@ -31,7 +31,6 @@ from models.presentation_with_slides import (
     PresentationDetailWithSlides,
     PresentationWithSlides,
 )
-from models.sql.template import TemplateModel
 from services.documents_loader import DocumentsLoader
 from services.temp_file_service import TEMP_FILE_SERVICE
 from services.webhook_service import WebhookService
@@ -116,6 +115,102 @@ def _extract_template_v2_id(layout_name: Optional[str]) -> Optional[uuid.UUID]:
             except Exception:
                 return None
     return None
+
+
+def _extract_requested_template_v2_id(
+    template_name: Optional[str],
+) -> Optional[uuid.UUID]:
+    if not template_name:
+        return None
+
+    value = template_name.strip()
+    for prefix in ("template-v2-", "template-v2:", "custom-"):
+        if not value.startswith(prefix):
+            continue
+        candidate = value[len(prefix) :]
+        try:
+            return uuid.UUID(candidate)
+        except Exception:
+            return None
+
+    try:
+        return uuid.UUID(value)
+    except Exception:
+        return None
+
+
+async def _resolve_requested_template_v2(
+    template_name: str,
+    sql_session: AsyncSession,
+) -> Optional[TemplateV2]:
+    template_id = _extract_requested_template_v2_id(template_name)
+    if not template_id:
+        return None
+
+    template = await sql_session.get(TemplateV2, template_id)
+    if template:
+        return template
+
+    raise HTTPException(
+        status_code=400,
+        detail="Template not found. Please use a valid template.",
+    )
+
+
+def _copy_template_v2_layout_payload(
+    template: TemplateV2,
+) -> dict[str, Any]:
+    layout_payload = copy.deepcopy(template.layouts)
+    if not isinstance(layout_payload, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Template v2 layout JSON must be an object",
+        )
+
+    return layout_payload
+
+
+async def _resolve_generation_layout(
+    template_name: str,
+    sql_session: AsyncSession,
+) -> tuple[dict[str, Any], PresentationLayoutModel, Optional[dict[str, str]], bool]:
+    template_v2 = await _resolve_requested_template_v2(template_name, sql_session)
+    if template_v2:
+        layout_payload = _copy_template_v2_layout_payload(template_v2)
+        return (
+            layout_payload,
+            _build_template_v2_structure_layout(template_v2, layout_payload),
+            _extract_template_v2_fonts_from_assets(template_v2.assets),
+            True,
+        )
+
+    if template_name not in DEFAULT_TEMPLATES:
+        raise HTTPException(
+            status_code=400,
+            detail="Template not found. Please use a valid template.",
+        )
+
+    layout_model = await get_layout_by_name(template_name)
+    return layout_model.model_dump(mode="json"), layout_model, None, False
+
+
+def _is_template_v2_slide(slide: SlideModel) -> bool:
+    return slide.layout_group.startswith("template-v2") or slide.layout.startswith(
+        "template-v2"
+    )
+
+
+def _hydrate_template_v2_slide_ui(
+    slide: SlideModel,
+    layout_payload: Any = None,
+) -> None:
+    if not _is_template_v2_slide(slide):
+        return
+
+    ui = slide.ui
+    if not isinstance(ui, dict):
+        ui = _template_v2_slide_ui(layout_payload, slide.layout)
+    slide.ui = _apply_template_v2_content_to_ui(ui, slide.content)
 
 
 def _canonical_template_v2_layout_payload(layout_payload: Any) -> Optional[str]:
@@ -1791,22 +1886,17 @@ async def check_if_api_request_is_valid(
 
     # Checking if template is valid
     if request.template not in DEFAULT_TEMPLATES:
-        request.template = request.template.lower()
-        if not request.template.startswith("custom-"):
+        template_v2 = await _resolve_requested_template_v2(
+            request.template,
+            sql_session,
+        )
+        if not template_v2:
             raise HTTPException(
                 status_code=400,
                 detail="Template not found. Please use a valid template.",
             )
-        template_id = request.template.replace("custom-", "")
-        try:
-            template = await sql_session.get(TemplateModel, uuid.UUID(template_id))
-            if not template:
-                raise Exception()
-        except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Template not found. Please use a valid template.",
-            )
+        request.template = f"template-v2-{template_v2.id}"
+        return (presentation_id,)
 
     return (presentation_id,)
 
@@ -1970,7 +2060,12 @@ async def generate_presentation_handler(
             request.template,
             presentation_id,
         )
-        layout_model = await get_layout_by_name(request.template)
+        (
+            layout_payload,
+            layout_model,
+            template_fonts,
+            is_template_v2,
+        ) = await _resolve_generation_layout(request.template, sql_session)
         logger.info(
             "[presentation.generate] layout ready template=%r slides=%d ordered=%s icon_weight=%s",
             request.template,
@@ -2032,7 +2127,11 @@ async def generate_presentation_handler(
         # Create PresentationModel
         presentation = PresentationModel(
             id=presentation_id,
-            version=PresentationVersion.V1_STANDARD,
+            version=(
+                PresentationVersion.V2_STANDARD
+                if is_template_v2
+                else PresentationVersion.V1_STANDARD
+            ),
             content=request.content,
             n_slides=final_n_slides,
             language=language_to_use or "",
@@ -2040,11 +2139,12 @@ async def generate_presentation_handler(
                 presentation_outlines
             ),
             outlines=presentation_outlines.model_dump(),
-            layout=layout_model.model_dump(),
+            layout=layout_payload,
             structure=presentation_structure.model_dump(),
             tone=request.tone.value,
             verbosity=request.verbosity.value,
             instructions=request.instructions,
+            fonts=template_fonts,
         )
 
         # Updating async status
@@ -2096,6 +2196,11 @@ async def generate_presentation_handler(
                     index=i,
                     speaker_note=slide_content.get("__speaker_note__"),
                     content=slide_content,
+                    ui=(
+                        _template_v2_slide_ui(layout_payload, slide_layout.id)
+                        if is_template_v2
+                        else None
+                    ),
                 )
                 slides.append(slide)
                 batch_slides.append(slide)
@@ -2132,6 +2237,10 @@ async def generate_presentation_handler(
         generated_assets = []
         for assets_list in generated_assets_list:
             generated_assets.extend(assets_list)
+
+        if is_template_v2:
+            for slide in slides:
+                _hydrate_template_v2_slide_ui(slide, layout_payload)
 
         # 8. Save PresentationModel and Slides
         sql_session.add(presentation)
@@ -2300,9 +2409,9 @@ async def edit_presentation_with_new_content(
         )
         if new_slide_data:
             updated_content = deep_update(each_slide.content, new_slide_data[0].content)
-            new_slides.append(
-                each_slide.get_new_slide(presentation.id, updated_content)
-            )
+            new_slide = each_slide.get_new_slide(presentation.id, updated_content)
+            _hydrate_template_v2_slide_ui(new_slide, presentation.layout)
+            new_slides.append(new_slide)
             slides_to_delete.append(each_slide.id)
 
     await sql_session.execute(
@@ -2348,9 +2457,9 @@ async def derive_presentation_from_existing_one(
         )
         if new_slide_data:
             updated_content = deep_update(each_slide.content, new_slide_data[0].content)
-        new_slides.append(
-            each_slide.get_new_slide(new_presentation.id, updated_content)
-        )
+        new_slide = each_slide.get_new_slide(new_presentation.id, updated_content)
+        _hydrate_template_v2_slide_ui(new_slide, new_presentation.layout)
+        new_slides.append(new_slide)
 
     sql_session.add(new_presentation)
     sql_session.add_all(new_slides)
