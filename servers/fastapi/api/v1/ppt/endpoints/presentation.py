@@ -72,6 +72,7 @@ from utils.outline_utils import (
     get_presentation_outline_model_with_toc,
     get_presentation_title_from_presentation_outline,
 )
+from utils.outline_limits import normalize_outline_payload
 from utils.process_slides import (
     process_slide_add_placeholder_assets,
     process_slide_and_fetch_assets,
@@ -1471,6 +1472,11 @@ async def prepare_presentation(
 ):
     if not outlines:
         raise HTTPException(status_code=400, detail="Outlines are required")
+    if len(outlines) > MAX_NUMBER_OF_SLIDES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Number of outlines cannot be greater than {MAX_NUMBER_OF_SLIDES}",
+        )
 
     presentation = await sql_session.get(PresentationModel, presentation_id)
     if not presentation:
@@ -1807,6 +1813,16 @@ async def update_presentation(
 
     presentation_update_dict = {}
     if n_slides is not None:
+        if n_slides < 1:
+            raise HTTPException(
+                status_code=400,
+                detail="Number of slides must be greater than 0",
+            )
+        if n_slides > MAX_NUMBER_OF_SLIDES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Number of slides cannot be greater than {MAX_NUMBER_OF_SLIDES}",
+            )
         presentation_update_dict["n_slides"] = n_slides
     if title:
         presentation_update_dict["title"] = title
@@ -1816,6 +1832,11 @@ async def update_presentation(
     if presentation_update_dict:
         presentation.sqlmodel_update(presentation_update_dict)
     if slides:
+        if len(slides) > MAX_NUMBER_OF_SLIDES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Number of slides cannot be greater than {MAX_NUMBER_OF_SLIDES}",
+            )
         # Just to make sure id is UUID
         for slide in slides:
             slide.presentation = uuid.UUID(slide.presentation)
@@ -1875,6 +1896,15 @@ async def check_if_api_request_is_valid(
         )
 
     if (
+        request.slides_markdown is not None
+        and len(request.slides_markdown) > MAX_NUMBER_OF_SLIDES
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Number of slides cannot be greater than {MAX_NUMBER_OF_SLIDES}",
+        )
+
+    if (
         request.include_table_of_contents
         and request.n_slides is not None
         and request.n_slides < 3
@@ -1915,6 +1945,11 @@ async def generate_presentation_handler(
 
         if request.slides_markdown:
             using_slides_markdown = True
+            if len(request.slides_markdown) > MAX_NUMBER_OF_SLIDES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Number of slides cannot be greater than {MAX_NUMBER_OF_SLIDES}",
+                )
             request.n_slides = len(request.slides_markdown)
 
         if not using_slides_markdown:
@@ -2004,7 +2039,10 @@ async def generate_presentation_handler(
                     detail="Failed to generate presentation outlines. Please try again.",
                 )
             presentation_outlines = PresentationOutlineModel(
-                **presentation_outlines_json
+                **normalize_outline_payload(
+                    presentation_outlines_json,
+                    MAX_NUMBER_OF_SLIDES,
+                )
             )
 
             if (

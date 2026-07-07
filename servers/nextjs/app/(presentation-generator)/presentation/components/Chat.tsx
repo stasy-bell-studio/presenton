@@ -46,6 +46,10 @@ import type {
 import ToolTip from "@/components/ToolTip";
 import { cn } from "@/lib/utils";
 import type { TemplateV2SurfaceSelectedDetail } from "@/components/slide-editor/events/events";
+import {
+  MAX_NUMBER_OF_SLIDES,
+  MAX_OUTLINE_CONTENT_WORDS,
+} from "@/utils/presentationLimits";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   {
@@ -1063,7 +1067,7 @@ const Chat = ({
 
     if (variant === "outline") {
       contextLines.push(
-        "UI context: the user is editing the outline draft. Use addOutline, updateOutline, and deleteOutline for outline edits."
+        `UI context: the user is editing the outline draft. Use addOutline, updateOutline, and deleteOutline for outline edits. Keep at most ${MAX_NUMBER_OF_SLIDES} outline slides, and keep each outline content within ${MAX_OUTLINE_CONTENT_WORDS} words.`
       );
     }
     if (variant === "template-v2") {

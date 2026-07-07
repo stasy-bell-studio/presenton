@@ -9,6 +9,7 @@ from jsonschema import Draft202012Validator
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from constants.presentation import MAX_NUMBER_OF_SLIDES
 from models.image_prompt import ImagePrompt
 from models.presentation_outline_model import PresentationOutlineModel, SlideOutlineModel
 from models.sql.image_asset import ImageAsset
@@ -28,6 +29,7 @@ from utils.asset_directory_utils import (
 )
 from utils.icon_weights import DEFAULT_ICON_WEIGHT
 from utils.outline_utils import get_presentation_title_from_presentation_outline
+from utils.outline_limits import normalize_outline_content
 from utils.process_slides import (
     process_old_and_new_slides_and_fetch_assets,
     process_slide_and_fetch_assets,
@@ -463,8 +465,15 @@ class PresentationChatMemoryLayer:
             }
 
         slides = self._normalize_outline_slides(presentation.outlines)
+        if len(slides) >= MAX_NUMBER_OF_SLIDES:
+            return {
+                "saved": False,
+                "message": f"Outline slide limit reached. You can have at most {MAX_NUMBER_OF_SLIDES} outlines.",
+                "slide_count": len(slides),
+                "max_slide_count": MAX_NUMBER_OF_SLIDES,
+            }
         insert_index = len(slides) if index is None else min(max(0, index), len(slides))
-        slides.insert(insert_index, {"content": content.strip()})
+        slides.insert(insert_index, {"content": normalize_outline_content(content.strip())})
         await self._save_outline_slides(presentation, slides)
 
         return {
@@ -493,7 +502,7 @@ class PresentationChatMemoryLayer:
                 "slide_count": len(slides),
             }
 
-        slides[target_index] = {"content": content.strip()}
+        slides[target_index] = {"content": normalize_outline_content(content.strip())}
         await self._save_outline_slides(presentation, slides)
 
         return {
@@ -636,6 +645,13 @@ class PresentationChatMemoryLayer:
             .order_by(SlideModel.index)
         )
         slides = list(slides_result)
+        if len(slides) >= MAX_NUMBER_OF_SLIDES:
+            return {
+                "added": False,
+                "message": f"Slide limit reached. You can have at most {MAX_NUMBER_OF_SLIDES} slides.",
+                "slide_count": len(slides),
+                "max_slide_count": MAX_NUMBER_OF_SLIDES,
+            }
         insert_index = (
             len(slides)
             if index is None
@@ -784,6 +800,14 @@ class PresentationChatMemoryLayer:
             .order_by(SlideModel.index)
         )
         slides = list(slides_result)
+        if len(slides) >= MAX_NUMBER_OF_SLIDES:
+            return {
+                "saved": False,
+                "message": f"Slide limit reached. You can have at most {MAX_NUMBER_OF_SLIDES} slides.",
+                "validation_errors": [],
+                "slide_count": len(slides),
+                "max_slide_count": MAX_NUMBER_OF_SLIDES,
+            }
 
         if slides:
             max_index = max(slide.index for slide in slides)
@@ -2576,7 +2600,7 @@ class PresentationChatMemoryLayer:
                 except Exception:
                     content = str(raw_content)
 
-            slides.append({"content": content})
+            slides.append({"content": normalize_outline_content(content)})
 
         return slides
 

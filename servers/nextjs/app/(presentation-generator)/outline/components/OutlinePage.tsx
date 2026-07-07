@@ -25,6 +25,11 @@ import { setPptGenUploadState } from "@/store/slices/presentationGenUpload";
 import { LanguageType, PresentationConfig, ToneType, VerbosityType } from "../../upload/type";
 import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { toast } from "sonner";
+import {
+  clampSlideCountValue,
+  limitOutlines,
+  parseLimitedSlideCount,
+} from "@/utils/presentationLimits";
 
 const DEFAULT_OUTLINE_CONFIG: PresentationConfig = {
   slides: null,
@@ -37,6 +42,13 @@ const DEFAULT_OUTLINE_CONFIG: PresentationConfig = {
   includeTitleSlide: false,
   webSearch: false,
 };
+
+const normalizeOutlineConfig = (
+  config: PresentationConfig
+): PresentationConfig => ({
+  ...config,
+  slides: config.slides ? clampSlideCountValue(config.slides) || null : null,
+});
 
 const getDocumentPaths = (files: unknown): string[] => {
   if (!Array.isArray(files)) {
@@ -59,7 +71,7 @@ const getOutlinesFromResponse = (outline: any): { content: string }[] => {
     return [];
   }
 
-  return slides.map((slide) => {
+  return limitOutlines(slides.map((slide) => {
     const content = slide?.content;
     if (typeof content === "string") {
       return { content };
@@ -68,7 +80,7 @@ const getOutlinesFromResponse = (outline: any): { content: string }[] => {
       return { content: "" };
     }
     return { content: String(content) };
-  });
+  }));
 };
 
 interface OutlinePageProps {
@@ -89,7 +101,7 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
   const [activeTab, setActiveTab] = useState<string>(TABS.LAYOUTS);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateLayoutsWithSettings | string | null>(null);
   const [draftConfig, setDraftConfig] = useState<PresentationConfig>(
-    savedConfig ?? DEFAULT_OUTLINE_CONFIG
+    savedConfig ? normalizeOutlineConfig(savedConfig) : DEFAULT_OUTLINE_CONFIG
   );
   const [isRegeneratingOutline, setIsRegeneratingOutline] = useState(false);
   const [hasOutlineStreamFinished, setHasOutlineStreamFinished] =
@@ -125,7 +137,7 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
 
   useEffect(() => {
     if (savedConfig) {
-      setDraftConfig(savedConfig);
+      setDraftConfig(normalizeOutlineConfig(savedConfig));
     }
   }, [savedConfig]);
 
@@ -164,9 +176,13 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
   };
 
   const handleConfigChange = (key: keyof PresentationConfig, value: unknown) => {
+    const nextValue =
+      key === "slides" && typeof value === "string"
+        ? clampSlideCountValue(value)
+        : value;
     setDraftConfig((previous) => ({
       ...previous,
-      [key]: value,
+      [key]: nextValue,
     }));
   };
 
@@ -212,7 +228,7 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
     try {
       const createResponse = await PresentationGenerationApi.createPresentation({
         content: draftConfig.prompt ?? "",
-        n_slides: draftConfig.slides ? parseInt(draftConfig.slides, 10) : null,
+        n_slides: parseLimitedSlideCount(draftConfig.slides),
         file_paths: documentPaths,
         language: draftConfig.language ?? "",
         tone: draftConfig.tone,

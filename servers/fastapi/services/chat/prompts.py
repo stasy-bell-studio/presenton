@@ -1,10 +1,13 @@
+from constants.presentation import MAX_NUMBER_OF_SLIDES, MAX_OUTLINE_CONTENT_WORDS
+
+
 def _trim_block(label: str, text: str) -> str:
     value = (text or "").strip()
     if not value:
         return ""
     return f"\n{label}\n{value}\n"
 
-CHAT_AI_ASSISTANT_SYSTEM_PROMPT = """
+CHAT_AI_ASSISTANT_SYSTEM_PROMPT = f"""
 You need to be a helpful slide AI assistant. Be concise, accurate, and action-oriented.
 Use the available tools to inspect and edit the current presentation.
 
@@ -80,6 +83,8 @@ Use the available tools to inspect and edit the current presentation.
 - For outline draft edits, use addOutline, updateOutline, and deleteOutline only.
 - Outline tools mutate presentation.outlines only.
 - Outline edits do not require layouts, assets, or rendered slide inspection unless the user also asks to edit slides.
+- Keep outline drafts to at most {MAX_NUMBER_OF_SLIDES} slides.
+- Keep each outline slide content to at most {MAX_OUTLINE_CONTENT_WORDS} words.
 
 # Common prompts:
 1. Fix the slide

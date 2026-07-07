@@ -23,6 +23,7 @@ import {
   BLANK_SLIDE_LAYOUT_ID,
   BLANK_TEMPLATE_V2_LAYOUT,
 } from "../_shared/blank-slide";
+import { MAX_NUMBER_OF_SLIDES } from "@/utils/presentationLimits";
 
 interface LayoutItemProps {
   layout: any;
@@ -164,6 +165,10 @@ const NewSlideV1 = ({
   const presentationLayout = useSelector(
     (state: RootState) => state.presentationGeneration.presentationData?.layout
   );
+  const slideCount = useSelector((state: RootState) => {
+    const slides = state.presentationGeneration.presentationData?.slides;
+    return Array.isArray(slides) ? slides.length : 0;
+  });
   const [layouts, setLayouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -181,6 +186,14 @@ const NewSlideV1 = ({
 
   const handleNewSlide = useCallback(
     (sampleData: any, id: string) => {
+      if (slideCount >= MAX_NUMBER_OF_SLIDES) {
+        notify.warning(
+          "Slide limit reached",
+          `You can have up to ${MAX_NUMBER_OF_SLIDES} slides.`
+        );
+        return;
+      }
+
       try {
         const newSlide = {
           id: uuidv4(),
@@ -206,6 +219,7 @@ const NewSlideV1 = ({
       setShowNewSlideSelection,
       isCustomTemplate,
       isTemplateV2,
+      slideCount,
     ]
   );
 

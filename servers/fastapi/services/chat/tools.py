@@ -6,6 +6,7 @@ from typing import Any, Awaitable, Callable, Literal
 import dirtyjson  # type: ignore[import-untyped]
 from llmai.shared import AssistantToolCall, Tool  # type: ignore[import-not-found]
 
+from constants.presentation import MAX_NUMBER_OF_SLIDES, MAX_OUTLINE_CONTENT_WORDS
 from services.chat.schemas import (
     AddElementInput,
     AddNewSlideInput,
@@ -75,7 +76,9 @@ class ChatTools:
                 name="addOutline",
                 description=(
                     "Insert a new markdown outline item into the outline draft. "
-                    "This edits presentation.outlines only and does not require a layout."
+                    "This edits presentation.outlines only and does not require a layout. "
+                    f"Do not exceed {MAX_NUMBER_OF_SLIDES} outline slides or "
+                    f"{MAX_OUTLINE_CONTENT_WORDS} words in this outline item."
                 ),
                 schema=AddOutlineInput,
                 strict=True,
@@ -84,7 +87,8 @@ class ChatTools:
                 name="updateOutline",
                 description=(
                     "Replace the markdown content of one outline item by zero-based index. "
-                    "This edits presentation.outlines only and does not require a layout."
+                    "This edits presentation.outlines only and does not require a layout. "
+                    f"Keep this outline item within {MAX_OUTLINE_CONTENT_WORDS} words."
                 ),
                 schema=UpdateOutlineInput,
                 strict=True,

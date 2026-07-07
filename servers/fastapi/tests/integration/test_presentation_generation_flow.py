@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 
 from api.v1.ppt.endpoints import presentation as presentation_endpoint
+from constants.presentation import MAX_NUMBER_OF_SLIDES
 from models.generate_presentation_request import GeneratePresentationRequest
 from models.presentation_and_path import PresentationAndPath
 from models.presentation_from_template import EditPresentationRequest, SlideContentUpdate
@@ -394,6 +395,64 @@ def test_prepare_presentation_clears_stale_language_for_reviewed_outlines():
         )
 
     assert response.language == ""
+
+
+def test_prepare_presentation_rejects_too_many_outlines():
+    presentation_id = uuid.uuid4()
+    presentation = PresentationModel(
+        id=presentation_id,
+        content="deck",
+        n_slides=MAX_NUMBER_OF_SLIDES,
+        language="English",
+        tone="default",
+        verbosity="standard",
+        instructions=None,
+    )
+    session = FakeAsyncSession(get_results={presentation_id: presentation})
+
+    with pytest.raises(HTTPException) as exc_info:
+        _run(
+            presentation_endpoint.prepare_presentation(
+                presentation_id=presentation_id,
+                outlines=[
+                    SlideOutlineModel(content=f"## Slide {index}")
+                    for index in range(MAX_NUMBER_OF_SLIDES + 1)
+                ],
+                layout=_mock_layout(),
+                sql_session=session,
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == f"Number of outlines cannot be greater than {MAX_NUMBER_OF_SLIDES}"
+    )
+
+
+def test_check_api_request_rejects_too_many_slides_markdown(fake_async_session):
+    request = GeneratePresentationRequest(
+        content="",
+        slides_markdown=[
+            f"## Slide {index}" for index in range(MAX_NUMBER_OF_SLIDES + 1)
+        ],
+        export_as="pdf",
+        template="general",
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        _run(
+            presentation_endpoint.check_if_api_request_is_valid(
+                request=request,
+                sql_session=fake_async_session,
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == f"Number of slides cannot be greater than {MAX_NUMBER_OF_SLIDES}"
+    )
 
 
 def test_prepare_presentation_accepts_template_v2_layout_id():

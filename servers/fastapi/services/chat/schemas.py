@@ -4,6 +4,8 @@ from typing import Any, Literal
 import dirtyjson  # type: ignore[import-untyped]
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from constants.presentation import MAX_OUTLINE_CONTENT_WORDS
+
 
 class StrictSchemaModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -34,7 +36,7 @@ class AddOutlineInput(OpenAIStrictSchemaModel):
         ...,
         min_length=1,
         max_length=20000,
-        description="Markdown content for the new outline slide.",
+        description=f"Markdown content for the new outline slide. Maximum {MAX_OUTLINE_CONTENT_WORDS} words.",
     )
     index: int | None = Field(
         ...,
@@ -49,7 +51,7 @@ class UpdateOutlineInput(StrictSchemaModel):
     content: str = Field(
         min_length=1,
         max_length=20000,
-        description="Replacement markdown content for this outline slide.",
+        description=f"Replacement markdown content for this outline slide. Maximum {MAX_OUTLINE_CONTENT_WORDS} words.",
     )
 
 

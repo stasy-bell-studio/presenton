@@ -17,6 +17,10 @@ import {
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import AdvanceSettings from "./AdvanceSettings";
+import {
+  clampSlideCountValue,
+  MAX_NUMBER_OF_SLIDES,
+} from "@/utils/presentationLimits";
 
 // Types
 interface ConfigurationSelectsProps {
@@ -87,10 +91,7 @@ const SlideCountSelect: React.FC<{
   }, [open]);
 
   const sanitizeToPositiveInteger = (raw: string): string => {
-    const digitsOnly = raw.replace(/\D+/g, "");
-    if (!digitsOnly) return "";
-    const noLeadingZeros = digitsOnly.replace(/^0+/, "");
-    return noLeadingZeros;
+    return clampSlideCountValue(raw);
   };
 
   const applyCustomValue = () => {
@@ -150,6 +151,7 @@ const SlideCountSelect: React.FC<{
             <Input
               inputMode="numeric"
               pattern="[0-9]*"
+              max={MAX_NUMBER_OF_SLIDES}
               value={customInput}
               onMouseDown={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
