@@ -2,12 +2,10 @@ import { useCallback } from "react";
 import { useDispatch } from "react-redux";
 import { notify } from "@/components/ui/sonner";
 import { setPresentationData } from "@/store/slices/presentationGeneration";
-import type { PresentationData } from "@/store/slices/presentationGeneration";
 import { clearHistory } from "@/store/slices/undoRedoSlice";
 import { applyPresentationThemeToElement } from "../utils/applyPresentationThemeDom";
 import { normalizeBackendAssetUrls } from "@/utils/api";
 import { useFontLoader } from "../../hooks/useFontLoad";
-import localPresentationData from "../new.json";
 import { DashboardApi } from "../../services/api/dashboard";
 
 
@@ -21,7 +19,6 @@ export const usePresentationData = (
   const fetchUserSlides = useCallback(async (options?: { clearHistory?: boolean }) => {
     try {
       const data = await DashboardApi.getPresentation(presentationId);
-      // const data = localPresentationData as PresentationData;
 
       const normalizedData = normalizeBackendAssetUrls(data);
 

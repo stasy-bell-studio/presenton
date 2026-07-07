@@ -25,12 +25,14 @@ def test_image_element_accepts_flip_flags():
             "flip_v": False,
             "focus_x": 20.0,
             "focus_y": 75.0,
+            "clip_path": "path('M 0 0 L 100 0 L 100 100 Z')",
         }
     )
     assert image.flip_h is True
     assert image.flip_v is False
     assert image.focus_x == 20.0
     assert image.focus_y == 75.0
+    assert image.clip_path == "path('M 0 0 L 100 0 L 100 100 Z')"
 
     layout = RawSlideLayout.model_validate(
         {
@@ -47,6 +49,7 @@ def test_image_element_accepts_flip_flags():
                     "flip_v": False,
                     "focus_x": 20.0,
                     "focus_y": 75.0,
+                    "clip_path": "path('M 0 0 L 100 0 L 100 100 Z')",
                 }
             ],
         }
@@ -56,6 +59,11 @@ def test_image_element_accepts_flip_flags():
     assert layout_image.flip_v is False
     assert layout_image.focus_x == 20.0
     assert layout_image.focus_y == 75.0
+    assert layout_image.clip_path == "path('M 0 0 L 100 0 L 100 100 Z')"
+    assert (
+        layout.model_dump(mode="json")["elements"][0]["clip_path"]
+        == "path('M 0 0 L 100 0 L 100 100 Z')"
+    )
 
 
 def test_element_models_match_export_schema_changes():
@@ -63,10 +71,10 @@ def test_element_models_match_export_schema_changes():
     assert not {
         "data",
         "color",
-        "axis_color",
         "label_color",
         "show_values",
     }.intersection(Chart.model_fields)
+    assert "axis_color" in Chart.model_fields
     assert {"base_color", "highlight_color"}.issubset(Infographic.model_fields)
 
     with pytest.raises(ValidationError, match="runs"):
@@ -108,15 +116,23 @@ def test_element_models_match_export_schema_changes():
             "type": "table",
             "decorative": False,
             "name": "metrics",
-            "columns": ["Metric", "Value"],
-            "rows": [["Revenue", "$12M"]],
+            "columns": [
+                {"runs": [{"text": "Metric"}]},
+                {"runs": [{"text": "Value"}]},
+            ],
+            "rows": [
+                [
+                    {"runs": [{"text": "Revenue"}]},
+                    {"runs": [{"text": "$12M"}]},
+                ]
+            ],
             "min_columns": 1,
             "max_columns": 2,
             "min_rows": 1,
             "max_rows": 1,
         }
     )
-    assert table.columns == ["Metric", "Value"]
+    assert [cell.runs[0].text for cell in table.columns] == ["Metric", "Value"]
 
     with pytest.raises(ValidationError):
         Table.model_validate(
@@ -214,8 +230,16 @@ def test_raw_layout_accepts_reference_converter_element_models():
                     "type": "table",
                     "decorative": False,
                     "name": "financials",
-                    "columns": ["Metric", "Value"],
-                    "rows": [["Revenue", "$12M"]],
+                    "columns": [
+                        {"runs": [{"text": "Metric"}]},
+                        {"runs": [{"text": "Value"}]},
+                    ],
+                    "rows": [
+                        [
+                            {"runs": [{"text": "Revenue"}]},
+                            {"runs": [{"text": "$12M"}]},
+                        ]
+                    ],
                     "min_columns": 1,
                     "max_columns": 2,
                     "min_rows": 1,
@@ -241,7 +265,7 @@ def test_raw_layout_accepts_reference_converter_element_models():
 
     image, table, chart = layout.elements
     assert image.opacity == 0.42
-    assert table.columns == ["Metric", "Value"]
+    assert [cell.runs[0].text for cell in table.columns] == ["Metric", "Value"]
     assert chart.grid is True
     assert chart.series[0].values == [10.0, 12.0]
 

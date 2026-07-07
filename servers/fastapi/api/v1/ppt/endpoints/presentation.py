@@ -1250,6 +1250,42 @@ async def delete_presentation(
     await sql_session.commit()
 
 
+@PRESENTATION_ROUTER.post("/{id}/duplicate", response_model=PresentationWithSlides)
+async def duplicate_presentation(
+    id: uuid.UUID, sql_session: AsyncSession = Depends(get_async_session)
+):
+    presentation = await sql_session.get(PresentationModel, id)
+    if not presentation:
+        raise HTTPException(404, "Presentation not found")
+
+    slides = list(
+        await sql_session.scalars(
+            select(SlideModel)
+            .where(SlideModel.presentation == id)
+            .order_by(SlideModel.index)
+        )
+    )
+    new_presentation = presentation.get_new_presentation()
+    if new_presentation.title:
+        new_presentation.title = f"{new_presentation.title} (Copy)"
+    new_slides = [slide.get_new_slide(new_presentation.id) for slide in slides]
+
+    sql_session.add(new_presentation)
+    sql_session.add_all(new_slides)
+    await sql_session.commit()
+    await sql_session.refresh(new_presentation)
+
+    return PresentationWithSlides(
+        **_presentation_response_data(new_presentation),
+        slides=new_slides,
+        fonts=await _resolve_presentation_fonts(
+            new_presentation,
+            new_slides,
+            sql_session,
+        ),
+    )
+
+
 @PRESENTATION_ROUTER.post("/create", response_model=PresentationModel)
 async def create_presentation(
     content: Annotated[str, Body()],

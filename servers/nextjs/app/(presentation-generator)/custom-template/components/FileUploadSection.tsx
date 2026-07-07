@@ -221,16 +221,6 @@ export const FileUploadSection: React.FC<FileUploadSectionProps> = ({
           </li>
         </ul>
 
-        <div className="mt-4 px-4 py-3 rounded-lg border border-[#EBE9FE]  flex items-start gap-2 shadow-md">
-          <svg className="mt-0.5 shrink-0" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 20 20" fill="none">
-            <circle cx="10" cy="10" r="10" fill="#EBE9FE" />
-            <path d="M10 6V10M10 14H10.0088" stroke="#5B49A1" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <p className="text-sm md:text-base font-medium text-[#20165C] tracking-[-0.13px]">
-            <span className="font-bold text-[#5B49A1]">Note:</span> Each slide is sent to your configured text model as a <span className="font-semibold">screenshot plus HTML reference</span>. Only <span className="font-semibold">vision-capable</span> models (image input) can use the layout faithfully. Text-only models may error or produce weak layouts; pick a vision model in Settings for your provider.
-          </p>
-        </div>
-
       </div>
     </div>
 

@@ -865,7 +865,7 @@ class PresentationChatMemoryLayer:
                 ),
             }
 
-        editable = _collect_editable_elements(ui)
+        editable = _collect_editable_elements(ui, include_visual_elements=True)
         response: dict[str, Any] = {
             "found": True,
             "editable": True,

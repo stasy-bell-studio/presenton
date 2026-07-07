@@ -88,4 +88,21 @@ export class DashboardApi {
       };
     }
   }
+
+  static async duplicatePresentation(presentation_id: string) {
+    try {
+      const response = await fetch(
+        getApiUrl(`/api/v1/ppt/presentation/${presentation_id}/duplicate`),
+        {
+          method: "POST",
+          headers: getHeader(),
+        }
+      );
+
+      return await ApiResponseHandler.handleResponse(response, "Failed to duplicate presentation");
+    } catch (error) {
+      console.error("Error duplicating presentation:", error);
+      throw error;
+    }
+  }
 }

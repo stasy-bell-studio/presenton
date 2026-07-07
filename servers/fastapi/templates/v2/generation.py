@@ -131,6 +131,7 @@ Convert the provided raw slide elements to components.
 # Schema Rules:
 - Set `decorative=true` for decorative or static elements like logo, decorative images, etc.
 - Set `decorative=false` for content elements which should be replaced while creating new slide.
+- Try to keep `max_length`, `min_length`, `max_items` and `min_items` same as in the raw slide layout.
 - If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
 - For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
 
@@ -281,7 +282,7 @@ def merge_similar_components(layouts: SlideLayouts) -> MergedComponents:
             clusters,
             component_count=len(indexed_components),
         ),
-        max_tokens=4096,
+        max_tokens=16000,
     )
     clusters = SimilarComponentsList.model_validate(response)
     merged = _build_merged_components(

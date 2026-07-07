@@ -195,6 +195,7 @@ class Image(BaseModel):  # Konva Image
     focus_x: Optional[float] = None
     focus_y: Optional[float] = None
     border_radius: Optional[BorderRadius] = None
+    clip_path: Optional[str] = None
     color: Optional[str] = None
 
     # Schema
@@ -439,6 +440,7 @@ __all__ = [
     "Group",
     "Stroke",
     "Table",
+    "TableCell",
     "Text",
     "TextList",
     "TextRun",

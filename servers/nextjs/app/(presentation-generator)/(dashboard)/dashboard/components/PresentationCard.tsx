@@ -3,7 +3,7 @@ import React, { useEffect } from "react";
 
 import { Card } from "@/components/ui/card";
 import { DashboardApi } from "@/app/(presentation-generator)/services/api/dashboard";
-import { AlertTriangle, EllipsisVertical, Loader2, Trash } from "lucide-react";
+import { AlertTriangle, Copy, EllipsisVertical, Loader2, Trash } from "lucide-react";
 import {
   Popover,
   PopoverTrigger,
@@ -25,17 +25,20 @@ export const PresentationCard = ({
   id,
   title,
   presentation,
-  onDeleted
+  onDeleted,
+  onDuplicated
 }: {
   id: string;
   title: string;
   presentation: any;
   onDeleted?: (presentationId: string) => void;
+  onDuplicated?: (presentation: any) => void;
 }) => {
   const router = useRouter();
   const pathname = usePathname();
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isDuplicating, setIsDuplicating] = React.useState(false);
 
   const handlePreview = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -110,6 +113,29 @@ export const PresentationCard = ({
     }
     setIsDeleting(false);
   };
+
+  const handleDuplicate = async () => {
+    if (isDuplicating) return;
+    setIsDuplicating(true);
+    try {
+      const duplicated = await DashboardApi.duplicatePresentation(id);
+      trackEvent(MixpanelEvent.Dashboard_Presentation_Duplicated, {
+        pathname,
+        presentation_id: id,
+        duplicate_presentation_id: duplicated?.id,
+        slide_count: presentation?.slides?.length || 0,
+      });
+      notify.success("Presentation duplicated", "A copy was added to your dashboard.");
+      onDuplicated?.(duplicated);
+    } catch (error) {
+      notify.error(
+        "Could not duplicate presentation",
+        error instanceof Error ? error.message : "Something went wrong while duplicating the presentation."
+      );
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
   const firstSlide = presentation?.slides?.[0];
   const useTemplateV2HtmlPreview = shouldRenderTemplateV2HtmlPreview(
     firstSlide,
@@ -162,6 +188,22 @@ export const PresentationCard = ({
                 <EllipsisVertical className="w-6 h-6 text-gray-500" />
               </PopoverTrigger>
               <PopoverContent align="end" className="bg-white w-[200px]">
+                <button
+                  className="flex items-center justify-between w-full px-2 py-1 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={isDuplicating}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    void handleDuplicate();
+                  }}
+                >
+                  <p>{isDuplicating ? "Duplicating..." : "Duplicate"}</p>
+                  {isDuplicating ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                  ) : (
+                    <Copy className="h-4 w-4 text-gray-500" />
+                  )}
+                </button>
                 <button
                   className="flex items-center justify-between w-full px-2 py-1 hover:bg-gray-100"
                   onClick={(e) => {

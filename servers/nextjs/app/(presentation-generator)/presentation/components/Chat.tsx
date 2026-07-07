@@ -1134,7 +1134,7 @@ const Chat = ({
       contextLines.push(
         `UI context: the user has selected this TemplateV2 ${target.kind}: ${targetParts.join(
           ", "
-        )}. This selected ${target.kind} is the primary target for short edits like "this", "it", "make it smaller", "rewrite it", or "remove it"; do not apply those requests to the whole slide unless the user explicitly says slide. For visible slide edits, inspect the selected slide with getSlideElements and use matching componentId/elementPath exactly.`
+        )}. This selected ${target.kind} is the primary target for short edits like "this", "it", "make it smaller", "rewrite it", or "remove it"; do not apply those requests to the whole slide unless the user explicitly says slide. For visible slide edits, inspect the selected slide with getSlideElements and use matching componentId/elementPath exactly. If the selected element is content_editable:false, use position/size for that element or target a content_editable descendant for text/content changes.`
       );
     }
 
