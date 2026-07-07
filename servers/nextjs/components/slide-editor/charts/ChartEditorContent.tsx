@@ -562,8 +562,14 @@ function AccordionSection({
   icon: ReactNode;
   label: string;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
-    <details className="group" defaultOpen={defaultOpen}>
+    <details
+      className="group"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
       <summary
         className={`${compact ? "h-9 gap-2 px-2 text-[11px]" : "h-12 gap-3 px-3 text-[13px]"} flex cursor-pointer list-none items-center rounded-lg font-medium text-[#191919] transition hover:bg-[#F7F7FA] group-open:bg-[#F7F7FA] [&::-webkit-details-marker]:hidden`}
       >
@@ -876,6 +882,7 @@ function EditableDataTable({
   } | null>(null);
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [selectedRowIndex, setSelectedRowIndex] = useState(0);
+  const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
   const selectedSeriesIndex = seriesMenu
     ? Math.min(seriesMenu.index, safeSeries.length - 1)
     : null;
@@ -927,6 +934,18 @@ function EditableDataTable({
       colors,
     );
   };
+  const updateValueDraft = (
+    seriesIndex: number,
+    rowIndex: number,
+    value: string,
+  ) => {
+    const key = `${seriesIndex}:${rowIndex}`;
+    setValueDrafts((current) => ({ ...current, [key]: value }));
+    if (isCompleteNumericInput(value)) {
+      updateValue(seriesIndex, rowIndex, value);
+    }
+  };
+  const clearValueDrafts = () => setValueDrafts({});
   const addRow = () => {
     const nextCategories = [
       ...safeCategories,
@@ -940,6 +959,7 @@ function EditableDataTable({
       })),
       colors,
     );
+    clearValueDrafts();
   };
   const deleteRow = (rowIndex: number) => {
     if (safeCategories.length <= 1) return;
@@ -955,6 +975,7 @@ function EditableDataTable({
     setSelectedRowIndex((current) =>
       Math.max(0, Math.min(current, safeCategories.length - 2)),
     );
+    clearValueDrafts();
   };
   const addSeries = () => {
     onUpdate(
@@ -968,6 +989,7 @@ function EditableDataTable({
       ],
       colors,
     );
+    clearValueDrafts();
   };
   const deleteSeries = (seriesIndex: number) => {
     if (safeSeries.length <= 1) return;
@@ -978,6 +1000,7 @@ function EditableDataTable({
     );
     setSeriesMenu(null);
     setColumnMenuOpen(false);
+    clearValueDrafts();
   };
   const moveSeries = (seriesIndex: number, direction: -1 | 1) => {
     const targetIndex = seriesIndex + direction;
@@ -994,6 +1017,7 @@ function EditableDataTable({
     onUpdate(safeCategories, nextSeries, nextColors);
     setSeriesMenu(null);
     setColumnMenuOpen(false);
+    clearValueDrafts();
   };
   const showSeriesMenu = (seriesIndex: number, node: HTMLElement) => {
     const root = tableRootRef.current;
@@ -1103,7 +1127,7 @@ function EditableDataTable({
         </div>
       ) : null}
 
-      <div className="relative rounded-b-lg bg-[#F3F4F6] pb-3 pr-9">
+      <div className="relative rounded-b-lg bg-[#F3F4F6] pb-9 pr-9">
         <div className="max-h-[390px] overflow-auto">
           <table className="min-w-full border-collapse text-[11px] text-[#191919]">
             <thead>
@@ -1153,52 +1177,78 @@ function EditableDataTable({
                       }
                     />
                   </td>
-                  {safeSeries.map((item, seriesIndex) => (
-                    <td
-                      key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
-                      className="border-b border-r border-[#E8E8EC] bg-white px-3 py-1.5"
-                    >
-                      <input
-                        className="h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-[11px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-2"
-                        type="text"
-                        inputMode={numericInputMode(chartValueInputOptions)}
-                        value={item.values[rowIndex] ?? 0}
-                        onFocus={() => setSelectedRowIndex(rowIndex)}
-                        onKeyDown={(event) => {
-                          if (
-                            preventInvalidNumberInput(
-                              event,
-                              chartValueInputOptions,
-                            )
-                          ) {
-                            return;
-                          }
-                          if (
-                            event.key === "ArrowUp" ||
-                            event.key === "ArrowDown"
-                          ) {
-                            event.preventDefault();
-                            const direction = event.key === "ArrowUp" ? 1 : -1;
-                            updateValue(
+                  {safeSeries.map((item, seriesIndex) => {
+                    const draftKey = `${seriesIndex}:${rowIndex}`;
+                    const hasDraft = Object.prototype.hasOwnProperty.call(
+                      valueDrafts,
+                      draftKey,
+                    );
+                    const displayValue = hasDraft
+                      ? valueDrafts[draftKey]
+                      : item.values[rowIndex] ?? "";
+
+                    return (
+                      <td
+                        key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
+                        className="border-b border-r border-[#E8E8EC] bg-white px-3 py-1.5"
+                      >
+                        <input
+                          className="h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-[11px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-2"
+                          type="text"
+                          inputMode={numericInputMode(chartValueInputOptions)}
+                          value={displayValue}
+                          onFocus={() => setSelectedRowIndex(rowIndex)}
+                          onBlur={() => {
+                            const draft = valueDrafts[draftKey];
+                            if (!isCompleteNumericInput(draft)) return;
+                            setValueDrafts((current) => {
+                              const next = { ...current };
+                              delete next[draftKey];
+                              return next;
+                            });
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              preventInvalidNumberInput(
+                                event,
+                                chartValueInputOptions,
+                              )
+                            ) {
+                              return;
+                            }
+                            if (
+                              event.key === "ArrowUp" ||
+                              event.key === "ArrowDown"
+                            ) {
+                              event.preventDefault();
+                              const direction =
+                                event.key === "ArrowUp" ? 1 : -1;
+                              const draft = valueDrafts[draftKey];
+                              const currentValue = isCompleteNumericInput(draft)
+                                ? Number(draft)
+                                : item.values[rowIndex] ?? 0;
+                              const nextValue = String(currentValue + direction);
+                              updateValueDraft(
+                                seriesIndex,
+                                rowIndex,
+                                nextValue,
+                              );
+                            }
+                          }}
+                          onChange={(event) =>
+                            updateValueDraft(
                               seriesIndex,
                               rowIndex,
-                              String((item.values[rowIndex] ?? 0) + direction),
-                            );
+                              sanitizeNumericInput(
+                                event.target.value,
+                                chartValueInputOptions,
+                              ),
+                            )
                           }
-                        }}
-                        onChange={(event) =>
-                          updateValue(
-                            seriesIndex,
-                            rowIndex,
-                            sanitizeNumericInput(
-                              event.target.value,
-                              chartValueInputOptions,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                  ))}
+                        />
+                      </td>
+                    );
+                  })}
                   <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6] px-1">
                     <button
                       type="button"
@@ -1216,7 +1266,7 @@ function EditableDataTable({
           </table>
         </div>
         <div className="absolute bottom-0 right-0 top-0 w-9 rounded-r-lg bg-[#EDEEF0]" />
-        <div className="absolute bottom-0 left-0 right-9 h-3 rounded-b-lg bg-[#EDEEF0]" />
+        <div className="absolute bottom-0 left-0 right-9 h-9 rounded-b-lg bg-[#EDEEF0]" />
         {allowMultipleSeries ? (
           <button
             type="button"
@@ -1228,7 +1278,7 @@ function EditableDataTable({
         ) : null}
         <button
           type="button"
-          className="absolute bottom-0 left-1/2 z-10 grid h-3 w-8 -translate-x-1/2 place-items-center text-[#191919]"
+          className="absolute bottom-0 left-1/2 z-10 grid h-9 w-16 -translate-x-1/2 place-items-center text-[#191919]"
           onClick={addRow}
         >
           <Plus size={12} strokeWidth={2.2} />
@@ -1236,6 +1286,13 @@ function EditableDataTable({
       </div>
     </div>
   );
+}
+
+function isCompleteNumericInput(value: string | undefined) {
+  if (!value || value === "-" || value === "." || value === "-.") {
+    return false;
+  }
+  return Number.isFinite(Number(value));
 }
 
 function ColumnMenuItem({
