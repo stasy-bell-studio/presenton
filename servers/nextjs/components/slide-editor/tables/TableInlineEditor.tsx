@@ -280,8 +280,8 @@ function tableCellBackground(cell: TableCell, isHeader: boolean) {
     cell.color?.color ??
     (cell as TableCell & { fill?: { color?: string | null } | null }).fill
       ?.color ??
-    (isHeader ? "F7F7FA" : "FFFFFF");
-  return withHash(fill) ?? (isHeader ? "#F7F7FA" : "#FFFFFF");
+    (isHeader ? "F7F7FA" : undefined);
+  return withHash(fill) ?? (isHeader ? "#F7F7FA" : "transparent");
 }
 
 function normalizedTextRuns(
