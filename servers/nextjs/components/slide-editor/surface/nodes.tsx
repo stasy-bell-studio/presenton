@@ -779,8 +779,12 @@ function RawElementVisual({
     );
   }
   if (type === "chart") {
+    const legendState = Object.prototype.hasOwnProperty.call(element, "legend")
+      ? String(element.legend)
+      : String(element.showLegend ?? "auto");
     return (
       <RawChartElement
+        key={`chart-legend-${legendState}`}
         element={element}
         width={width}
         height={height}

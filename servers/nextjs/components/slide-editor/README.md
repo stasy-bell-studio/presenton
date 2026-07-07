@@ -974,9 +974,12 @@ Data helpers:
 
 Editing:
 
-- `ChartToolbar` provides quick chart actions and opens the full editor.
+- `ChartToolbar` provides chart type and color shortcuts.
 - `openChartEditor()` dispatches `TEMPLATE_V2_CHART_EDITOR_EVENT`.
-- `ChartEditorContent` edits data, labels, series, colors, and chart type.
+- `ChartEditorContent` provides the Presentation Actions Data and Customize
+  tabs and the expanded data table.
+- `ChartCustomizePanel` is shared by Presentation Actions and the expanded
+  chart editor. It edits title, values, colors, axes, and X/Y grids.
 - When finished, chart editor dispatches `TEMPLATE_V2_CHART_UPDATE_EVENT`.
 - `TemplateV2KonvaSlide` listens for update events and writes data to the
   currently selected chart.

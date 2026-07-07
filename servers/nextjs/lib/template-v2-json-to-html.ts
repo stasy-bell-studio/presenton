@@ -736,8 +736,8 @@ function renderGaugeInfographic(item: JsonRecord, mode: RenderMode): string {
 
 function chartConfig(item: JsonRecord): JsonRecord {
   const chartKind = chartKindFromValue(readString(item.chartType ?? item.chart_type));
-  const data = normalizeChartData(item);
-  const title = readString(item.title);
+  const data = normalizeChartData(item, chartKind);
+  const title = readString(item.title)?.trim() ?? "";
   const font = readRecord(item.font);
   const labelColor =
     normalizeChartColor(readString(item.labelColor ?? item.label_color)) ??
@@ -752,19 +752,35 @@ function chartConfig(item: JsonRecord): JsonRecord {
     normalizeChartColor(readString(item.gridColor ?? item.grid_color)) ??
     "#E5E7EB";
   const fontFamily = readString(font.family) ?? "Arial, Helvetica, sans-serif";
-  const showLegend =
+  const autoShowLegend =
     chartKind === "pie" || chartKind === "donut" || data.series.length > 1;
+  const showLegend = readOptionalBoolean(
+    item.legend ?? item.showLegend,
+    autoShowLegend
+  );
   const dataLabels = readOptionalBoolean(
     item.dataLabels ?? item.data_labels,
     false
   );
   const xAxisGrid = readOptionalBoolean(
-    item.xAxisGrid ?? item.x_axis_grid,
+    item.x_axis_grid ?? item.xAxisGrid,
     true
   );
   const yAxisGrid = readOptionalBoolean(
-    item.yAxisGrid ?? item.y_axis_grid,
+    item.y_axis_grid ?? item.yAxisGrid,
     true
+  );
+  const xAxis = readOptionalBoolean(item.x_axis ?? item.xAxis, true);
+  const yAxis = readOptionalBoolean(item.y_axis ?? item.yAxis, true);
+  const xAxisTitle = readString(
+    Object.prototype.hasOwnProperty.call(item, "x_axis_title")
+      ? item.x_axis_title
+      : item.xAxisTitle
+  );
+  const yAxisTitle = readString(
+    Object.prototype.hasOwnProperty.call(item, "y_axis_title")
+      ? item.y_axis_title
+      : item.yAxisTitle
   );
   const config: JsonRecord = {
     type: chartJsType(chartKind),
@@ -797,7 +813,7 @@ function chartConfig(item: JsonRecord): JsonRecord {
             size: Math.max(12, readNumber(font.size) ?? 16),
             weight: "700",
           },
-          padding: { bottom: 8 },
+          padding: { bottom: 16 },
         },
         tooltip: { enabled: false },
         presentonDataLabels: {
@@ -825,42 +841,54 @@ function chartConfig(item: JsonRecord): JsonRecord {
     }
     readRecord(config.options).scales = {
       x: {
-        display: readOptionalBoolean(item.xAxis ?? item.x_axis, true),
+        display: xAxis || yAxisGrid,
         stacked,
         beginAtZero: horizontal,
+        border: {
+          display: xAxis,
+          color: axisColor,
+        },
         grid: {
-          display: xAxisGrid,
+          display: yAxisGrid,
           color: gridColor,
+          drawTicks: xAxis,
         },
         title: {
-          display: Boolean(readString(item.xAxisTitle ?? item.x_axis_title)),
-          text: readString(item.xAxisTitle ?? item.x_axis_title) ?? "",
+          display: xAxis && Boolean(xAxisTitle),
+          text: xAxisTitle ?? "",
           color: axisColor,
           font: { family: fontFamily, size: 11, weight: "600" },
         },
         ticks: {
           color: axisColor,
+          display: xAxis,
           font: { family: fontFamily, size: 11 },
           maxRotation: 0,
           autoSkip: true,
         },
       },
       y: {
-        display: readOptionalBoolean(item.yAxis ?? item.y_axis, true),
+        display: yAxis || xAxisGrid,
         beginAtZero: true,
         stacked,
+        border: {
+          display: yAxis,
+          color: axisColor,
+        },
         grid: {
-          display: yAxisGrid,
+          display: xAxisGrid,
           color: gridColor,
+          drawTicks: yAxis,
         },
         title: {
-          display: Boolean(readString(item.yAxisTitle ?? item.y_axis_title)),
-          text: readString(item.yAxisTitle ?? item.y_axis_title) ?? "",
+          display: yAxis && Boolean(yAxisTitle),
+          text: yAxisTitle ?? "",
           color: axisColor,
           font: { family: fontFamily, size: 11, weight: "600" },
         },
         ticks: {
           color: axisColor,
+          display: yAxis,
           font: { family: fontFamily, size: 11 },
         },
       },
@@ -872,34 +900,35 @@ function chartConfig(item: JsonRecord): JsonRecord {
 
 function chartDatasets(chartKind: ChartKind, data: NormalizedChartData): JsonRecord[] {
   if (chartKind === "pie" || chartKind === "donut") {
-    return data.series.map((series, seriesIndex) => ({
-      label: series.name,
-      data: series.values.map((value) => Math.max(0, value)),
-      backgroundColor: series.values.map(
-        (_, index) =>
-          (data.series.length === 1
-            ? data.colors[index]
-            : data.colors[seriesIndex]) ??
-          DEFAULT_CHART_COLORS[
-            (data.series.length === 1 ? index : seriesIndex) %
-              DEFAULT_CHART_COLORS.length
-          ]
-      ),
-      borderColor: "#FFFFFF",
-      borderWidth: 2,
-      hoverOffset: 0,
-    }));
+    const series = data.series[0];
+    if (!series) return [];
+    return [
+      {
+        label: series.name,
+        data: series.values.map((value) => Math.max(0, value)),
+        backgroundColor: series.values.map(
+          (_, index) =>
+            data.colors[index % data.colors.length] ??
+            DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
+        ),
+        borderColor: "#FFFFFF",
+        borderWidth: 2,
+        hoverOffset: 0,
+      },
+    ];
   }
 
   const lineLike = chartKind === "line" || chartKind === "area";
 
   return data.series.map((series, index) => {
     const color =
-      data.colors[data.series.length === 1 ? 0 : index] ??
+      data.colors[
+        (data.series.length === 1 ? 0 : index) % data.colors.length
+      ] ??
       DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length];
     const categoryColors = series.values.map(
       (_, categoryIndex) =>
-        data.colors[categoryIndex] ??
+        data.colors[categoryIndex % data.colors.length] ??
         DEFAULT_CHART_COLORS[categoryIndex % DEFAULT_CHART_COLORS.length]
     );
     const dataset: JsonRecord = {
@@ -928,7 +957,10 @@ function chartDatasets(chartKind: ChartKind, data: NormalizedChartData): JsonRec
   });
 }
 
-function normalizeChartData(item: JsonRecord): NormalizedChartData {
+function normalizeChartData(
+  item: JsonRecord,
+  chartKind: ChartKind
+): NormalizedChartData {
   const points = readArray(item.data)
     .map(readRecord)
     .map((point, index) => {
@@ -959,6 +991,9 @@ function normalizeChartData(item: JsonRecord): NormalizedChartData {
       name: readString(item.title) ?? "Series 1",
       values: points.map((point) => point.value),
     });
+  }
+  if ((chartKind === "pie" || chartKind === "donut") && series.length > 1) {
+    series.splice(1);
   }
   const maxLength = Math.max(0, ...series.map((item) => item.values.length));
   const categoryValues = readArray(item.categories);

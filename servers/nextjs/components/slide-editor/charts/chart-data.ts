@@ -31,14 +31,6 @@ export const DEFAULT_CHART_COLORS = [
   "64748B",
 ];
 
-export const CHART_THEME_COLORS = [
-  "FF3B3B",
-  "FF7417",
-  "FFC20A",
-  "5B5FF4",
-  "EC4899",
-];
-
 export const CHART_SYSTEM_COLORS = [
   "000000",
   "303030",
@@ -61,9 +53,12 @@ export const CHART_SYSTEM_COLORS = [
 ];
 
 export function resolvedChartCategories(element: ChartElement): string[] {
+  const series = chartSupportsMultipleSeries(element.chart_type)
+    ? element.series ?? []
+    : (element.series ?? []).slice(0, 1);
   const seriesLength = Math.max(
     0,
-    ...(element.series ?? []).map((series) => series.values.length),
+    ...series.map((item) => item.values.length),
   );
   if (element.categories && element.categories.length > 0) {
     const categoryLength = Math.min(
@@ -90,7 +85,10 @@ export function resolvedChartDatasets(
   element: ChartElement,
 ): ResolvedChartDataset[] {
   const categories = resolvedChartCategories(element);
-  const series = (element.series ?? []).slice(0, 12);
+  const series = (element.series ?? []).slice(
+    0,
+    chartSupportsMultipleSeries(element.chart_type) ? 12 : 1,
+  );
   if (series.length > 0) {
     return series.map((item, index) => ({
       name: item.name,
@@ -116,11 +114,10 @@ export function primaryChartData(element: ChartElement): ChartDatum[] {
 }
 
 export function chartSeriesColor(element: ChartElement, index: number) {
-  return (
-    element.colors?.[index] ??
-    (index === 0 ? element.color : null) ??
-    DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
-  );
+  const colors = element.colors?.filter(Boolean) ?? [];
+  if (colors.length > 0) return colors[index % colors.length];
+  if (element.color) return element.color;
+  return DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length];
 }
 
 export function normalizeChartColor(
@@ -142,38 +139,39 @@ export function normalizeChartColor(
 export function chartColorTargetMode(
   element: ChartElement,
 ): ChartColorTargetMode {
-  return (element.series?.length ?? 0) > 1 ? "series" : "category";
+  return chartSupportsMultipleSeries(element.chart_type) &&
+    (element.series?.length ?? 0) > 1
+    ? "series"
+    : "category";
+}
+
+export function chartSupportsMultipleSeries(chartType: ChartType) {
+  return chartType !== "pie" && chartType !== "donut";
 }
 
 export function resolvedChartColorTargets(
   element: ChartElement,
 ): ChartColorTarget[] {
   const mode = chartColorTargetMode(element);
+  const paletteSize = Math.min(
+    12,
+    Math.max(1, element.colors?.filter(Boolean).length ?? 0),
+  );
   if (mode === "series") {
-    const seriesCount = Math.min(12, Math.max(1, element.series?.length ?? 0));
-    return Array.from({ length: seriesCount }, (_, index) => ({
+    return Array.from({ length: paletteSize }, (_, index) => ({
       color: normalizeChartColor(chartSeriesColor(element, index)),
       index,
       label:
-        seriesCount === 1
+        paletteSize === 1
           ? "Chart color"
-          : element.series?.[index]?.name ?? `Series ${index + 1}`,
+          : element.series?.[index]?.name ?? `Color ${index + 1}`,
       mode,
     }));
   }
 
   if (mode === "category") {
     const categories = resolvedChartCategories(element);
-    const pointCount = Math.min(
-      12,
-      Math.max(
-        1,
-        categories.length,
-        element.data.length,
-        element.series?.[0]?.values.length ?? 0,
-      ),
-    );
-    return Array.from({ length: pointCount }, (_, index) => ({
+    return Array.from({ length: paletteSize }, (_, index) => ({
       color: normalizeChartColor(chartSeriesColor(element, index)),
       index,
       label:
@@ -204,7 +202,9 @@ export function chartDataFromSeriesWithColors(
   return labels.slice(0, 8).map((label, index) => ({
     label,
     value: first.values[index] ?? 0,
-    color: categoryColors ? colors[index] ?? fallbackColor : fallbackColor,
+    color: categoryColors
+      ? colors[index % colors.length] ?? fallbackColor
+      : fallbackColor,
   }));
 }
 
@@ -243,7 +243,7 @@ export function updateChartColorTarget(
           ...datum,
           color:
             mode === "category"
-              ? colors[index] ?? primaryColor
+              ? colors[index % colors.length] ?? primaryColor
               : primaryColor,
         }));
 

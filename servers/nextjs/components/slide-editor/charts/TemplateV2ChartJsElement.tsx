@@ -152,8 +152,13 @@ function createChartJsConfig(
     safeChartColor(String(value)),
   );
   const rawColors = sourceColors.length > 0 ? sourceColors : [primaryColor];
-  const categories = rawChartCategories(element);
-  const datasets = rawChartDatasets(element, categories, rawColors);
+  const categories = rawChartCategories(element, kind.pieLike);
+  const datasets = rawChartDatasets(
+    element,
+    categories,
+    rawColors,
+    kind.pieLike,
+  );
   const axisColor = safeChartColor(
     readString(element.axis_color ?? element.axisColor),
     "#98A2B3",
@@ -180,17 +185,29 @@ function createChartJsConfig(
   const showXAxis = readBoolean(element.x_axis ?? element.xAxis) ?? true;
   const showYAxis = readBoolean(element.y_axis ?? element.yAxis) ?? true;
   const xAxisTitle =
-    readString(element.x_axis_title ?? element.xAxisTitle)?.trim() ?? "";
+    readString(
+      "x_axis_title" in element
+        ? element.x_axis_title
+        : element.xAxisTitle,
+    )?.trim() ?? "";
   const yAxisTitle =
-    readString(element.y_axis_title ?? element.yAxisTitle)?.trim() ?? "";
+    readString(
+      "y_axis_title" in element
+        ? element.y_axis_title
+        : element.yAxisTitle,
+    )?.trim() ?? "";
   const fontSize = clamp(height * 0.033, 9, 18);
   const titleFontSize = clamp(height * 0.044, 11, 26);
   const valueFontSize = clamp(height * 0.029, 8, 15);
   const chartDatasets = createChartJsDatasets(kind, datasets);
-  const showLegend =
+  const autoShowLegend =
     kind.pieLike ||
     datasets.length > 1 ||
     Boolean(datasets[0]?.name && datasets[0].name !== "Series 1");
+  const showLegend =
+    readBoolean(
+      "legend" in element ? element.legend : element.showLegend,
+    ) ?? autoShowLegend;
 
   return {
     type: kind.chartJsType,
@@ -214,7 +231,7 @@ function createChartJsConfig(
       maintainAspectRatio: false,
       normalized: true,
       plugins: {
-        legend: {
+        legend: showLegend ? {
           display: showLegend,
           labels: {
             boxHeight: Math.max(8, fontSize * 0.8),
@@ -229,6 +246,8 @@ function createChartJsConfig(
             usePointStyle: true,
           },
           position: "bottom",
+        } : {
+          display: false,
         },
         title: {
           color: titleColor,
@@ -239,7 +258,7 @@ function createChartJsConfig(
             weight: 700,
           },
           padding: {
-            bottom: Math.max(6, titleFontSize * 0.45),
+            bottom: Math.max(16, titleFontSize * 0.8),
             top: 0,
           },
           text: title.split(/\r?\n/).filter(Boolean),
@@ -278,18 +297,17 @@ function createChartJsDatasets(
   datasets: RawChartDataset[],
 ): ChartDataset[] {
   if (kind.chartJsType === "pie" || kind.chartJsType === "doughnut") {
-    const sourceDatasets = datasets.length > 0 ? datasets : [emptyDataset()];
-    return sourceDatasets.map((dataset) => ({
-      backgroundColor:
-        sourceDatasets.length === 1
-          ? categoryColors(dataset)
-          : dataset.values.map(() => dataset.color),
-      borderColor: "#FFFFFF",
-      borderWidth: 1,
-      data: dataset.values,
-      hoverOffset: 0,
-      label: dataset.name,
-    }));
+    const dataset = datasets[0] ?? emptyDataset();
+    return [
+      {
+        backgroundColor: categoryColors(dataset),
+        borderColor: "#FFFFFF",
+        borderWidth: 1,
+        data: dataset.values,
+        hoverOffset: 0,
+        label: dataset.name,
+      },
+    ];
   }
 
   if (kind.chartJsType === "polarArea") {
@@ -446,6 +464,7 @@ function chartScales({
         },
         pointLabels: {
           color: axisColor,
+          display: showXAxis,
           font: {
             family: CHART_FONT_FAMILY,
             size: fontSize,
@@ -454,6 +473,7 @@ function chartScales({
         },
         ticks: {
           backdropColor: "transparent",
+          callback: (value: string | number) => formatAxisTick(value),
           color: axisColor,
           display: showYAxis,
           font: {
@@ -466,22 +486,27 @@ function chartScales({
   }
 
   const showCategoryGrid = kind.horizontal
-    ? showYAxisGrid
-    : showXAxisGrid;
-  const showLinearGrid = kind.horizontal ? showXAxisGrid : showYAxisGrid;
+    ? showXAxisGrid
+    : showYAxisGrid;
+  const showLinearGrid = kind.horizontal ? showYAxisGrid : showXAxisGrid;
+  const showCategoryAxis = kind.horizontal ? showYAxis : showXAxis;
+  const showLinearAxis = kind.horizontal ? showXAxis : showYAxis;
 
   const categoryAxis = {
-    display: kind.horizontal ? showYAxis : showXAxis,
+    display: showCategoryAxis || showCategoryGrid,
     border: {
       color: axisColor,
+      display: showCategoryAxis,
     },
     grid: {
       color: withAlpha(gridColor, showCategoryGrid ? 0.25 : 0),
       display: showCategoryGrid,
+      drawTicks: showCategoryAxis,
     },
     stacked: kind.stacked,
     ticks: {
       color: axisColor,
+      display: showCategoryAxis,
       font: {
         family: CHART_FONT_FAMILY,
         size: fontSize,
@@ -490,7 +515,9 @@ function chartScales({
     },
     title: {
       color: axisColor,
-      display: Boolean(kind.horizontal ? yAxisTitle : xAxisTitle),
+      display:
+        showCategoryAxis &&
+        Boolean(kind.horizontal ? yAxisTitle : xAxisTitle),
       font: {
         family: CHART_FONT_FAMILY,
         size: fontSize,
@@ -502,27 +529,33 @@ function chartScales({
   };
   const linearAxis = {
     beginAtZero: true,
-    display: kind.horizontal ? showXAxis : showYAxis,
+    display: showLinearAxis || showLinearGrid,
     border: {
       color: axisColor,
+      display: showLinearAxis,
     },
     grace: "8%",
     grid: {
       color: withAlpha(gridColor, showLinearGrid ? 0.35 : 0),
       display: showLinearGrid,
+      drawTicks: showLinearAxis,
     },
     stacked: kind.stacked,
     ticks: {
+      callback: (value: string | number) => formatAxisTick(value),
       color: axisColor,
+      display: showLinearAxis,
       font: {
         family: CHART_FONT_FAMILY,
-        size: fontSize,
+        size: Math.max(8, fontSize - 2),
         weight: 600,
       },
     },
     title: {
       color: axisColor,
-      display: Boolean(kind.horizontal ? xAxisTitle : yAxisTitle),
+      display:
+        showLinearAxis &&
+        Boolean(kind.horizontal ? xAxisTitle : yAxisTitle),
       font: {
         family: CHART_FONT_FAMILY,
         size: fontSize,
@@ -537,27 +570,45 @@ function chartScales({
     return {
       x: {
         ...linearAxis,
-        display: showXAxis,
+        display: showXAxis || showYAxisGrid,
+        border: {
+          ...linearAxis.border,
+          display: showXAxis,
+        },
         grid: {
-          color: withAlpha(gridColor, showXAxisGrid ? 0.35 : 0),
-          display: showXAxisGrid,
+          color: withAlpha(gridColor, showYAxisGrid ? 0.35 : 0),
+          display: showYAxisGrid,
+          drawTicks: showXAxis,
+        },
+        ticks: {
+          ...linearAxis.ticks,
+          display: showXAxis,
         },
         title: {
           ...linearAxis.title,
-          display: Boolean(xAxisTitle),
+          display: showXAxis && Boolean(xAxisTitle),
           text: xAxisTitle,
         },
       },
       y: {
         ...linearAxis,
-        display: showYAxis,
+        display: showYAxis || showXAxisGrid,
+        border: {
+          ...linearAxis.border,
+          display: showYAxis,
+        },
         grid: {
-          color: withAlpha(gridColor, showYAxisGrid ? 0.35 : 0),
-          display: showYAxisGrid,
+          color: withAlpha(gridColor, showXAxisGrid ? 0.35 : 0),
+          display: showXAxisGrid,
+          drawTicks: showYAxis,
+        },
+        ticks: {
+          ...linearAxis.ticks,
+          display: showYAxis,
         },
         title: {
           ...linearAxis.title,
-          display: Boolean(yAxisTitle),
+          display: showYAxis && Boolean(yAxisTitle),
           text: yAxisTitle,
         },
       },
@@ -623,12 +674,16 @@ function baseKind(
   };
 }
 
-function rawChartCategories(element: RawElement): string[] {
+function rawChartCategories(
+  element: RawElement,
+  singleSeriesOnly = false,
+): string[] {
   const categories = readArray(element.categories).map(String);
   const dataLabels = readArray(element.data)
     .map((item) => readString(asRecord(item)?.label))
     .filter((label): label is string => Boolean(label));
-  const series = readArray(element.series).filter(isRecord);
+  const rawSeries = readArray(element.series).filter(isRecord);
+  const series = singleSeriesOnly ? rawSeries.slice(0, 1) : rawSeries;
   const length = Math.min(
     24,
     Math.max(
@@ -659,12 +714,14 @@ function rawChartDatasets(
   element: RawElement,
   categories: string[],
   colors: string[],
+  singleSeriesOnly = false,
 ): RawChartDataset[] {
   const rawSeries = readArray(element.series).filter(isRecord);
+  const effectiveSeries = singleSeriesOnly ? rawSeries.slice(0, 1) : rawSeries;
   const categoryLength = Math.max(1, categories.length);
 
-  if (rawSeries.length > 0) {
-    return rawSeries.slice(0, 12).map((item, index) => {
+  if (effectiveSeries.length > 0) {
+    return effectiveSeries.slice(0, 12).map((item, index) => {
       const rawValues = readArray(item.values ?? item.data);
       const values = normalizeValues(
         rawValues.map((value) => chartValue(value)),
@@ -678,10 +735,10 @@ function rawChartDatasets(
 
       return {
         color:
-          colors[index] ??
+          colors[index % colors.length] ??
           DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
         name: readString(item.name) ?? `Series ${index + 1}`,
-        categoryColors: rawSeries.length === 1 ? colors : undefined,
+        categoryColors: effectiveSeries.length === 1 ? colors : undefined,
         points,
         values,
       };
@@ -699,9 +756,7 @@ function rawChartDatasets(
         colors[0] ??
         safeChartColor(readString(element.color), DEFAULT_CHART_COLORS[0]),
       name: readString(element.title) ?? "Series 1",
-      categoryColors: rawData.map((_, index) =>
-        safeChartColor(colors[index], colors[0]),
-      ),
+      categoryColors: colors,
       points: normalizePoints(
         rawData.map((value, valueIndex) => chartPoint(value, valueIndex)),
         categoryLength,
@@ -769,9 +824,10 @@ function emptyDataset(): RawChartDataset {
 }
 
 function categoryColors(dataset: RawChartDataset) {
+  const colors = dataset.categoryColors ?? [];
   return dataset.values.map(
     (_, index) =>
-      withHash(dataset.categoryColors?.[index]) ??
+      withHash(colors[index % colors.length]) ??
       withHash(dataset.color) ??
       DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
   );
@@ -1295,6 +1351,11 @@ function formatChartValue(value: number) {
     return Intl.NumberFormat("en", { notation: "compact" }).format(value);
   }
   return Number.isInteger(value) ? `${value}` : value.toFixed(1).replace(/\.0$/, "");
+}
+
+function formatAxisTick(value: string | number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? formatChartValue(numeric) : String(value);
 }
 
 function safeChartColor(

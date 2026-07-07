@@ -4,10 +4,11 @@ import { Layer, Stage } from "react-konva";
 import {
   BarChart3,
   ChevronDown,
-  Download,
-  Expand,
+  ChevronLeft,
+  ChevronRight,
   GripVertical,
   MoreVertical,
+  Pencil,
   Plus,
   Settings,
   Trash2,
@@ -24,7 +25,7 @@ import {
   DEFAULT_CHART_COLORS,
   chartColorTargetMode,
   chartDataFromSeriesWithColors,
-  chartDataToCsv,
+  chartSupportsMultipleSeries,
   resolvedChartColorTargets,
   resolvedChartCategories,
   updateChartColorTarget,
@@ -53,12 +54,9 @@ const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
   { label: "Radar Chart", value: "radar" },
   { label: "Polar Area", value: "polar_area" },
 ];
-const DATA_MODAL_CHART_PREVIEW_WIDTH = 274;
-const DATA_MODAL_CHART_PREVIEW_HEIGHT =
-  (DATA_MODAL_CHART_PREVIEW_WIDTH / EDITOR_STAGE_WIDTH) * EDITOR_STAGE_HEIGHT;
-const DATA_MODAL_TOP_OFFSET = 88;
-const DATA_MODAL_VIEWPORT_PADDING = 24;
-const DATA_MODAL_MAX_HEIGHT = `calc(100dvh - ${DATA_MODAL_TOP_OFFSET + DATA_MODAL_VIEWPORT_PADDING * 2}px)`;
+const DATA_MODAL_CHART_PREVIEW_WIDTH = 215;
+const DATA_MODAL_CHART_PREVIEW_HEIGHT = 180;
+const DATA_MODAL_MAX_HEIGHT = "min(650px, calc(100dvh - 32px))";
 
 export function ChartEditorContent({
   chart,
@@ -78,12 +76,12 @@ export function ChartEditorContent({
     <>
       <div
         data-inline-edit-ignore="true"
-        className="h-full overflow-y-auto px-5 pb-8 pt-8 font-syne hide-scrollbar"
+        className="h-full overflow-y-auto px-5 pb-8 pt-6 font-syne hide-scrollbar"
         onMouseDown={(event) => event.stopPropagation()}
       >
-        <div className="mb-8 flex items-center justify-between gap-4">
+        <div className="mb-6 flex items-center justify-between gap-4">
           <h3 className="text-[15px] font-semibold leading-5 text-[#101323]">
-            Charts
+            Edit Charts
           </h3>
           {onClose ? (
             <button
@@ -97,8 +95,8 @@ export function ChartEditorContent({
           ) : null}
         </div>
 
-        <label className="mb-3 block text-[13px] font-medium text-[#191919]">
-          Charts
+        <label className="mb-2 block text-[12px] font-medium text-[#686873]">
+          Chart type
         </label>
         <ChartTypeSelect
           value={chart.chart_type}
@@ -107,7 +105,7 @@ export function ChartEditorContent({
           }
         />
 
-        <div className="mt-8 border-t border-[#ECECF1]">
+        <div className="mt-6 border-t border-[#ECECF1]">
           <div className="grid grid-cols-2">
             <button
               type="button"
@@ -143,22 +141,27 @@ export function ChartEditorContent({
         </div>
       </div>
 
-      {dataModalOpen ? (
-        <ChartDataModal
-          chart={chart}
-          chartPath={chartPath ?? "chart"}
-          onChange={onChange}
-          onClose={() => setDataModalOpen(false)}
-        />
-      ) : null}
+      {dataModalOpen && typeof document !== "undefined"
+        ? createPortal(
+            <ChartDataModal
+              chart={chart}
+              chartPath={chartPath ?? "chart"}
+              onChange={onChange}
+              onClose={() => setDataModalOpen(false)}
+            />,
+            document.body,
+          )
+        : null}
     </>
   );
 }
 
 function ChartTypeSelect({
+  compact = false,
   value,
   onChange,
 }: {
+  compact?: boolean;
   value: ChartType;
   onChange: (value: ChartType) => void;
 }) {
@@ -167,7 +170,7 @@ function ChartTypeSelect({
       <BarChart3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#191919]" />
       <select
         aria-label="Chart type"
-        className="h-12 w-full appearance-none rounded-xl border border-[#E6E6EA] bg-white pl-11 pr-10 text-[13px] font-medium text-[#191919] outline-none transition focus:border-[#7C51F8]"
+        className={`${compact ? "h-9 rounded-lg pl-10 pr-9 text-[11px]" : "h-12 rounded-xl pl-11 pr-10 text-[13px]"} w-full appearance-none border border-[#E6E6EA] bg-white font-medium text-[#191919] outline-none transition focus:border-[#7C51F8]`}
         value={value}
         onChange={(event) => onChange(event.target.value as ChartType)}
       >
@@ -200,11 +203,11 @@ function ChartDataPanel({
       <div className="flex items-center gap-3">
         <button
           type="button"
-          aria-label="Open data table"
-          className="grid h-10 w-12 place-items-center rounded-full border border-[#ECECF1] bg-white text-[#191919] transition hover:bg-[#F7F7FA]"
+          className="flex h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-full border border-[#E6E6EA] bg-white px-4 text-[12px] font-semibold text-[#191919] transition hover:bg-[#F7F7FA]"
           onClick={onOpenDataModal}
         >
-          <Expand size={16} strokeWidth={2} />
+          <Pencil size={15} strokeWidth={2} />
+          Edit data
         </button>
         <button
           type="button"
@@ -269,9 +272,13 @@ function MiniDataTable({
 
 function ChartCustomizePanel({
   chart,
+  compact = false,
+  defaultTextOpen = true,
   onChange,
 }: {
   chart: ChartElement;
+  compact?: boolean;
+  defaultTextOpen?: boolean;
   onChange: (chart: ChartElement) => void;
 }) {
   const hasCartesianAxes =
@@ -279,117 +286,169 @@ function ChartCustomizePanel({
     chart.chart_type !== "donut" &&
     chart.chart_type !== "polar_area" &&
     chart.chart_type !== "radar";
+  const hasRadialAxes = chart.chart_type === "radar";
+  const hasAxes = hasCartesianAxes || hasRadialAxes;
 
   return (
-    <div className="space-y-3 pt-5">
-      <PanelSection icon={<Type size={18} />} label="Text">
-        <label className="block text-[12px] font-medium text-[#686873]">
-          Title
-        </label>
-        <input
-          className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
+    <div className="space-y-1 py-2">
+      <AccordionSection
+        compact={compact}
+        defaultOpen={defaultTextOpen}
+        icon={<Type size={17} />}
+        label="Text"
+      >
+        <TextField
+          label="Title"
+          placeholder="Chart title"
           value={chart.title ?? ""}
-          onChange={(event) =>
-            onChange({ ...chart, title: event.target.value || null })
-          }
+          onChange={(title) => onChange({ ...chart, title: title || null })}
         />
         <ToggleRow
           checked={chart.data_labels ?? false}
           label="Show values"
           onChange={(checked) => onChange({ ...chart, data_labels: checked })}
         />
-      </PanelSection>
+      </AccordionSection>
 
       {hasCartesianAxes ? (
         <>
-          <PanelSection icon={<BarChart3 size={18} />} label="X Axis">
+          <AccordionSection
+            compact={compact}
+            icon={<BarChart3 size={17} />}
+            label="X Axis"
+          >
             <ToggleRow
               checked={chart.x_axis ?? true}
-              label="Show X axis"
+              label="Show axis"
               onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
             />
-            <label className="block text-[12px] font-medium text-[#686873]">
-              Axis title
-            </label>
-            <input
-              className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
+            <TextField
+              label="Title"
+              placeholder="X-axis title"
               value={chart.x_axis_title ?? ""}
-              onChange={(event) =>
-                onChange({ ...chart, x_axis_title: event.target.value || null })
+              onChange={(xAxisTitle) =>
+                onChange({ ...chart, x_axis_title: xAxisTitle || null })
               }
             />
-          </PanelSection>
-
-          <PanelSection icon={<BarChart3 size={18} />} label="Y Axis">
-            <ToggleRow
-              checked={chart.y_axis ?? true}
-              label="Show Y axis"
-              onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
-            />
-            <label className="block text-[12px] font-medium text-[#686873]">
-              Axis title
-            </label>
-            <input
-              className="mt-2 h-10 w-full rounded-lg border border-[#E6E6EA] px-3 text-[12px] outline-none focus:border-[#7C51F8]"
-              value={chart.y_axis_title ?? ""}
-              onChange={(event) =>
-                onChange({ ...chart, y_axis_title: event.target.value || null })
-              }
-            />
-          </PanelSection>
-        </>
-      ) : null}
-
-      <PanelSection icon={<Settings size={18} />} label="Settings">
-        {hasCartesianAxes ? (
-          <>
             <ToggleRow
               checked={chart.x_axis_grid ?? true}
-              label="X-axis grid"
+              label="Show grid"
               onChange={(xAxisGrid) =>
                 onChange({ ...chart, x_axis_grid: xAxisGrid })
               }
             />
+          </AccordionSection>
+          <AccordionSection
+            compact={compact}
+            icon={<BarChart3 size={17} />}
+            label="Y Axis"
+          >
+            <ToggleRow
+              checked={chart.y_axis ?? true}
+              label="Show axis"
+              onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
+            />
+            <TextField
+              label="Title"
+              placeholder="Y-axis title"
+              value={chart.y_axis_title ?? ""}
+              onChange={(yAxisTitle) =>
+                onChange({ ...chart, y_axis_title: yAxisTitle || null })
+              }
+            />
             <ToggleRow
               checked={chart.y_axis_grid ?? true}
-              label="Y-axis grid"
+              label="Show grid"
               onChange={(yAxisGrid) =>
                 onChange({ ...chart, y_axis_grid: yAxisGrid })
               }
             />
+          </AccordionSection>
+        </>
+      ) : null}
+
+      {hasRadialAxes ? (
+        <>
+          <AccordionSection
+            compact={compact}
+            icon={<BarChart3 size={17} />}
+            label="X Axis"
+          >
+            <ToggleRow
+              checked={chart.x_axis ?? true}
+              label="Category labels"
+              onChange={(xAxis) => onChange({ ...chart, x_axis: xAxis })}
+            />
+            <ToggleRow
+              checked={chart.x_axis_grid ?? true}
+              label="Spokes"
+              onChange={(xAxisGrid) =>
+                onChange({ ...chart, x_axis_grid: xAxisGrid })
+              }
+            />
+          </AccordionSection>
+          <AccordionSection
+            compact={compact}
+            icon={<BarChart3 size={17} />}
+            label="Y Axis"
+          >
+            <ToggleRow
+              checked={chart.y_axis ?? true}
+              label="Value labels"
+              onChange={(yAxis) => onChange({ ...chart, y_axis: yAxis })}
+            />
+            <ToggleRow
+              checked={chart.y_axis_grid ?? true}
+              label="Rings"
+              onChange={(yAxisGrid) =>
+                onChange({ ...chart, y_axis_grid: yAxisGrid })
+              }
+            />
+          </AccordionSection>
+        </>
+      ) : null}
+
+      <AccordionSection
+        compact={compact}
+        icon={<Settings size={17} />}
+        label="Settings"
+      >
+        <ToggleRow
+          checked={chart.legend ?? defaultChartLegendVisible(chart)}
+          label="Show legend"
+          onChange={(legend) => onChange({ ...chart, legend })}
+        />
+        <ChartSeriesColorControls chart={chart} onChange={onChange} />
+        {hasAxes ? (
+          <>
+            <ColorRow
+              label="Axis color"
+              value={chart.axis_color ?? "9AA7BD"}
+              onChange={(axisColor) =>
+                onChange({ ...chart, axis_color: axisColor })
+              }
+            />
+            <ColorRow
+              label="Grid color"
+              value={chart.grid_color ?? chart.axis_color ?? "D0D5DD"}
+              onChange={(gridColor) =>
+                onChange({ ...chart, grid_color: gridColor })
+              }
+            />
           </>
         ) : null}
-        <ChartSeriesColorControls chart={chart} onChange={onChange} />
-        <ColorRow
-          label="Axis color"
-          value={chart.axis_color ?? "9AA7BD"}
-          onChange={(axisColor) =>
-            onChange({ ...chart, axis_color: axisColor })
-          }
-        />
-        <ColorRow
-          label="Grid color"
-          value={chart.grid_color ?? chart.axis_color ?? "D0D5DD"}
-          onChange={(gridColor) =>
-            onChange({ ...chart, grid_color: gridColor })
-          }
-        />
-        <label className="block text-[12px] font-medium text-[#686873]">
-          Opacity
-        </label>
-        <input
-          className="mt-2 w-full accent-[#7C51F8]"
-          max={1}
-          min={0}
-          step={0.05}
-          type="range"
-          value={chart.opacity ?? 1}
-          onChange={(event) =>
-            onChange({ ...chart, opacity: Number(event.target.value) })
-          }
-        />
-      </PanelSection>
+      </AccordionSection>
     </div>
+  );
+}
+
+function defaultChartLegendVisible(chart: ChartElement) {
+  const series = chart.series ?? [];
+  return (
+    chart.chart_type === "pie" ||
+    chart.chart_type === "donut" ||
+    series.length > 1 ||
+    Boolean(series[0]?.name && series[0].name !== "Series 1")
   );
 }
 
@@ -406,59 +465,63 @@ function ChartSeriesColorControls({
   } | null>(null);
   const swatchRefs = useRef(new Map<number, HTMLButtonElement>());
   const targets = resolvedChartColorTargets(chart);
-  const label =
-    targets.length > 1
-      ? chartColorTargetMode(chart) === "category"
-        ? "Category colors"
-        : "Series colors"
-      : "Chart color";
   const openTarget = paletteAnchor
     ? targets.find((target) => target.index === paletteAnchor.index)
     : null;
 
   return (
-    <div className="space-y-2">
-      <p className="text-[12px] font-medium text-[#686873]">{label}</p>
-      <div className="space-y-2">
+    <div>
+      <div className="flex flex-wrap gap-2">
         {targets.map((target) => (
-          <div
+          <button
+            type="button"
             key={`${target.mode}-${target.index}`}
-            className="relative flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-[12px] font-medium text-[#191919]"
-          >
-            <span className="min-w-0 truncate">{target.label}</span>
-            <button
-              type="button"
-              aria-label={`Change ${target.label} color`}
-              className="h-8 w-8 shrink-0 rounded-full border border-[#E6E6EA] shadow-sm"
-              ref={(node) => {
-                if (node) {
-                  swatchRefs.current.set(target.index, node);
-                } else {
-                  swatchRefs.current.delete(target.index);
-                }
-              }}
-              style={{ backgroundColor: `#${target.color}` }}
-              onClick={() =>
-                setPaletteAnchor((current) => {
-                  if (current?.index === target.index) return null;
-                  const anchor = swatchRefs.current.get(target.index);
-                  return anchor
-                    ? { index: target.index, rect: anchor.getBoundingClientRect() }
-                    : null;
-                })
+            aria-label={`Change chart color ${target.index + 1}`}
+            className={`grid h-8 w-8 place-items-center rounded-full border bg-white p-1 transition ${
+              paletteAnchor?.index === target.index
+                ? "border-[#7C51F8] ring-2 ring-[#E9E2FF]"
+                : "border-[#E6E6EA] hover:border-[#B8A3F8]"
+            }`}
+            ref={(node) => {
+              if (node) {
+                swatchRefs.current.set(target.index, node);
+              } else {
+                swatchRefs.current.delete(target.index);
               }
+            }}
+            title={`Chart color ${target.index + 1}`}
+            onClick={() =>
+              setPaletteAnchor((current) => {
+                if (current?.index === target.index) return null;
+                const anchor = swatchRefs.current.get(target.index);
+                return anchor
+                  ? { index: target.index, rect: anchor.getBoundingClientRect() }
+                  : null;
+              })
+            }
+          >
+            <span
+              aria-hidden="true"
+              className="h-full w-full rounded-full border border-black/10"
+              style={{ backgroundColor: `#${target.color}` }}
             />
-          </div>
+          </button>
         ))}
       </div>
       {openTarget && paletteAnchor && typeof document !== "undefined"
         ? createPortal(
             <ChartColorPaletteCard
-              value={openTarget.color}
+              colors={targets.map((target) => target.color)}
               onChange={(color) =>
                 onChange(updateChartColorTarget(chart, openTarget.index, color))
               }
               onClose={() => setPaletteAnchor(null)}
+              onSelectIndex={(index) =>
+                setPaletteAnchor((current) =>
+                  current ? { ...current, index } : current,
+                )
+              }
+              selectedIndex={openTarget.index}
               style={chartPalettePortalStyle(paletteAnchor.rect)}
             />,
             document.body,
@@ -469,8 +532,8 @@ function ChartSeriesColorControls({
 }
 
 function chartPalettePortalStyle(anchorRect: DOMRect) {
-  const width = 286;
-  const estimatedHeight = 286;
+  const width = 296;
+  const estimatedHeight = 330;
   const margin = 12;
   const gap = 8;
   const viewportWidth =
@@ -497,32 +560,68 @@ function chartPalettePortalStyle(anchorRect: DOMRect) {
     top,
     maxHeight: Math.max(180, viewportHeight - top - margin),
     overflowY: "auto" as const,
-    zIndex: 1000,
+    zIndex: 10020,
   };
 }
 
-function PanelSection({
+function AccordionSection({
   children,
+  compact = false,
+  defaultOpen = false,
   icon,
   label,
 }: {
   children: ReactNode;
+  compact?: boolean;
+  defaultOpen?: boolean;
   icon: ReactNode;
   label: string;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
+
   return (
-    <details className="group rounded-xl bg-[#FAFAFB]" open={label === "Text"}>
-      <summary className="flex h-14 cursor-pointer list-none items-center justify-between px-4 text-[13px] font-medium text-[#191919]">
-        <span className="flex items-center gap-3">
+    <details
+      className="group"
+      open={open}
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary
+        className={`${compact ? "h-9 gap-2 px-2 text-[11px]" : "h-12 gap-3 px-3 text-[13px]"} flex cursor-pointer list-none items-center rounded-lg font-medium text-[#191919] transition hover:bg-[#F7F7FA] group-open:bg-[#F7F7FA] [&::-webkit-details-marker]:hidden`}
+      >
+        <span className={`${compact ? "h-5 w-5 [&>svg]:h-3.5 [&>svg]:w-3.5" : "h-6 w-6"} grid shrink-0 place-items-center text-[#191919]`}>
           {icon}
-          {label}
         </span>
-        <ChevronDown className="h-4 w-4 transition group-open:rotate-180" />
+        <span className="min-w-0 flex-1">{label}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180" />
       </summary>
-      <div className="space-y-4 border-t border-[#ECECF1] px-4 py-4">
+      <div className={`${compact ? "px-2 pb-3 pt-2" : "px-3 pb-4 pt-3"} space-y-3`}>
         {children}
       </div>
     </details>
+  );
+}
+
+function TextField({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <label className="block text-[12px] font-medium text-[#686873]">
+      {label}
+      <input
+        className="mt-1.5 h-9 w-full rounded-lg border border-[#E6E6EA] bg-white px-3 text-[12px] text-[#191919] outline-none transition placeholder:text-[#A6A6AF] focus:border-[#7C51F8]"
+        placeholder={placeholder}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   );
 }
 
@@ -536,15 +635,39 @@ function ToggleRow({
   onChange: (checked: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between gap-3 text-[12px] font-medium text-[#191919]">
-      {label}
-      <input
-        checked={checked}
-        className="h-4 w-4 accent-[#7C51F8]"
-        type="checkbox"
-        onChange={(event) => onChange(event.target.checked)}
+    <div className="flex min-h-6 items-center justify-between gap-3 text-[12px] font-medium text-[#191919]">
+      <span>{label}</span>
+      <CompactSwitch checked={checked} label={label} onChange={onChange} />
+    </div>
+  );
+}
+
+function CompactSwitch({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition ${
+        checked ? "bg-[#7C51F8]" : "bg-[#D8D8DE]"
+      }`}
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+          checked ? "translate-x-4" : "translate-x-0"
+        }`}
       />
-    </label>
+    </button>
   );
 }
 
@@ -561,7 +684,7 @@ function ColorRow({
     <label className="flex items-center justify-between gap-3 text-[12px] font-medium text-[#191919]">
       {label}
       <DeferredColorInput
-        className="h-9 w-12 rounded-lg border border-[#E6E6EA] bg-white p-1"
+        className="h-8 w-11 rounded-lg border border-[#E6E6EA] bg-white p-1"
         value={value}
         onCommit={onChange}
       />
@@ -582,7 +705,6 @@ function ChartDataModal({
 }) {
   const categories = safeCategoriesForChart(chart);
   const series = normalizedSeries(chart, categories.length);
-  const [expanded, setExpanded] = useState(false);
   const previewChart = useMemo(() => chartPreviewElement(chart), [chart]);
 
   const updateData = (
@@ -596,19 +718,16 @@ function ChartDataModal({
         name: item.name,
         values: normalizeValues(item.values, normalizedCategories.length),
       }))
-      .slice(0, 12);
+      .slice(0, chartSupportsMultipleSeries(chart.chart_type) ? 12 : 1);
     const colorMode = chartColorTargetMode({
       ...chart,
       categories: normalizedCategories,
       series: normalized,
     });
-    const colorCount =
-      colorMode === "category"
-        ? Math.min(
-          12,
-          Math.max(1, normalizedCategories.length, normalized[0]?.values.length ?? 0),
-        )
-        : Math.min(12, Math.max(1, normalized.length));
+    const colorCount = Math.min(
+      12,
+      Math.max(1, nextColors.length, chart.colors?.length ?? 0),
+    );
     const colors = Array.from({ length: colorCount }, (_, index) =>
       nextColors[index] ??
       chart.colors?.[index] ??
@@ -634,135 +753,125 @@ function ChartDataModal({
   return (
     <div
       data-inline-edit-ignore="true"
-      className="fixed inset-x-0 bottom-0 z-[120] flex items-center justify-center bg-black/35 p-6 font-syne"
-      style={{ top: DATA_MODAL_TOP_OFFSET }}
+      className="fixed inset-0 z-[10010] flex items-center justify-center bg-black/35 p-4 pr-[72px] font-syne"
       onMouseDown={(event) => event.stopPropagation()}
     >
       <div
-        className="flex max-w-full flex-col overflow-hidden rounded-3xl bg-white shadow-[0_24px_80px_rgba(16,24,40,0.24)]"
+        className="relative flex w-full max-w-[1080px] flex-col overflow-visible"
         style={{
-          height: expanded ? DATA_MODAL_MAX_HEIGHT : 650,
+          height: DATA_MODAL_MAX_HEIGHT,
           maxHeight: DATA_MODAL_MAX_HEIGHT,
-          width: expanded ? "calc(100% - 48px)" : 1180,
         }}
       >
-        <header className="flex h-[104px] shrink-0 items-center justify-between border-b border-[#ECECF1] px-7">
-          <div>
-            <h2 className="text-xl font-semibold text-[#191919]">
-              Edit Data Table
-            </h2>
-            <p className="mt-2 text-sm text-[#777780]">Edit chart data</p>
-          </div>
-          <div className="flex items-center gap-3">
+        <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl bg-white shadow-[0_24px_80px_rgba(16,24,40,0.24)]">
+          <header className="flex h-[70px] shrink-0 items-center justify-between border-b border-[#ECECF1] px-5">
+            <div>
+              <h2 className="text-[14px] font-semibold text-[#191919]">
+                Edit Data Table
+              </h2>
+              <p className="mt-1 text-[10px] text-[#8B8B94]">
+                Edit Data Table
+              </p>
+            </div>
             <button
               type="button"
-              className="grid h-11 w-16 place-items-center rounded-full border border-[#ECECF1] bg-white text-[#191919]"
-              title="Download data"
-              onClick={() => downloadChartData(chart)}
-            >
-              <Download size={17} />
-            </button>
-            <button
-              type="button"
-              className="grid h-11 w-16 place-items-center rounded-full border border-[#ECECF1] bg-white text-[#191919]"
-              title="Fit table"
-              onClick={() => setExpanded((current) => !current)}
-            >
-              <Expand size={17} />
-            </button>
-            <button
-              type="button"
-              className="grid h-11 w-16 place-items-center rounded-full border border-[#ECECF1] bg-white text-[#191919]"
-              title="Clear data"
-              onClick={() => onChange(clearChartData(chart))}
-            >
-              <Trash2 size={17} />
-            </button>
-            <button
-              type="button"
-              className="grid h-11 w-11 place-items-center rounded-full text-[#191919] hover:bg-[#F7F7FA]"
-              aria-label="Close data editor"
+              className="h-8 min-w-[76px] rounded-full bg-[linear-gradient(100deg,#FFE6A6_0%,#D8B4FE_100%)] px-5 text-[12px] font-semibold text-[#191919] transition hover:brightness-95"
               onClick={onClose}
             >
-              <X size={19} />
+              Save
             </button>
-          </div>
-        </header>
+          </header>
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          <aside className="min-h-0 w-[330px] shrink-0 overflow-y-auto overscroll-contain border-r border-[#ECECF1] px-7 py-7">
-            <label className="mb-3 block text-base font-medium text-[#191919]">
-              Charts
-            </label>
-            <ChartTypeSelect
-              value={chart.chart_type}
-              onChange={(chartType) =>
-                onChange({ ...chart, chart_type: chartType })
-              }
-            />
-            <div
-              className="relative mt-7 flex h-[210px] items-center justify-center overflow-hidden rounded-xl border border-[#ECECF1] bg-[#F8F8FA]"
-              style={{
-                backgroundImage: "url('/card_bg.svg')",
-                backgroundPosition: "center",
-                backgroundSize: "100% 100%",
-              }}
-            >
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            <aside className="min-h-0 w-[255px] shrink-0 overflow-y-auto overscroll-contain border-r border-[#ECECF1] px-4 py-4 hide-scrollbar">
+              <label className="mb-2 block text-[11px] font-medium text-[#191919]">
+                Charts
+              </label>
+              <ChartTypeSelect
+                compact
+                value={chart.chart_type}
+                onChange={(chartType) =>
+                  onChange({ ...chart, chart_type: chartType })
+                }
+              />
               <div
-                className="pointer-events-none relative overflow-hidden"
+                className="relative mt-4 flex h-[210px] items-center justify-center overflow-hidden rounded-lg border border-[#ECECF1] bg-[#F8F8FA]"
                 style={{
-                  height: DATA_MODAL_CHART_PREVIEW_HEIGHT,
-                  width: DATA_MODAL_CHART_PREVIEW_WIDTH,
+                  backgroundImage: "url('/card_bg.svg')",
+                  backgroundPosition: "center",
+                  backgroundSize: "100% 100%",
                 }}
               >
-                <Stage
-                  height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
-                  width={DATA_MODAL_CHART_PREVIEW_WIDTH}
+                <div
+                  className="pointer-events-none relative overflow-hidden"
+                  style={{
+                    height: DATA_MODAL_CHART_PREVIEW_HEIGHT,
+                    width: DATA_MODAL_CHART_PREVIEW_WIDTH,
+                  }}
                 >
-                  <Layer listening={false}>
-                    <TemplateV2ChartJsElement
-                      element={previewChart}
-                      height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
-                      interactive={false}
-                      width={DATA_MODAL_CHART_PREVIEW_WIDTH}
-                    />
-                  </Layer>
-                </Stage>
+                  <Stage
+                    height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
+                    width={DATA_MODAL_CHART_PREVIEW_WIDTH}
+                  >
+                    <Layer listening={false}>
+                      <TemplateV2ChartJsElement
+                        element={previewChart}
+                        height={DATA_MODAL_CHART_PREVIEW_HEIGHT}
+                        interactive={false}
+                        width={DATA_MODAL_CHART_PREVIEW_WIDTH}
+                      />
+                    </Layer>
+                  </Stage>
+                </div>
               </div>
-            </div>
-            <ChartCustomizePanel chart={chart} onChange={onChange} />
-          </aside>
+              <div className="mt-2">
+                <ChartCustomizePanel
+                  chart={chart}
+                  compact
+                  defaultTextOpen={false}
+                  onChange={onChange}
+                />
+              </div>
+            </aside>
 
-          <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-10 py-12">
-            <EditableDataTable
-              categories={categories}
-              chartPath={chartPath}
-              colorMode={chartColorTargetMode(chart)}
-              series={series}
-              colors={chart.colors ?? []}
-              onClear={() => onChange(clearChartData(chart))}
-              onUpdate={updateData}
-            />
-          </main>
+            <main className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-8 py-5">
+              <EditableDataTable
+                allowMultipleSeries={chartSupportsMultipleSeries(
+                  chart.chart_type,
+                )}
+                categories={categories}
+                chartPath={chartPath}
+                series={series}
+                colors={chart.colors ?? []}
+                onUpdate={updateData}
+              />
+            </main>
+          </div>
         </div>
+        <button
+          type="button"
+          aria-label="Close data editor"
+          className="absolute -right-14 top-0 grid h-11 w-11 place-items-center rounded-full bg-white text-[#191919] shadow-sm transition hover:bg-[#F7F7FA]"
+          onClick={onClose}
+        >
+          <X size={18} />
+        </button>
       </div>
     </div>
   );
 }
 
 function EditableDataTable({
+  allowMultipleSeries,
   categories,
   chartPath,
-  colorMode,
-  onClear,
   onUpdate,
   series,
   colors,
 }: {
+  allowMultipleSeries: boolean;
   categories: string[];
   chartPath: string;
-  colorMode: "category" | "series";
-  onClear: () => void;
   onUpdate: (
     categories: string[],
     series: ChartSeries[],
@@ -781,10 +890,19 @@ function EditableDataTable({
           values: normalizeValues([], safeCategories.length),
         },
       ];
-  const usesCategoryColors = colorMode === "category";
-  const [activeSeriesIndex, setActiveSeriesIndex] = useState(0);
-  const selectedSeriesIndex = Math.min(activeSeriesIndex, safeSeries.length - 1);
-  const selectedSeries = safeSeries[selectedSeriesIndex];
+  const tableRootRef = useRef<HTMLDivElement | null>(null);
+  const [seriesMenu, setSeriesMenu] = useState<{
+    index: number;
+    left: number;
+  } | null>(null);
+  const [columnMenuOpen, setColumnMenuOpen] = useState(false);
+  const [selectedRowIndex, setSelectedRowIndex] = useState(0);
+  const [valueDrafts, setValueDrafts] = useState<Record<string, string>>({});
+  const selectedSeriesIndex = seriesMenu
+    ? Math.min(seriesMenu.index, safeSeries.length - 1)
+    : null;
+  const selectedSeries =
+    selectedSeriesIndex == null ? null : safeSeries[selectedSeriesIndex];
   const chartValueInputOptions = {
     allowDecimal: true,
     allowNegative: true,
@@ -831,6 +949,18 @@ function EditableDataTable({
       colors,
     );
   };
+  const updateValueDraft = (
+    seriesIndex: number,
+    rowIndex: number,
+    value: string,
+  ) => {
+    const key = `${seriesIndex}:${rowIndex}`;
+    setValueDrafts((current) => ({ ...current, [key]: value }));
+    if (isCompleteNumericInput(value)) {
+      updateValue(seriesIndex, rowIndex, value);
+    }
+  };
+  const clearValueDrafts = () => setValueDrafts({});
   const addRow = () => {
     const nextCategories = [
       ...safeCategories,
@@ -842,13 +972,9 @@ function EditableDataTable({
         ...item,
         values: [...item.values, 0],
       })),
-      usesCategoryColors
-        ? [
-          ...colors,
-          DEFAULT_CHART_COLORS[safeCategories.length % DEFAULT_CHART_COLORS.length],
-        ]
-        : colors,
+      colors,
     );
+    clearValueDrafts();
   };
   const deleteRow = (rowIndex: number) => {
     if (safeCategories.length <= 1) return;
@@ -859,10 +985,12 @@ function EditableDataTable({
         ...item,
         values: item.values.filter((_, index) => index !== rowIndex),
       })),
-      usesCategoryColors
-        ? colors.filter((_, index) => index !== rowIndex)
-        : colors,
+      colors,
     );
+    setSelectedRowIndex((current) =>
+      Math.max(0, Math.min(current, safeCategories.length - 2)),
+    );
+    clearValueDrafts();
   };
   const addSeries = () => {
     onUpdate(
@@ -876,6 +1004,7 @@ function EditableDataTable({
       ],
       colors,
     );
+    clearValueDrafts();
   };
   const deleteSeries = (seriesIndex: number) => {
     if (safeSeries.length <= 1) return;
@@ -884,17 +1013,56 @@ function EditableDataTable({
       safeSeries.filter((_, index) => index !== seriesIndex),
       colors,
     );
-    setActiveSeriesIndex((current) =>
-      Math.max(0, Math.min(current, safeSeries.length - 2)),
-    );
+    setSeriesMenu(null);
+    setColumnMenuOpen(false);
+    clearValueDrafts();
+  };
+  const moveSeries = (seriesIndex: number, direction: -1 | 1) => {
+    const targetIndex = seriesIndex + direction;
+    if (targetIndex < 0 || targetIndex >= safeSeries.length) return;
+    const nextSeries = [...safeSeries];
+    const [movedSeries] = nextSeries.splice(seriesIndex, 1);
+    if (!movedSeries) return;
+    nextSeries.splice(targetIndex, 0, movedSeries);
+    const nextColors = [...colors];
+    if (nextColors[seriesIndex] != null && nextColors[targetIndex] != null) {
+      const [movedColor] = nextColors.splice(seriesIndex, 1);
+      if (movedColor != null) nextColors.splice(targetIndex, 0, movedColor);
+    }
+    onUpdate(safeCategories, nextSeries, nextColors);
+    setSeriesMenu(null);
+    setColumnMenuOpen(false);
+    clearValueDrafts();
+  };
+  const showSeriesMenu = (seriesIndex: number, node: HTMLElement) => {
+    const root = tableRootRef.current;
+    if (!root) return;
+    const rootRect = root.getBoundingClientRect();
+    const columnRect = node.getBoundingClientRect();
+    const desiredLeft = columnRect.left + columnRect.width / 2 - rootRect.left;
+    if (seriesMenu?.index !== seriesIndex) setColumnMenuOpen(false);
+    setSeriesMenu({
+      index: seriesIndex,
+      left: Math.max(116, Math.min(desiredLeft, rootRect.width - 116)),
+    });
   };
 
   return (
-    <div className="relative w-full pt-12 pr-7 pb-6 pl-7">
-      {selectedSeries ? (
-        <div className="absolute left-1/2 top-0 z-20 flex h-12 min-w-[290px] -translate-x-1/2 items-center overflow-hidden rounded-[20px] border border-[#ECECF1] bg-white px-4 text-[#191919] shadow-[0_4px_18px_rgba(16,24,40,0.10)]">
+    <div
+      ref={tableRootRef}
+      className="relative w-full px-4 pb-4 pt-10"
+      onMouseLeave={() => {
+        setSeriesMenu(null);
+        setColumnMenuOpen(false);
+      }}
+    >
+      {selectedSeries && seriesMenu && selectedSeriesIndex != null ? (
+        <div
+          className="absolute top-0 z-20 flex h-8 w-[154px] -translate-x-1/2 items-center overflow-hidden rounded-xl border border-[#E6E6EA] bg-white pl-3 pr-1 text-[#191919] shadow-[0_3px_12px_rgba(16,24,40,0.10)]"
+          style={{ left: seriesMenu.left }}
+        >
           <input
-            className="h-full min-w-0 flex-1 bg-transparent text-center text-[17px] font-medium outline-none"
+            className="h-full min-w-0 flex-1 bg-transparent text-[10px] font-medium outline-none"
             value={selectedSeries.name}
             onChange={(event) =>
               updateSeriesName(selectedSeriesIndex, event.target.value)
@@ -903,124 +1071,208 @@ function EditableDataTable({
           <button
             type="button"
             aria-label="Delete selected series"
-            className="ml-3 grid h-9 w-9 place-items-center rounded-lg bg-[#F7F7FA] text-[#191919]"
+            className="grid h-7 w-7 shrink-0 place-items-center border-l border-[#ECECF1] text-[#191919] disabled:cursor-not-allowed disabled:opacity-30"
+            disabled={safeSeries.length <= 1}
             onClick={() => deleteSeries(selectedSeriesIndex)}
           >
-            <Trash2 size={18} strokeWidth={2.3} />
+            <Trash2 size={13} strokeWidth={2} />
           </button>
           <button
             type="button"
-            aria-label="More series actions"
-            className="ml-2 grid h-9 w-7 place-items-center rounded-lg text-[#191919]"
+            aria-expanded={columnMenuOpen}
+            aria-label="More column actions"
+            className="grid h-7 w-5 shrink-0 place-items-center text-[#191919]"
+            onClick={() => setColumnMenuOpen((current) => !current)}
           >
-            <MoreVertical size={19} strokeWidth={2.6} />
+            <MoreVertical size={13} strokeWidth={2.3} />
           </button>
         </div>
       ) : null}
 
-      <button
-        type="button"
-        className="absolute right-0 top-2 text-[17px] font-medium text-[#7C51F8]"
-        onClick={onClear}
-      >
-        Clear Data
-      </button>
+      {columnMenuOpen && seriesMenu && selectedSeriesIndex != null ? (
+        <div
+          className="absolute top-9 z-30 w-[232px] -translate-x-1/2 overflow-hidden rounded-2xl border border-[#E6E6EA] bg-white py-2 shadow-[0_14px_36px_rgba(16,24,40,0.18)]"
+          style={{ left: seriesMenu.left }}
+        >
+          <ColumnMenuItem
+            icon={<Trash2 size={16} />}
+            label="Delete Row"
+            disabled={safeCategories.length <= 1}
+            onClick={() => {
+              deleteRow(selectedRowIndex);
+              setColumnMenuOpen(false);
+            }}
+          />
+          <ColumnMenuItem
+            icon={<Trash2 size={16} />}
+            label="Delete Column"
+            disabled={safeSeries.length <= 1}
+            onClick={() => deleteSeries(selectedSeriesIndex)}
+          />
+          <ColumnMenuItem
+            icon={<Plus size={16} />}
+            label="Add Row"
+            onClick={() => {
+              addRow();
+              setColumnMenuOpen(false);
+            }}
+          />
+          <ColumnMenuItem
+            icon={<Plus size={16} />}
+            label="Add Column"
+            disabled={!allowMultipleSeries}
+            onClick={() => {
+              addSeries();
+              setColumnMenuOpen(false);
+            }}
+          />
+          <div className="my-2 h-px bg-[#ECECF1]" />
+          <ColumnMenuItem
+            icon={<ChevronRight size={16} />}
+            label="Move Column Right"
+            disabled={selectedSeriesIndex >= safeSeries.length - 1}
+            onClick={() => moveSeries(selectedSeriesIndex, 1)}
+          />
+          <ColumnMenuItem
+            icon={<ChevronLeft size={16} />}
+            label="Move Column Left"
+            disabled={selectedSeriesIndex <= 0}
+            onClick={() => moveSeries(selectedSeriesIndex, -1)}
+          />
+        </div>
+      ) : null}
 
-      <div className="relative rounded-b-[18px] bg-[#F3F4F6] pr-7 pb-6">
+      <div className="relative rounded-b-lg bg-[#F3F4F6] pb-9 pr-9">
         <div className="max-h-[390px] overflow-auto">
-          <table className="min-w-full border-collapse text-[16px] text-[#191919]">
+          <table className="min-w-full border-collapse text-[11px] text-[#191919]">
             <thead>
               <tr>
                 <th className="sticky left-0 top-0 z-10 w-0 border-b border-[#E8E8EC] bg-[#F6F7F8]" />
-                <th className="sticky left-0 top-0 z-10 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8]" />
+                <th className="sticky left-0 top-0 z-10 min-w-[190px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8]" />
                 {safeSeries.map((item, seriesIndex) => (
                   <th
                     key={`${chartPath}-series-${seriesIndex}`}
-                    className="min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8] px-4 py-3 text-center text-[18px] font-medium"
+                    className="min-w-[190px] border-b border-r border-[#E8E8EC] bg-[#F6F7F8] px-3 py-2 text-center text-[11px] font-medium"
+                    onMouseEnter={(event) =>
+                      showSeriesMenu(seriesIndex, event.currentTarget)
+                    }
                   >
                     <button
                       type="button"
                       className="w-full truncate text-center outline-none"
-                      onClick={() => setActiveSeriesIndex(seriesIndex)}
+                      onFocus={(event) =>
+                        showSeriesMenu(seriesIndex, event.currentTarget)
+                      }
                     >
                       {item.name}
                     </button>
                   </th>
                 ))}
-                <th className="sticky right-0 top-0 w-16 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
+                <th className="sticky right-0 top-0 w-10 border-b border-[#E8E8EC] bg-[#F3F4F6]" />
               </tr>
             </thead>
             <tbody>
               {safeCategories.map((category, rowIndex) => (
-                <tr key={`${chartPath}-row-${rowIndex}`}>
+                <tr
+                  key={`${chartPath}-row-${rowIndex}`}
+                  onMouseEnter={() => setSelectedRowIndex(rowIndex)}
+                >
                   <td className="sticky left-0 relative w-0 border-b border-[#E8E8EC] bg-[#F6F7F8] text-center text-[#A9AAB4]">
                     <span className="absolute -left-6 top-1/2 flex -translate-y-1/2 items-center justify-center">
-                      <GripVertical size={18} strokeWidth={2.3} />
+                      <GripVertical size={13} strokeWidth={2.1} />
                     </span>
                   </td>
-                  <td className="sticky left-0 min-w-[220px] border-b border-r border-[#E8E8EC] bg-[#F7F8FA] px-4 py-3">
+                  <td className="sticky left-0 min-w-[190px] border-b border-r border-[#E8E8EC] bg-[#F7F8FA] px-3 py-1.5">
                     <input
-                      className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-3"
+                      className="h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-[11px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-2"
                       value={category}
+                      onFocus={() => setSelectedRowIndex(rowIndex)}
                       onChange={(event) =>
                         updateCategory(rowIndex, event.target.value)
                       }
                     />
                   </td>
-                  {safeSeries.map((item, seriesIndex) => (
-                    <td
-                      key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
-                      className="border-b border-r border-[#E8E8EC] bg-white px-4 py-3"
-                    >
-                      <input
-                        className="h-10 w-full rounded-lg border border-transparent bg-transparent px-0 text-[18px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-3"
-                        type="text"
-                        inputMode={numericInputMode(chartValueInputOptions)}
-                        value={item.values[rowIndex] ?? 0}
-                        onKeyDown={(event) => {
-                          if (
-                            preventInvalidNumberInput(
-                              event,
-                              chartValueInputOptions,
-                            )
-                          ) {
-                            return;
-                          }
-                          if (
-                            event.key === "ArrowUp" ||
-                            event.key === "ArrowDown"
-                          ) {
-                            event.preventDefault();
-                            const direction = event.key === "ArrowUp" ? 1 : -1;
-                            updateValue(
+                  {safeSeries.map((item, seriesIndex) => {
+                    const draftKey = `${seriesIndex}:${rowIndex}`;
+                    const hasDraft = Object.prototype.hasOwnProperty.call(
+                      valueDrafts,
+                      draftKey,
+                    );
+                    const displayValue = hasDraft
+                      ? valueDrafts[draftKey]
+                      : item.values[rowIndex] ?? "";
+
+                    return (
+                      <td
+                        key={`${chartPath}-cell-${rowIndex}-${seriesIndex}`}
+                        className="border-b border-r border-[#E8E8EC] bg-white px-3 py-1.5"
+                      >
+                        <input
+                          className="h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-[11px] outline-none focus:border-[#7C51F8] focus:bg-[#FAFAFF] focus:px-2"
+                          type="text"
+                          inputMode={numericInputMode(chartValueInputOptions)}
+                          value={displayValue}
+                          onFocus={() => setSelectedRowIndex(rowIndex)}
+                          onBlur={() => {
+                            const draft = valueDrafts[draftKey];
+                            if (!isCompleteNumericInput(draft)) return;
+                            setValueDrafts((current) => {
+                              const next = { ...current };
+                              delete next[draftKey];
+                              return next;
+                            });
+                          }}
+                          onKeyDown={(event) => {
+                            if (
+                              preventInvalidNumberInput(
+                                event,
+                                chartValueInputOptions,
+                              )
+                            ) {
+                              return;
+                            }
+                            if (
+                              event.key === "ArrowUp" ||
+                              event.key === "ArrowDown"
+                            ) {
+                              event.preventDefault();
+                              const direction =
+                                event.key === "ArrowUp" ? 1 : -1;
+                              const draft = valueDrafts[draftKey];
+                              const currentValue = isCompleteNumericInput(draft)
+                                ? Number(draft)
+                                : item.values[rowIndex] ?? 0;
+                              const nextValue = String(currentValue + direction);
+                              updateValueDraft(
+                                seriesIndex,
+                                rowIndex,
+                                nextValue,
+                              );
+                            }
+                          }}
+                          onChange={(event) =>
+                            updateValueDraft(
                               seriesIndex,
                               rowIndex,
-                              String((item.values[rowIndex] ?? 0) + direction),
-                            );
+                              sanitizeNumericInput(
+                                event.target.value,
+                                chartValueInputOptions,
+                              ),
+                            )
                           }
-                        }}
-                        onChange={(event) =>
-                          updateValue(
-                            seriesIndex,
-                            rowIndex,
-                            sanitizeNumericInput(
-                              event.target.value,
-                              chartValueInputOptions,
-                            ),
-                          )
-                        }
-                      />
-                    </td>
-                  ))}
-                  <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6] px-2">
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className="sticky right-0 border-b border-[#E8E8EC] bg-[#F3F4F6] px-1">
                     <button
                       type="button"
                       aria-label={`Delete ${category || `row ${rowIndex + 1}`}`}
-                      className="grid h-8 w-8 place-items-center rounded-lg text-[#8E8E98] transition hover:bg-white hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#8E8E98]"
+                      className="grid h-7 w-7 place-items-center rounded-md text-[#8E8E98] transition hover:bg-white hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#8E8E98]"
                       disabled={safeCategories.length <= 1}
                       onClick={() => deleteRow(rowIndex)}
                     >
-                      <Trash2 size={15} strokeWidth={2.2} />
+                      <Trash2 size={12} strokeWidth={2.1} />
                     </button>
                   </td>
                 </tr>
@@ -1028,24 +1280,57 @@ function EditableDataTable({
             </tbody>
           </table>
         </div>
-        <div className="absolute bottom-0 right-0 top-0 w-7 rounded-r-[18px] bg-[#EDEEF0]" />
-        <div className="absolute bottom-0 left-0 right-7 h-6 rounded-b-[18px] bg-[#EDEEF0]" />
+        <div className="absolute bottom-0 right-0 top-0 w-9 rounded-r-lg bg-[#EDEEF0]" />
+        <div className="absolute bottom-0 left-0 right-9 h-9 rounded-b-lg bg-[#EDEEF0]" />
+        {allowMultipleSeries ? (
+          <button
+            type="button"
+            className="absolute right-0 top-1/2 z-10 grid h-8 w-9 -translate-y-1/2 place-items-center text-[#191919]"
+            onClick={addSeries}
+          >
+            <Plus size={13} strokeWidth={2.2} />
+          </button>
+        ) : null}
         <button
           type="button"
-          className="absolute right-0 top-1/2 z-10 grid h-10 w-7 -translate-y-1/2 place-items-center text-[#191919]"
-          onClick={addSeries}
-        >
-          <Plus size={18} strokeWidth={2.4} />
-        </button>
-        <button
-          type="button"
-          className="absolute bottom-0 left-1/2 z-10 grid h-6 w-10 -translate-x-1/2 place-items-center text-[#191919]"
+          className="absolute bottom-0 left-1/2 z-10 grid h-9 w-16 -translate-x-1/2 place-items-center text-[#191919]"
           onClick={addRow}
         >
-          <Plus size={18} strokeWidth={2.4} />
+          <Plus size={12} strokeWidth={2.2} />
         </button>
       </div>
     </div>
+  );
+}
+
+function isCompleteNumericInput(value: string | undefined) {
+  if (!value || value === "-" || value === "." || value === "-.") {
+    return false;
+  }
+  return Number.isFinite(Number(value));
+}
+
+function ColumnMenuItem({
+  disabled = false,
+  icon,
+  label,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="flex h-10 w-full items-center gap-3 px-4 text-left text-[12px] font-medium text-[#191919] transition hover:bg-[#F7F7FA] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <span className="grid h-5 w-5 shrink-0 place-items-center">{icon}</span>
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -1057,10 +1342,12 @@ function safeCategoriesForChart(element: ChartElement) {
 function normalizedSeries(element: ChartElement, categoryLength: number) {
   const length = Math.max(1, categoryLength);
   if (element.series?.length) {
-    return element.series.map((series) => ({
-      ...series,
-      values: normalizeValues(series.values, length),
-    }));
+    return element.series
+      .slice(0, chartSupportsMultipleSeries(element.chart_type) ? 12 : 1)
+      .map((series) => ({
+        ...series,
+        values: normalizeValues(series.values, length),
+      }));
   }
   return [
     {
@@ -1105,18 +1392,4 @@ function chartPreviewElement(chart: ChartElement): ChartElement {
       height: EDITOR_STAGE_HEIGHT - 90,
     },
   };
-}
-
-function downloadChartData(element: ChartElement) {
-  if (typeof document === "undefined") return;
-  const blob = new Blob([chartDataToCsv(element)], {
-    type: "text/csv;charset=utf-8",
-  });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `${(element.title || "chart").toLowerCase().replace(/\W+/g, "-") || "chart"
-    }.csv`;
-  anchor.click();
-  URL.revokeObjectURL(url);
 }

@@ -79,6 +79,7 @@ def test_element_models_match_export_schema_changes():
         "show_values",
     }.intersection(Chart.model_fields)
     assert "axis_color" in Chart.model_fields
+    assert "legend" in Chart.model_fields
     assert {"base_color", "highlight_color"}.issubset(Infographic.model_fields)
 
     with pytest.raises(ValidationError, match="runs"):
@@ -211,9 +212,30 @@ def test_chart_rejects_tiny_explicit_size():
             "size": {"width": 640, "height": 300},
             "categories": ["GPT OSS 20B", "GPT OSS 120B"],
             "series": [{"name": "Score", "values": [20, 120]}],
+            "legend": False,
         }
     )
     assert chart.size.width == 640
+    assert chart.legend is False
+
+
+def test_pie_and_donut_ignore_additional_series():
+    for chart_type in ("pie", "donut"):
+        chart = Chart(
+            type="chart",
+            decorative=False,
+            name="single-series-chart",
+            chart_type=chart_type,
+            colors=["#FF0000", "#00FF00"],
+            categories=["A", "B"],
+            series=[
+                {"name": "Used", "values": [10, 20]},
+                {"name": "Ignored", "values": [30, 40]},
+            ],
+        )
+
+        assert chart.series is not None
+        assert [series.name for series in chart.series] == ["Used"]
 
 
 def test_raw_layout_accepts_reference_converter_element_models():

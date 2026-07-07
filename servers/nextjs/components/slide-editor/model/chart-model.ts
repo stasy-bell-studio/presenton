@@ -29,8 +29,13 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
       };
     })
     .filter((value): value is ChartSeries => value != null);
+  const chartType = rawChartType(element.chart_type ?? element.chartType);
+  const supportedSeries =
+    chartType === "pie" || chartType === "donut" ? series.slice(0, 1) : series;
   const normalizedSeries =
-    series.length > 0 ? series : [{ name: "Series 1", values: [0] }];
+    supportedSeries.length > 0
+      ? supportedSeries
+      : [{ name: "Series 1", values: [0] }];
   const categoryLength = Math.max(
     categories.length,
     ...normalizedSeries.map((item) => item.values.length),
@@ -43,7 +48,6 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
         )
       : Array.from({ length: categoryLength }, (_, index) => `Item ${index + 1}`);
   const colors = readArray(element.colors).map(String);
-  const chartType = rawChartType(element.chart_type ?? element.chartType);
   const chartColors =
     colors.length > 0 ? colors : [readString(element.color) ?? "7C51F8"];
   const firstSeries = normalizedSeries[0];
@@ -51,7 +55,7 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
     label,
     value: firstSeries.values[index] ?? 0,
     color: normalizedSeries.length === 1
-      ? chartColors[index] ?? chartColors[0]
+      ? chartColors[index % chartColors.length] ?? chartColors[0]
       : chartColors[0],
   }));
 
@@ -72,6 +76,7 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
     x_axis_title: element.x_axis_title ?? element.xAxisTitle,
     y_axis_title: element.y_axis_title ?? element.yAxisTitle,
     data_labels: element.data_labels ?? element.dataLabels,
+    legend: element.legend ?? element.showLegend,
   };
 }
 
@@ -84,25 +89,34 @@ export function editorChartToRawChart(source: RawElement, chart: UnknownRecord) 
     size: source.size,
     rotation: source.rotation,
     layout: source.layout,
-    chart_type: chart.chartType ?? chart.chart_type ?? source.chart_type,
+    chart_type: chart.chart_type ?? chart.chartType ?? source.chart_type,
     colors: chart.colors ?? source.colors,
-    axis_color: chart.axisColor ?? chart.axis_color ?? source.axis_color,
-    grid_color: chart.gridColor ?? chart.grid_color ?? source.grid_color,
-    x_axis: chart.xAxis ?? chart.x_axis ?? source.x_axis,
-    y_axis: chart.yAxis ?? chart.y_axis ?? source.y_axis,
+    axis_color: chart.axis_color ?? chart.axisColor ?? source.axis_color,
+    grid_color: chart.grid_color ?? chart.gridColor ?? source.grid_color,
+    x_axis: chart.x_axis ?? chart.xAxis ?? source.x_axis,
+    y_axis: chart.y_axis ?? chart.yAxis ?? source.y_axis,
     x_axis_grid:
-      chart.xAxisGrid ??
       chart.x_axis_grid ??
+      chart.xAxisGrid ??
       source.x_axis_grid ??
       source.xAxisGrid,
     y_axis_grid:
-      chart.yAxisGrid ??
       chart.y_axis_grid ??
+      chart.yAxisGrid ??
       source.y_axis_grid ??
       source.yAxisGrid,
-    x_axis_title: chart.xAxisTitle ?? chart.x_axis_title ?? source.x_axis_title,
-    y_axis_title: chart.yAxisTitle ?? chart.y_axis_title ?? source.y_axis_title,
-    data_labels: chart.dataLabels ?? chart.data_labels ?? source.data_labels,
+    x_axis_title: hasOwn(chart, "x_axis_title")
+      ? chart.x_axis_title
+      : chart.xAxisTitle ?? source.x_axis_title ?? source.xAxisTitle,
+    y_axis_title: hasOwn(chart, "y_axis_title")
+      ? chart.y_axis_title
+      : chart.yAxisTitle ?? source.y_axis_title ?? source.yAxisTitle,
+    data_labels: chart.data_labels ?? chart.dataLabels ?? source.data_labels,
+    legend:
+      chart.legend ??
+      chart.showLegend ??
+      source.legend ??
+      source.showLegend,
   };
 }
 
@@ -112,5 +126,20 @@ function withoutRemovedChartFields(element: UnknownRecord) {
   delete sanitized.dataLabelsColor;
   delete sanitized.labelColor;
   delete sanitized.grid;
+  delete sanitized.axisColor;
+  delete sanitized.chartType;
+  delete sanitized.dataLabels;
+  delete sanitized.gridColor;
+  delete sanitized.showLegend;
+  delete sanitized.xAxis;
+  delete sanitized.xAxisGrid;
+  delete sanitized.xAxisTitle;
+  delete sanitized.yAxis;
+  delete sanitized.yAxisGrid;
+  delete sanitized.yAxisTitle;
   return sanitized;
+}
+
+function hasOwn(record: UnknownRecord, key: string) {
+  return Object.prototype.hasOwnProperty.call(record, key);
 }

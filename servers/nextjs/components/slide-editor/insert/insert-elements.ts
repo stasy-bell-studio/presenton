@@ -219,7 +219,7 @@ function chartData(
   return categories.map((category, index) => ({
     label: category,
     value: values[index] ?? 0,
-    color: colors[index] ?? colors[0],
+    color: colors[index % colors.length] ?? colors[0],
   }));
 }
 
