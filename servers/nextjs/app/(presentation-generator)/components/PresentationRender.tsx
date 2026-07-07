@@ -13,6 +13,7 @@ const SlideScale = ({
 
   /** Fill viewport; scale may exceed 1 so slides appear larger in present mode */
   presentMode = false,
+  fitToContainer = false,
   isClickable = true,
   fixedSize = false,
   presentationLayout,
@@ -28,6 +29,7 @@ const SlideScale = ({
   isEditMode?: boolean;
 
   presentMode?: boolean;
+  fitToContainer?: boolean;
   isClickable?: boolean;
   fixedSize?: boolean;
   presentationLayout?: unknown;
@@ -42,16 +44,17 @@ const SlideScale = ({
 
   const scale = useMemo(() => {
     if (fixedSize) return 1;
-    if (presentMode) {
+    if (presentMode || fitToContainer) {
       if (box.w < 1 || box.h < 1) return 1;
       const sx = box.w / BASE_WIDTH;
       const sy = box.h / BASE_HEIGHT;
-      return Math.min(sx, sy);
+      const viewportScale = Math.min(sx, sy);
+      return presentMode ? viewportScale : Math.min(viewportScale, 1);
     }
     const safeWidth = Math.max(0, box.w + 20);
     if (!safeWidth) return 1;
     return Math.min((safeWidth / BASE_WIDTH) * 0.98, 1);
-  }, [fixedSize, presentMode, box.w, box.h]);
+  }, [fixedSize, fitToContainer, presentMode, box.w, box.h]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -73,7 +76,7 @@ const SlideScale = ({
         fixedSize
           ? "relative h-[720px] w-[1280px] overflow-hidden shadow-none"
           : `relative w-full ${
-              presentMode
+              presentMode || fitToContainer
                 ? "flex h-full min-h-0 items-center justify-center shadow-none"
                 : "shadow-md"
             }`
@@ -83,6 +86,8 @@ const SlideScale = ({
         className={
           presentMode || fixedSize
             ? "relative mx-auto shrink-0"
+            : fitToContainer
+              ? "relative mx-auto shrink-0 shadow-md"
             : "relative mx-auto max-w-[1280px]"
         }
         style={{

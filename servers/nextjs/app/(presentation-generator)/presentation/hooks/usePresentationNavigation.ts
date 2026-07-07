@@ -21,7 +21,8 @@ export const usePresentationNavigation = (
     if (slideElement) {
       slideElement.scrollIntoView({
         behavior: "smooth",
-        block: "center",
+        block: "start",
+        inline: "nearest",
       });
       return;
     }

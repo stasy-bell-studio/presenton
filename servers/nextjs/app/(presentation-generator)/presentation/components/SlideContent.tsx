@@ -66,7 +66,8 @@ const SlideContent = ({
   return (
     <div
       id={`slide-${slideIndex}`}
-      className="main-slide relative flex w-full items-center justify-center max-md:mb-4"
+      data-slide-index={index}
+      className="main-slide relative flex h-full min-h-full w-full snap-start snap-always items-center justify-center px-2 py-4 max-md:py-3"
     >
       {isStreaming && (
         <Loader2 className="absolute right-2 top-2 z-30 h-8 w-8 animate-spin text-blue-800" />
@@ -74,7 +75,7 @@ const SlideContent = ({
       <div
         data-layout={slide?.layout}
         data-group={slide?.layout_group}
-        className={`group w-full font-syne ${
+        className={`group flex h-full min-h-0 w-full flex-col font-syne ${
           isTemplateV2Slide ? "relative" : ""
         }`}
       >
@@ -95,19 +96,20 @@ const SlideContent = ({
             </span>
           </div>
         )}
-        <div className="relative">
+        <div className="relative flex min-h-0 w-full flex-1 items-center justify-center">
           <SlideScale
             slide={slide}
             theme={presentationData?.theme || null}
             fonts={presentationData?.fonts}
             renderIndex={index}
+            fitToContainer
             showBlankPromptOverlay={showBlankPromptOverlay}
             onBlankPromptOverlayDismiss={onBlankPromptOverlayDismiss}
             showTemplatePromptOverlay={showTemplatePromptOverlay}
             onTemplatePromptOverlayDismiss={onTemplatePromptOverlayDismiss}
           />
         </div>
-        <div className="my-4 hidden w-full md:block">
+        <div className="mt-4 hidden w-full shrink-0 md:block">
           <SlideActionBar
             slide={slide}
             selectedSlide={slideIndex}

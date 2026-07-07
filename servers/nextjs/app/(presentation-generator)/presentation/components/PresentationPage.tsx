@@ -243,14 +243,10 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
       );
       if (!slideElement) return;
 
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const slideRect = slideElement.getBoundingClientRect();
-      const slideTop =
-        slideRect.top - containerRect.top + scrollContainer.scrollTop;
-
-      scrollContainer.scrollTo({
-        top: Math.max(slideTop, 0),
+      slideElement.scrollIntoView({
         behavior: "smooth",
+        block: "start",
+        inline: "nearest",
       });
     });
 
@@ -356,6 +352,66 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
   const totalSlides = presentationData?.slides?.length ?? 0;
   const highlightedSlideIndex = glowingSlideIndex;
+
+  useEffect(() => {
+    if (loading || error || totalSlides <= 0) return;
+
+    const scrollContainer = slidesScrollContainerRef.current;
+    if (!scrollContainer) return;
+
+    const slideElements = Array.from(
+      scrollContainer.querySelectorAll<HTMLElement>("[data-slide-index]")
+    );
+    if (slideElements.length === 0) return;
+
+    const visibleRatios = new Map<Element, number>();
+
+    const setActiveSlideFromVisibleRatios = () => {
+      let nextSlideIndex: number | null = null;
+      let highestRatio = 0;
+
+      visibleRatios.forEach((ratio, element) => {
+        if (ratio <= highestRatio) return;
+        const rawIndex = (element as HTMLElement).dataset.slideIndex;
+        const parsedIndex = Number(rawIndex);
+        if (!Number.isInteger(parsedIndex)) return;
+        nextSlideIndex = parsedIndex;
+        highestRatio = ratio;
+      });
+
+      const activeSlideIndex = nextSlideIndex;
+      if (activeSlideIndex === null) return;
+
+      setSelectedSlide((current) =>
+        current === activeSlideIndex ? current : activeSlideIndex
+      );
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            visibleRatios.set(entry.target, entry.intersectionRatio);
+            return;
+          }
+          visibleRatios.delete(entry.target);
+        });
+
+        setActiveSlideFromVisibleRatios();
+      },
+      {
+        root: scrollContainer,
+        threshold: [0.35, 0.5, 0.65, 0.8, 0.95, 1],
+      }
+    );
+
+    slideElements.forEach((element) => observer.observe(element));
+
+    return () => {
+      observer.disconnect();
+      visibleRatios.clear();
+    };
+  }, [error, loading, totalSlides]);
 
   useEffect(() => {
     if (totalSlides <= 0 || selectedSlide <= totalSlides - 1) {
@@ -570,9 +626,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           <div className="w-full min-w-0 h-full flex-1 pt-[18px]">
             <div
               ref={slidesScrollContainerRef}
-              className="font-inter h-full overflow-y-auto hide-scrollbar scroll-pt-[18px]"
+              className="font-inter h-full snap-y snap-mandatory overflow-y-auto overscroll-y-contain scroll-smooth hide-scrollbar"
             >
-              <div className="w-full max-w-[1280px] min-h-full mx-auto flex flex-col items-center pb-8">
+              <div className="mx-auto flex h-full min-h-full w-full max-w-[1280px] flex-col items-center">
                 {!presentationData ||
                 loading ||
                 !presentationData?.slides ||
