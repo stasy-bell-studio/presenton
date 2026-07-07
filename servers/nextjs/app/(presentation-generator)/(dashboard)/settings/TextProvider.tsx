@@ -161,17 +161,12 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
   const modelOptions = useMemo(() => {
     if (!currentModel) return availableModels;
 
-    const hasCurrentModel = availableModels.some(
-      (model) => model.value === currentModel
-    );
-    if (hasCurrentModel) return availableModels;
-
     return [
       {
         value: currentModel,
         label: currentModel,
       },
-      ...availableModels,
+      ...availableModels.filter((model) => model.value !== currentModel),
     ];
   }, [availableModels, currentModel]);
   const providerApiKeyLabel =
@@ -871,6 +866,12 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                         <CommandList>
                           <CommandEmpty>No model found.</CommandEmpty>
                           <CommandGroup>
+                            {modelsLoading ? (
+                              <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-600">
+                                <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                                Fetching models...
+                              </div>
+                            ) : null}
                             {modelOptions.map((model) => (
                               <CommandItem
                                 key={model.value}
