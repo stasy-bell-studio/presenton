@@ -9,6 +9,7 @@ import pytest
 
 from templates import fonts_and_slides_preview
 from templates import pptx_font_utils
+from models.sql.font_upload import FontUpload
 
 
 class DummyLogger:
@@ -1525,6 +1526,301 @@ async def test_direct_upload_keeps_different_replacement_font_family(
     assert font_mapping == {"Arial Bold": "Khand Bold"}
     assert font_variant_mapping["Arial"] == {"bold": "Khand Bold"}
     assert font_variant_mapping["Arial Bold"] == {"bold": "Khand Bold"}
+
+
+@pytest.mark.anyio
+async def test_custom_uploads_skip_saved_font_lookup_for_exact_variant_names(
+    monkeypatch,
+    tmp_path,
+):
+    captured_candidates = []
+    captured_replacement = {}
+
+    def fake_get_font_details(path: str) -> pptx_font_utils.FontDetail:
+        if path.endswith("Calibri-Bold.ttf"):
+            return pptx_font_utils.FontDetail(
+                file=path,
+                size_bytes=123,
+                family_name="Calibri",
+                full_name="Calibri Bold",
+                subfamily_name="Bold",
+                weight_class=700,
+            )
+        return pptx_font_utils.FontDetail(
+            file=path,
+            size_bytes=123,
+            family_name="Calibri",
+            full_name="Calibri Regular",
+            subfamily_name="Regular",
+            weight_class=400,
+        )
+
+    async def fake_get_font_uploads_for_names_by_variant(font_names):
+        captured_candidates.extend(font_names)
+        return {}
+
+    def fake_replace_fonts_in_pptx(
+        _pptx_path,
+        font_mapping,
+        _output_path,
+        font_variant_mapping=None,
+    ):
+        captured_replacement["font_mapping"] = font_mapping
+        captured_replacement["font_variant_mapping"] = font_variant_mapping
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "extract_raw_fonts_and_embedded_details",
+        lambda *_args: ({"Arial Bold", "Arial Regular"}, [], []),
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_font_variants_by_normalized_name",
+        lambda *_args: {"Arial": {"regular", "bold"}},
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_details",
+        fake_get_font_details,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_uploads_for_names_by_variant",
+        fake_get_font_uploads_for_names_by_variant,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "replace_fonts_in_pptx",
+        fake_replace_fonts_in_pptx,
+    )
+
+    await fonts_and_slides_preview.upload_fonts_and_fix_fonts_in_pptx(
+        pptx_path="deck.pptx",
+        temp_dir=str(tmp_path),
+        original_filename="deck.pptx",
+        font_files=[
+            DummyUploadFile("Calibri-Bold.ttf"),
+            DummyUploadFile("Calibri-Regular.ttf"),
+        ],
+        original_font_names=["Arial Bold", "Arial Regular"],
+        logger=DummyLogger(),
+        session_dir=str(tmp_path / "session"),
+        upload_fonts=False,
+    )
+
+    assert captured_candidates == []
+    assert captured_replacement["font_mapping"] == {
+        "Arial Bold": "Calibri Bold",
+        "Arial Regular": "Calibri Regular",
+    }
+    assert captured_replacement["font_variant_mapping"]["Arial"] == {
+        "bold": "Calibri Bold",
+        "regular": "Calibri Regular",
+    }
+
+
+@pytest.mark.anyio
+async def test_saved_font_uploads_are_used_for_missing_preview_fonts(
+    monkeypatch,
+    tmp_path,
+):
+    saved_regular = FontUpload(
+        filename="Arial-Regular.ttf",
+        path=str(tmp_path / "Arial-Regular.ttf"),
+        normalized_family_name="Arial",
+        family_name="Arial",
+        full_name="Arial Regular",
+        subfamily_name="Regular",
+        weight_class=400,
+        size_bytes=123,
+    )
+    saved_bold = FontUpload(
+        filename="Arial-Bold.ttf",
+        path=str(tmp_path / "Arial-Bold.ttf"),
+        normalized_family_name="Arial",
+        family_name="Arial",
+        full_name="Arial Bold",
+        subfamily_name="Bold",
+        weight_class=700,
+        size_bytes=123,
+    )
+    regular_path = tmp_path / "downloaded-regular.ttf"
+    bold_path = tmp_path / "downloaded-bold.ttf"
+    regular_path.write_bytes(b"regular")
+    bold_path.write_bytes(b"bold")
+    captured_replacement = {}
+    captured_candidates = []
+
+    async def fake_get_font_uploads_for_names_by_variant(font_names):
+        captured_candidates.extend(font_names)
+        return {"Arial": {"regular": saved_regular, "bold": saved_bold}}
+
+    async def fake_download_font_uploads(font_uploads, _temp_dir):
+        assert {font.filename for font in font_uploads} == {
+            "Arial-Regular.ttf",
+            "Arial-Bold.ttf",
+        }
+        return {
+            saved_regular.id: str(regular_path),
+            saved_bold.id: str(bold_path),
+        }
+
+    async def fake_get_font_upload_url(font_upload):
+        return f"/app_data/fonts/{font_upload.filename}"
+
+    def fake_replace_fonts_in_pptx(
+        _pptx_path,
+        font_mapping,
+        _output_path,
+        font_variant_mapping=None,
+    ):
+        captured_replacement["font_mapping"] = font_mapping
+        captured_replacement["font_variant_mapping"] = font_variant_mapping
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "extract_raw_fonts_and_embedded_details",
+        lambda *_args: ({"Arial"}, [], []),
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_font_variants_by_normalized_name",
+        lambda *_args: {"Arial": {"regular", "bold"}},
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_uploads_for_names_by_variant",
+        fake_get_font_uploads_for_names_by_variant,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "download_font_uploads",
+        fake_download_font_uploads,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_upload_url",
+        fake_get_font_upload_url,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "replace_fonts_in_pptx",
+        fake_replace_fonts_in_pptx,
+    )
+
+    result = await fonts_and_slides_preview.upload_fonts_and_fix_fonts_in_pptx(
+        pptx_path="deck.pptx",
+        temp_dir=str(tmp_path),
+        original_filename="deck.pptx",
+        font_files=None,
+        original_font_names=None,
+        logger=DummyLogger(),
+        session_dir=str(tmp_path / "session"),
+        upload_fonts=True,
+    )
+
+    assert captured_candidates == ["Arial"]
+    assert captured_replacement["font_mapping"] == {"Arial": "Arial Regular"}
+    assert captured_replacement["font_variant_mapping"]["Arial"] == {
+        "regular": "Arial Regular",
+        "bold": "Arial Bold",
+    }
+    assert str(regular_path) in result[5]
+    assert str(bold_path) in result[5]
+    assert result[1] == {
+        "Arial Regular": "/app_data/fonts/Arial-Regular.ttf",
+        "Arial Bold": "/app_data/fonts/Arial-Bold.ttf",
+    }
+
+
+@pytest.mark.anyio
+async def test_saved_font_upload_for_explicit_variant_uses_normalized_family_name(
+    monkeypatch,
+    tmp_path,
+):
+    saved_bold = FontUpload(
+        filename="Arial-Bold.ttf",
+        path=str(tmp_path / "Arial-Bold.ttf"),
+        normalized_family_name="Arial",
+        family_name="Arial",
+        full_name="Arial Bold",
+        subfamily_name="Bold",
+        weight_class=700,
+        size_bytes=123,
+    )
+    bold_path = tmp_path / "downloaded-bold.ttf"
+    bold_path.write_bytes(b"bold")
+    captured_replacement = {}
+
+    async def fake_get_font_uploads_for_names_by_variant(font_names):
+        assert font_names == ["Arial Bold"]
+        return {"Arial Bold": {"bold": saved_bold}}
+
+    async def fake_download_font_uploads(_font_uploads, _temp_dir):
+        return {saved_bold.id: str(bold_path)}
+
+    async def fake_get_font_upload_url(font_upload):
+        return f"/app_data/fonts/{font_upload.filename}"
+
+    def fake_replace_fonts_in_pptx(
+        _pptx_path,
+        font_mapping,
+        _output_path,
+        font_variant_mapping=None,
+    ):
+        captured_replacement["font_mapping"] = font_mapping
+        captured_replacement["font_variant_mapping"] = font_variant_mapping
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "extract_raw_fonts_and_embedded_details",
+        lambda *_args: ({"Arial Bold"}, [], []),
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_font_variants_by_normalized_name",
+        lambda *_args: {"Arial": {"bold"}},
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_uploads_for_names_by_variant",
+        fake_get_font_uploads_for_names_by_variant,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "download_font_uploads",
+        fake_download_font_uploads,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_upload_url",
+        fake_get_font_upload_url,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "replace_fonts_in_pptx",
+        fake_replace_fonts_in_pptx,
+    )
+
+    result = await fonts_and_slides_preview.upload_fonts_and_fix_fonts_in_pptx(
+        pptx_path="deck.pptx",
+        temp_dir=str(tmp_path),
+        original_filename="deck.pptx",
+        font_files=None,
+        original_font_names=None,
+        logger=DummyLogger(),
+        session_dir=str(tmp_path / "session"),
+        upload_fonts=True,
+    )
+
+    assert captured_replacement["font_mapping"] == {"Arial Bold": "Arial Bold"}
+    assert captured_replacement["font_variant_mapping"]["Arial Bold"] == {
+        "bold": "Arial Bold"
+    }
+    assert captured_replacement["font_variant_mapping"]["Arial"] == {
+        "bold": "Arial Bold"
+    }
+    assert result[1] == {"Arial Bold": "/app_data/fonts/Arial-Bold.ttf"}
 
 
 @pytest.mark.anyio

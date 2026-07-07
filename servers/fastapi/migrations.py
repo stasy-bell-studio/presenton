@@ -21,6 +21,7 @@ REVISION_MERGED_TEMPLATE_V2 = "8a6c4d2e1f30"
 REVISION_PRESENTATION_FONTS = "9b2d1c4e5f6a"
 REVISION_TEMPLATE_V2_CHAT_SCOPE = "1d9a4c7b8e2f"
 REVISION_TEMPLATE_V2_LAYOUTS_OPTIONAL = "2c8f4a1b9d7e"
+REVISION_FONT_UPLOADS = "5d7e9a1b2c3f"
 
 
 async def migrate_database_on_startup() -> None:
@@ -125,13 +126,18 @@ def _infer_revision_from_schema(inspector, tables: set[str], head_revision: str)
             "chat_history_messages" not in tables
             or _has_column(inspector, "chat_history_messages", "template_v2_id")
         )
+        font_uploads_ready = "font_uploads" in tables
         if (
             final_template_columns.issubset(cols)
             and not {"cluster_candidates", "clusters"}.intersection(cols)
             and presentation_version_ready
         ):
             if slide_ui_ready and presentation_fonts_ready and template_v2_chat_scope_ready:
-                return head_revision
+                return (
+                    head_revision
+                    if font_uploads_ready
+                    else REVISION_TEMPLATE_V2_LAYOUTS_OPTIONAL
+                )
             if slide_ui_ready and presentation_fonts_ready:
                 return REVISION_PRESENTATION_FONTS
             return REVISION_MERGED_TEMPLATE_V2 if slide_ui_ready else REVISION_TEMPLATE_V2
@@ -203,6 +209,7 @@ def _is_unversioned_populated_database(database_url: str) -> bool:
         "template_create_infos",
         "chat_history_messages",
         "template_v2",
+        "font_uploads",
     }
     engine = create_engine(database_url)
     try:

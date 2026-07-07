@@ -41,6 +41,12 @@ from utils.asset_directory_utils import (
 )
 from utils.download_helpers import download_file
 from utils.get_env import get_app_data_directory_env
+from utils.font_uploads import (
+    download_font_uploads,
+    get_font_upload_url,
+    get_font_uploads_for_names_by_variant,
+    persist_font_file,
+)
 
 
 class FontInfo(BaseModel):
@@ -777,17 +783,52 @@ async def check_fonts_in_pptx_handler(pptx_file: UploadFile) -> FontCheckRespons
             unavailable_fonts_data,
         ) = await get_available_and_unavailable_fonts_for_pptx(pptx_path, temp_dir)
 
+        available_font_entries = _font_info_entries(
+            available_fonts_data,
+            variants_by_normalized_name,
+            original_names_by_normalized_variant,
+        )
+        unavailable_font_entries: List[FontInfo] = []
+
+        if unavailable_fonts_data:
+            uploaded_fonts_by_variant = await get_font_uploads_for_names_by_variant(
+                [font_data[0] for font_data in unavailable_fonts_data]
+            )
+            for font_data in unavailable_fonts_data:
+                font_name = font_data[0]
+                font_url = font_data[1]
+                variants = (
+                    normalize_font_variants(font_data[2])
+                    if len(font_data) == 3
+                    else _variants_for_font_name(
+                        font_name, variants_by_normalized_name
+                    )
+                )
+                uploaded_variants = uploaded_fonts_by_variant.get(font_name, {})
+                for variant in variants:
+                    original_name = original_names_by_normalized_variant.get(
+                        (normalize_font_family_name(font_name), variant)
+                    )
+                    font_upload = uploaded_variants.get(variant)
+                    if font_upload:
+                        available_font_entries.append(
+                            _font_info_entry(
+                                font_name,
+                                await get_font_upload_url(font_upload),
+                                variant,
+                                original_name,
+                            )
+                        )
+                    else:
+                        unavailable_font_entries.append(
+                            _font_info_entry(
+                                font_name, font_url, variant, original_name
+                            )
+                        )
+
         return FontCheckResponse(
-            available_fonts=_font_info_entries(
-                available_fonts_data,
-                variants_by_normalized_name,
-                original_names_by_normalized_variant,
-            ),
-            unavailable_fonts=_font_info_entries(
-                unavailable_fonts_data,
-                variants_by_normalized_name,
-                original_names_by_normalized_variant,
-            ),
+            available_fonts=available_font_entries,
+            unavailable_fonts=unavailable_font_entries,
         )
 
 
@@ -1054,6 +1095,98 @@ async def upload_fonts_and_fix_fonts_in_pptx(
     ]
     font_paths_for_install.extend(found_embedded_fonts_with_path.values())
 
+    variants_by_normalized_name = await asyncio.to_thread(
+        _font_variants_by_normalized_name, pptx_path
+    )
+    original_font_name_set = {name for name in (original_font_names or []) if name}
+    explicitly_replaced = {
+        normalize_font_family_name(name) for name in (original_font_names or [])
+    }
+    embedded_replaced = set(found_embedded_fonts_with_path.keys())
+    normalized_embedded_replaced = {
+        normalize_font_family_name(name) for name in embedded_replaced
+    }
+    candidate_uploaded_fonts = [
+        font_name
+        for font_name in raw_fonts
+        if font_name not in original_font_name_set
+        and normalize_font_family_name(font_name) not in explicitly_replaced
+        and font_name not in embedded_replaced
+        and normalize_font_family_name(font_name) not in normalized_embedded_replaced
+    ]
+    uploaded_fonts_by_variant = await get_font_uploads_for_names_by_variant(
+        candidate_uploaded_fonts
+    )
+    if uploaded_fonts_by_variant:
+        unique_uploaded_fonts = list(
+            {
+                font_upload.id: font_upload
+                for variants in uploaded_fonts_by_variant.values()
+                for font_upload in variants.values()
+            }.values()
+        )
+        downloaded_paths = await download_font_uploads(
+            unique_uploaded_fonts, temp_dir
+        )
+        appended_downloads: Set[str] = set()
+        for original_name in candidate_uploaded_fonts:
+            required_variants = _variants_for_font_name(
+                original_name, variants_by_normalized_name
+            )
+            uploaded_variants = uploaded_fonts_by_variant.get(original_name, {})
+            matched_uploads = [
+                uploaded_variants[variant]
+                for variant in required_variants
+                if variant in uploaded_variants
+            ]
+            if not matched_uploads:
+                continue
+
+            for font_upload in matched_uploads:
+                downloaded_path = downloaded_paths.get(font_upload.id)
+                if downloaded_path and downloaded_path not in appended_downloads:
+                    font_paths_for_install.append(downloaded_path)
+                    appended_downloads.add(downloaded_path)
+
+            if len(matched_uploads) != len(required_variants):
+                logger.info(
+                    f"Partial uploaded font coverage for {original_name}: "
+                    f"matched {len(matched_uploads)}/"
+                    f"{len(required_variants)} variants"
+                )
+                continue
+
+            variant_replacement_names: Dict[str, str] = {}
+            normalized_original_name = normalize_font_family_name(original_name)
+            replacement_family_name = normalized_original_name or original_name
+            for variant, font_upload in uploaded_variants.items():
+                if variant not in required_variants:
+                    continue
+                replacement_name = _font_variant_family_name(
+                    replacement_family_name, variant
+                )
+                variant_replacement_names[variant] = replacement_name
+                found_embedded_fonts_with_url[replacement_name] = (
+                    await get_font_upload_url(font_upload)
+                )
+            font_variant_mapping.setdefault(original_name, {}).update(
+                variant_replacement_names
+            )
+            if normalized_original_name:
+                font_variant_mapping.setdefault(normalized_original_name, {}).update(
+                    variant_replacement_names
+                )
+
+            actual_name = (
+                variant_replacement_names.get("regular")
+                or next(iter(variant_replacement_names.values()))
+            )
+            font_mapping[original_name] = actual_name
+            logger.info(
+                f"Font upload mapping: {original_name} -> {actual_name} "
+                f"({', '.join(required_variants)})"
+            )
+
     # Replace fonts in PPTX using python-pptx
     modified_pptx_filename = _build_modified_pptx_filename(original_filename)
     modified_pptx_path = os.path.join(temp_dir, modified_pptx_filename)
@@ -1069,21 +1202,19 @@ async def upload_fonts_and_fix_fonts_in_pptx(
         logger.info("Fonts replaced successfully")
     else:
         modified_pptx_path = pptx_path
-        logger.info("No custom fonts provided; using original PPTX without replacement")
+        logger.info(
+            "No custom fonts provided; using original PPTX without replacement"
+        )
 
     font_upload_pairs: List[Tuple[str, str]] = []
     if upload_fonts:
-        font_upload_pairs = [
-            (
-                os.path.join(session_dir, "fonts", os.path.basename(font_path)),
-                font_path,
+        for font_path, _original_name in custom_font_files:
+            _font_upload, persisted_path = await persist_font_file(
+                font_path, os.path.basename(font_path)
             )
-            for font_path, _ in custom_font_files
-        ]
+            font_upload_pairs.append((persisted_path, font_path))
         if font_upload_pairs:
-            logger.info(f"Persisting {len(font_upload_pairs)} font files")
-            await _persist_files_to_session(font_upload_pairs)
-            logger.info("Persisted font files")
+            logger.info(f"Persisted {len(font_upload_pairs)} reusable font files")
 
     return (
         raw_fonts,
