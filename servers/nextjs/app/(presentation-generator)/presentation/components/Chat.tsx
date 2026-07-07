@@ -37,6 +37,7 @@ import {
   type BlankSlidePromptEventDetail,
 } from "../../_shared/blank-slide-prompt-event";
 import type {
+  ChatAttachment,
   ChatConversationSummary,
   ChatHistoryMessage,
   ChatMessageResponse,
@@ -292,7 +293,8 @@ type ChatLink = {
 type ChatDocumentAttachment = {
   id: string;
   name: string;
-  content: string;
+  filePath: string;
+  mimeType?: string;
 };
 
 type ChatProps = {
@@ -331,6 +333,7 @@ export type ChatApiAdapter = {
       resourceId: string;
       message: string;
       conversation_id?: string;
+      attachments?: ChatAttachment[];
     },
     handlers?: ChatStreamHandlers,
     options?: { signal?: AbortSignal }
@@ -348,6 +351,7 @@ const presentationChatAdapter: ChatApiAdapter = {
         presentation_id: payload.resourceId,
         message: payload.message,
         conversation_id: payload.conversation_id,
+        attachments: payload.attachments,
       },
       handlers,
       options
@@ -376,7 +380,7 @@ const URL_PATTERN =
 const IMAGE_READ_INTENT_PATTERN =
   /\b(read|extract|parse|analy[sz]e|summari[sz]e|ocr|text|table|chart|data|numbers?|metrics?)\b/i;
 const IMAGE_EXTENSION_PATTERN = /\.(jpe?g|png|gif|bmp|tiff?|webp)$/i;
-const ATTACHMENT_CONTENT_LIMIT = 12000;
+const ATTACHMENT_CONTENT_LIMIT = 2000;
 
 function pullLinksFromText(text: string) {
   const links: ChatLink[] = [];
@@ -414,6 +418,17 @@ function shouldReadAttachedImages(message: string) {
 function trimAttachmentContent(content: string) {
   if (content.length <= ATTACHMENT_CONTENT_LIMIT) return content;
   return `${content.slice(0, ATTACHMENT_CONTENT_LIMIT)}\n[Attachment truncated]`;
+}
+
+function buildChatDocumentAttachments(
+  documents: ChatDocumentAttachment[]
+): ChatAttachment[] {
+  return documents.map((document) => ({
+    type: "document",
+    name: document.name,
+    file_path: document.filePath,
+    mime_type: document.mimeType || null,
+  }));
 }
 
 function hasDraggedFiles(event: DragEvent<HTMLElement>) {
@@ -468,6 +483,7 @@ const TOOL_LABELS: Record<string, string> = {
   addNewSlideLayout: "Layout slide adder",
   getAvailableLayouts: "Layout finder",
   getTemplateSummary: "Template reader",
+  readSourceDocuments: "Source document reader",
   searchSlide: "Slide search",
   getSlideAtIndex: "Slide reader",
   saveSlide: "Slide saver",
@@ -586,6 +602,9 @@ const humanizeTraceMessage = (message: string, tool?: string) => {
   }
   if (lower === "reading template structure") {
     return "Reading the template structure.";
+  }
+  if (lower === "reading source documents") {
+    return "Reading the source documents.";
   }
   if (lower === "opening the requested template slide") {
     return "Opening the selected template slide.";
@@ -1060,8 +1079,7 @@ const Chat = ({
 
   const buildBackendMessage = (
     message: string,
-    images = pastedImages,
-    documents = attachedDocuments
+    images = pastedImages
   ) => {
     const contextLines: string[] = [];
 
@@ -1137,20 +1155,6 @@ const Chat = ({
               ]
                 .filter(Boolean)
                 .join("\n")
-          ),
-        ].join("\n")
-      );
-    }
-
-    if (variant === "template-v2" && documents.length > 0) {
-      contextLines.push(
-        [
-          "UI context: the user attached parsed document(s) to this TemplateV2 chat request. Use this content when the user asks to read, extract, summarize, or build chart/data content from attachments.",
-          ...documents.map(
-            (document, index) =>
-              `Document ${index + 1} (${document.name}):\n${trimAttachmentContent(
-                document.content
-              )}`
           ),
         ].join("\n")
       );
@@ -1364,17 +1368,21 @@ const Chat = ({
         const paths = (await PresentationGenerationApi.uploadDoc(
           documentFiles
         )) as string[];
-        const decomposed = (await PresentationGenerationApi.decomposeDocuments(
-          paths,
-          null
-        )) as { name: string; file_path: string }[];
-        const documents = await Promise.all(
-          decomposed.map(async (item) => ({
-            id: createMessageId(),
-            name: item.name,
-            content: await readDecomposedFile(item.file_path),
-          }))
-        );
+        const documents = paths.flatMap((filePath, index) => {
+          const file = documentFiles[index];
+          if (!file || !filePath) return [];
+          return [
+            {
+              id: createMessageId(),
+              name: file.name || `Document ${index + 1}`,
+              filePath,
+              mimeType: file.type || undefined,
+            },
+          ];
+        });
+        if (documents.length === 0) {
+          throw new Error("Document upload did not return a file path.");
+        }
         setAttachedDocuments((previous) => [...previous, ...documents]);
       }
 
@@ -1512,12 +1520,9 @@ const Chat = ({
       const response = await chatAdapter.streamMessage(
         {
           resourceId: activeResourceId,
-          message: buildBackendMessage(
-            outboundMessage,
-            imagesForMessage,
-            attachedDocuments
-          ),
+          message: buildBackendMessage(outboundMessage, imagesForMessage),
           conversation_id: conversationId ?? undefined,
+          attachments: buildChatDocumentAttachments(attachedDocuments),
         },
         {
           onChunk: (chunk) => {
@@ -2111,7 +2116,7 @@ const Chat = ({
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,.pdf,.txt,.md,.doc,.docx,.docm,.odt,.rtf,.ppt,.pptx,.pptm,.odp,.xls,.xlsx,.xlsm,.ods,.csv,.tsv"
+          accept="image/*,.pdf,.txt,.doc,.docx,.docm,.odt,.rtf,.ppt,.pptx,.pptm,.odp,.xls,.xlsx,.xlsm,.ods,.csv,.tsv,.tif,.tiff"
           className="hidden"
           onChange={handleAttachmentInputChange}
           aria-hidden="true"

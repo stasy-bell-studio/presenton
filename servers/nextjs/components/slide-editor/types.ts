@@ -202,6 +202,7 @@ export type ImageElement = ElementBase & {
   fit?: ImageFit | null;
   focus_x?: number | null;
   focus_y?: number | null;
+  crop_scale?: number | null;
   border_radius?: BorderRadius | null;
   clippath?: string | null;
   clip_path?: string | null;

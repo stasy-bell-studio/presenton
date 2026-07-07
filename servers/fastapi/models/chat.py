@@ -1,13 +1,23 @@
 import uuid
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ChatAttachment(BaseModel):
+    type: Literal["document"] = "document"
+    name: str = Field(min_length=1, max_length=255)
+    file_path: str = Field(min_length=1, max_length=4000)
+    mime_type: Optional[str] = Field(default=None, max_length=255)
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ChatMessageRequest(BaseModel):
     presentation_id: uuid.UUID
     message: str = Field(min_length=1, max_length=8000)
     conversation_id: Optional[uuid.UUID] = None
+    attachments: list[ChatAttachment] = Field(default_factory=list, max_length=8)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -42,4 +52,3 @@ class ChatConversationListItem(BaseModel):
     last_message_preview: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
-

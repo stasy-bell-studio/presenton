@@ -2,10 +2,18 @@ import { buildAbsoluteApiRequestUrl, getApiUrl } from "@/utils/api";
 import { ApiResponseHandler } from "./api-error-handler";
 import { getHeader } from "./header";
 
+export interface ChatAttachment {
+  type: "document";
+  name: string;
+  file_path: string;
+  mime_type?: string | null;
+}
+
 export interface ChatMessageRequest {
   presentation_id: string;
   message: string;
   conversation_id?: string;
+  attachments?: ChatAttachment[];
 }
 
 export interface ChatMessageResponse {

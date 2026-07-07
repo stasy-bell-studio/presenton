@@ -199,6 +199,7 @@ class Image(BaseModel):  # Konva Image
     fit: Optional[ImageFit] = None
     focus_x: Optional[float] = None
     focus_y: Optional[float] = None
+    crop_scale: Optional[float] = None
     border_radius: Optional[BorderRadius] = None
     clip_path: Optional[str] = None
     color: Optional[str] = None

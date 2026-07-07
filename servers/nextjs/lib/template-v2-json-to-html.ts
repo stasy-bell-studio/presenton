@@ -455,6 +455,16 @@ function renderImage(item: JsonRecord, mode: RenderMode): string {
       color
     )};background:currentColor;-webkit-mask:${maskUrl} center/${maskSize} no-repeat;mask:${maskUrl} center/${maskSize} no-repeat;"></div>`;
   }
+  const fit = imageFit(item.fit);
+  const focusStyle = imageFocusStyle(item);
+  const cropTransformStyle = imageCropTransformStyle(item);
+  if (cropTransformStyle) {
+    return `<div style="${frameStyle(item, mode)}${boxStyle(
+      item
+    )}${clipPathStyle}overflow:hidden;"><img alt="" src="${escapeAttribute(
+      source
+    )}" style="display:block;height:100%;width:100%;object-fit:${fit};${focusStyle}${cropTransformStyle}"></div>`;
+  }
   return `<img alt="" src="${escapeAttribute(source)}" style="${frameStyle(
     item,
     mode
@@ -1536,6 +1546,20 @@ function imageMaskSize(value: unknown): string {
   return fit === "fill" ? "100% 100%" : fit;
 }
 
+function imageCropScale(item: JsonRecord) {
+  const value = readNumber(item.crop_scale);
+  if (value == null) return 1;
+  return clamp(value, 1, 6);
+}
+
+function imageCropTransformStyle(item: JsonRecord): string {
+  const cropScale = imageCropScale(item);
+  if (cropScale <= 1) return "";
+  return `transform:scale(${cssNumber(cropScale)});transform-origin:${
+    imageFocusValue(item) ?? "center"
+  };`;
+}
+
 function imageClipPathStyle(item: JsonRecord): string {
   const raw = readString(item.clippath ?? item.clipPath ?? item.clip_path);
   const clipPath = raw?.trim();
@@ -1608,14 +1632,19 @@ function hasBalancedCssClipPathSyntax(value: string) {
 }
 
 function imageFocusStyle(item: JsonRecord): string {
+  const focus = imageFocusValue(item);
+  return focus ? `object-position:${focus};` : "";
+}
+
+function imageFocusValue(item: JsonRecord): string | null {
   const focus = readArray(item.focus);
   const rawX = item.focus_x ?? item.focusX ?? focus[0];
   const rawY = item.focus_y ?? item.focusY ?? focus[1];
-  if (rawX == null && rawY == null) return "";
+  if (rawX == null && rawY == null) return null;
 
   const focusX = clamp(readNumber(rawX) ?? 50, 0, 100);
   const focusY = clamp(readNumber(rawY) ?? 50, 0, 100);
-  return `object-position:${cssNumber(focusX)}% ${cssNumber(focusY)}%;`;
+  return `${cssNumber(focusX)}% ${cssNumber(focusY)}%`;
 }
 
 function horizontalAlign(value: string | null): string {

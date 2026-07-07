@@ -20,6 +20,7 @@ from services.chat.schemas import (
     GenerateAssetsInput,
     GetSlideAtIndexInput,
     NoArgsInput,
+    ReadSourceDocumentsInput,
     SaveSlideInput,
     SearchSlidesInput,
     SetPresentationThemeInput,
@@ -37,6 +38,19 @@ ToolHandler = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
 ChatToolMode = Literal["presentation", "outline"]
 
 
+def _normalize_tool_argument_value(value: Any) -> Any:
+    if isinstance(value, str) and value.strip().lower() == "null":
+        return None
+    if isinstance(value, list):
+        return [_normalize_tool_argument_value(item) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _normalize_tool_argument_value(item)
+            for key, item in value.items()
+        }
+    return value
+
+
 class ChatTools:
     def __init__(
         self,
@@ -52,6 +66,7 @@ class ChatTools:
             "addNewSlide": self._add_new_slide,
             "addNewSlideLayout": self._add_new_slide_layout,
             "getTemplateSummary": self._get_template_summary,
+            "readSourceDocuments": self._read_source_documents,
             "searchSlide": self._search_slides,
             "getSlideAtIndex": self._get_slide_at_index,
             "getAvailableLayouts": self._get_available_layouts,
@@ -133,6 +148,18 @@ class ChatTools:
                     "layouts, current slides, and theme. Use before choosing where/how to edit."
                 ),
                 schema=NoArgsInput,
+                strict=True,
+            ),
+            Tool(
+                name="readSourceDocuments",
+                description=(
+                    "Read parsed text from the source document(s) uploaded for this "
+                    "presentation, including PDFs. Use when the user refers to an "
+                    "uploaded/source PDF, document, file, or the document used to "
+                    "generate the deck. Use before summarizing, quoting, extracting "
+                    "data, or creating slide content from uploaded documents."
+                ),
+                schema=ReadSourceDocumentsInput,
                 strict=True,
             ),
             Tool(
@@ -449,6 +476,13 @@ class ChatTools:
             "message": "Template summary fetched successfully.",
         }
 
+    async def _read_source_documents(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = ReadSourceDocumentsInput(**args)
+        return await self._memory.read_source_documents(
+            query=payload.query,
+            max_chars=payload.max_chars,
+        )
+
     async def _get_presentation_theme_catalog(
         self, _: dict[str, Any]
     ) -> dict[str, Any]:
@@ -678,7 +712,9 @@ class ChatTools:
         except Exception:
             parsed = json.loads(arguments)
 
-        normalized = json.loads(json.dumps(parsed, ensure_ascii=False))
+        normalized = _normalize_tool_argument_value(
+            json.loads(json.dumps(parsed, ensure_ascii=False))
+        )
         if isinstance(normalized, dict):
             return normalized
 

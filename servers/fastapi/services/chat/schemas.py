@@ -78,6 +78,27 @@ class SearchSlidesInput(StrictSchemaModel):
     limit: int = Field(ge=1, le=10)
 
 
+class ReadSourceDocumentsInput(OpenAIStrictSchemaModel):
+    query: str | None = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description=(
+            "Optional focus query for retrieving uploaded/source document content. "
+            "Use null when the user asks for a general summary."
+        ),
+    )
+    max_chars: int | None = Field(
+        ...,
+        alias="maxChars",
+        ge=1000,
+        le=30000,
+        description="Maximum document text characters to return. Use null for the default.",
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
 class GetContentSchemaFromLayoutIdInput(StrictSchemaModel):
     layout_id: str = Field(alias="layoutId", min_length=1, max_length=200)
 

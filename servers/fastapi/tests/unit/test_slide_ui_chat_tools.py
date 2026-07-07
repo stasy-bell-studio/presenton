@@ -150,6 +150,33 @@ def test_update_slide_element_edits_ui_text():
     assert session.commit_count == 1
 
 
+def test_update_slide_element_accepts_stringified_null_optionals():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[0].elements[0]",
+            "text": "New title",
+            "items": "null",
+            "tableCell": "null",
+            "chart": "null",
+            "table": "null",
+            "element": "null",
+            "position": "null",
+            "size": "null",
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert slide.ui["components"][0]["elements"][0]["text"] == "New title"
+    assert session.commit_count == 1
+
+
 def _slide_with_image():
     slide = _slide()
     slide.ui["components"].append(

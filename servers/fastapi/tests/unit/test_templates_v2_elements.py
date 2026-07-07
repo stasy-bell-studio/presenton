@@ -25,6 +25,7 @@ def test_image_element_accepts_flip_flags():
             "flip_v": False,
             "focus_x": 20.0,
             "focus_y": 75.0,
+            "crop_scale": 1.8,
             "clip_path": "path('M 0 0 L 100 0 L 100 100 Z')",
         }
     )
@@ -32,6 +33,7 @@ def test_image_element_accepts_flip_flags():
     assert image.flip_v is False
     assert image.focus_x == 20.0
     assert image.focus_y == 75.0
+    assert image.crop_scale == 1.8
     assert image.clip_path == "path('M 0 0 L 100 0 L 100 100 Z')"
 
     layout = RawSlideLayout.model_validate(
@@ -49,6 +51,7 @@ def test_image_element_accepts_flip_flags():
                     "flip_v": False,
                     "focus_x": 20.0,
                     "focus_y": 75.0,
+                    "crop_scale": 1.8,
                     "clip_path": "path('M 0 0 L 100 0 L 100 100 Z')",
                 }
             ],
@@ -59,6 +62,7 @@ def test_image_element_accepts_flip_flags():
     assert layout_image.flip_v is False
     assert layout_image.focus_x == 20.0
     assert layout_image.focus_y == 75.0
+    assert layout_image.crop_scale == 1.8
     assert layout_image.clip_path == "path('M 0 0 L 100 0 L 100 100 Z')"
     assert (
         layout.model_dump(mode="json")["elements"][0]["clip_path"]

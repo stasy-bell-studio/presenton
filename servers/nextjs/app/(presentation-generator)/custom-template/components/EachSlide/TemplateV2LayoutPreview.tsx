@@ -179,7 +179,10 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
   const clipPath = imageClipPath(element);
   const flipH = readBoolean(element.flip_h);
   const flipV = readBoolean(element.flip_v);
-  const transform = imageFlipTransform(flipH, flipV);
+  const cropScale = imageCropScale(element);
+  const transform = imageTransform(flipH, flipV, cropScale);
+  const transformOrigin =
+    cropScale > 1 ? objectPosition ?? "center" : undefined;
 
   return (
     <div
@@ -201,6 +204,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
           objectFit: fit,
           objectPosition,
           transform,
+          transformOrigin,
           WebkitClipPath: clipPath,
           width: "100%",
         }}
@@ -219,6 +223,7 @@ function renderImage(element: TemplateV2Element, key: string, mode: RenderMode) 
             pointerEvents: "none",
             position: "absolute",
             transform,
+            transformOrigin,
             WebkitClipPath: clipPath,
             WebkitMaskImage: `url(${resolvedSrc})`,
             WebkitMaskPosition: objectPosition ?? "center",
@@ -790,9 +795,19 @@ function clampPercent(value: number | null) {
   return Math.min(100, Math.max(0, value));
 }
 
-function imageFlipTransform(flipH: boolean, flipV: boolean) {
-  if (!flipH && !flipV) return undefined;
-  return `${flipH ? "scaleX(-1)" : ""} ${flipV ? "scaleY(-1)" : ""}`.trim();
+function imageCropScale(element: TemplateV2Element) {
+  const value = readNumber(element.crop_scale);
+  if (value == null) return 1;
+  return Math.min(6, Math.max(1, value));
+}
+
+function imageTransform(flipH: boolean, flipV: boolean, cropScale: number) {
+  const transforms = [
+    flipH ? "scaleX(-1)" : "",
+    flipV ? "scaleY(-1)" : "",
+    cropScale > 1 ? `scale(${cropScale})` : "",
+  ].filter(Boolean);
+  return transforms.length ? transforms.join(" ") : undefined;
 }
 
 function horizontalAlign(value: string | null) {

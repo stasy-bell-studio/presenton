@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+import os
 import re
 import uuid
 from typing import Any
@@ -18,8 +19,10 @@ from models.sql.presentation import PresentationModel
 from models.sql.slide import SlideModel
 from models.sql.template_v2 import TemplateV2
 from services.icon_finder_service import ICON_FINDER_SERVICE
+from services.documents_loader import DocumentsLoader
 from services.image_generation_service import ImageGenerationService
 from services.mem0_presentation_memory_service import MEM0_PRESENTATION_MEMORY_SERVICE
+from services.temp_file_service import TEMP_FILE_SERVICE
 from templates.presentation_layout import PresentationLayoutModel, SlideLayoutModel
 from templates.v2.schema import get_template_schema
 from utils.asset_directory_utils import (
@@ -37,6 +40,8 @@ from utils.process_slides import (
 
 LOGGER = logging.getLogger(__name__)
 MAX_SCHEMA_ERRORS = 10
+DEFAULT_SOURCE_DOCUMENT_CHARS = 12000
+MAX_SOURCE_DOCUMENT_CHARS = 30000
 SLIDE_STAGE_WIDTH = 1280.0
 SLIDE_STAGE_HEIGHT = 720.0
 # Keep URL runtime fields during validation because many slide schemas require them.
@@ -594,6 +599,137 @@ class PresentationChatMemoryLayer:
             }
             for layout in layout_model.slides
         ]
+
+    async def read_source_documents(
+        self,
+        *,
+        query: str | None = None,
+        max_chars: int | None = None,
+    ) -> dict[str, Any]:
+        presentation = await self._sql_session.get(
+            PresentationModel, self._presentation_id
+        )
+        if not presentation:
+            return {
+                "found": False,
+                "message": "Presentation not found.",
+                "documents": [],
+            }
+
+        char_budget = min(
+            max(max_chars or DEFAULT_SOURCE_DOCUMENT_CHARS, 1000),
+            MAX_SOURCE_DOCUMENT_CHARS,
+        )
+        source_paths = [
+            path
+            for path in (presentation.file_paths or [])
+            if isinstance(path, str) and path.strip()
+        ]
+
+        documents: list[dict[str, Any]] = []
+        errors: list[dict[str, str]] = []
+        remaining_chars = char_budget
+
+        for source_index, raw_path in enumerate(source_paths):
+            if remaining_chars <= 0:
+                break
+
+            name = os.path.basename(raw_path) or f"Document {source_index + 1}"
+            try:
+                resolved_path = TEMP_FILE_SERVICE.resolve_temp_path(
+                    raw_path,
+                    must_exist=True,
+                )
+                loader = DocumentsLoader(
+                    file_paths=[resolved_path],
+                    presentation_language=presentation.language,
+                )
+                temp_dir = TEMP_FILE_SERVICE.create_temp_dir(str(uuid.uuid4()))
+                await loader.load_documents(temp_dir=temp_dir)
+                parsed_text = loader.documents[0] if loader.documents else ""
+            except Exception as exc:
+                errors.append({"name": name, "error": str(exc)})
+                continue
+
+            trimmed = self._trim_document_text(parsed_text, remaining_chars)
+            if not trimmed:
+                errors.append({"name": name, "error": "No text was extracted."})
+                continue
+
+            documents.append(
+                {
+                    "index": source_index,
+                    "name": name,
+                    "content": trimmed,
+                    "truncated": len(parsed_text.strip()) > len(trimmed),
+                }
+            )
+            remaining_chars -= len(trimmed)
+
+        if documents:
+            omitted_count = max(0, len(source_paths) - len(documents) - len(errors))
+            return {
+                "found": True,
+                "source": "uploaded_files",
+                "count": len(documents),
+                "documents": documents,
+                "errors": errors,
+                "omitted_count": omitted_count,
+                "message": f"Read {len(documents)} source document(s).",
+            }
+
+        fallback_query = (
+            (query or "").strip()
+            or "uploaded source document extracted PDF document text summary"
+        )
+        fallback_context = await MEM0_PRESENTATION_MEMORY_SERVICE.retrieve_context(
+            self._presentation_id,
+            fallback_query,
+        )
+        if fallback_context.strip():
+            return {
+                "found": True,
+                "source": "presentation_memory",
+                "count": 1,
+                "documents": [
+                    {
+                        "index": 0,
+                        "name": "Indexed source document context",
+                        "content": self._trim_document_text(
+                            fallback_context,
+                            char_budget,
+                        ),
+                        "truncated": len(fallback_context.strip()) > char_budget,
+                    }
+                ],
+                "errors": errors,
+                "message": (
+                    "Source upload files were unavailable, so indexed document "
+                    "memory was returned instead."
+                ),
+            }
+
+        if source_paths:
+            return {
+                "found": False,
+                "source": "uploaded_files",
+                "count": 0,
+                "documents": [],
+                "errors": errors,
+                "message": (
+                    "Source document files are recorded for this presentation, "
+                    "but no readable text could be extracted."
+                ),
+            }
+
+        return {
+            "found": False,
+            "source": "presentation",
+            "count": 0,
+            "documents": [],
+            "errors": errors,
+            "message": "No uploaded source documents are linked to this presentation.",
+        }
 
     async def get_content_schema_from_layout_id(
         self, layout_id: str
@@ -2662,6 +2798,15 @@ class PresentationChatMemoryLayer:
         start = max(0, offset - window // 3)
         end = min(len(normalized), start + window)
         return normalized[start:end]
+
+    @staticmethod
+    def _trim_document_text(text: str, limit: int) -> str:
+        normalized = (text or "").strip()
+        if not normalized:
+            return ""
+        if len(normalized) <= limit:
+            return normalized
+        return f"{normalized[:limit].rstrip()}\n[Document content truncated]"
 
     async def _get_chat_available_themes(self) -> list[dict[str, Any]]:
         merged_themes: list[dict[str, Any]] = [copy.deepcopy(theme) for theme in CHAT_BUILTIN_THEMES]

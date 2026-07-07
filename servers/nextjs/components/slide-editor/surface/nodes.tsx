@@ -1027,6 +1027,7 @@ function RawImageElement({
   const fit = readString(element.fit) ?? "contain";
   const focusX = clamp(readNumber(element.focus_x) ?? 50, 0, 100) / 100;
   const focusY = clamp(readNumber(element.focus_y) ?? 50, 0, 100) / 100;
+  const cropScale = clamp(readNumber(element.crop_scale) ?? 1, 1, 6);
   const flipH = readBoolean(element.flip_h) === true;
   const flipV = readBoolean(element.flip_v) === true;
   const clipPath = imageClipPath(element);
@@ -1048,20 +1049,24 @@ function RawImageElement({
 
   if (fit === "cover") {
     if (naturalRatio > boxRatio) {
-      const cropWidth = loaded.height * boxRatio;
+      const baseCropWidth = loaded.height * boxRatio;
+      const cropWidth = Math.min(loaded.width, baseCropWidth / cropScale);
+      const cropHeight = Math.min(loaded.height, loaded.height / cropScale);
       crop = {
         x: Math.max(0, (loaded.width - cropWidth) * focusX),
-        y: 0,
-        width: Math.min(loaded.width, cropWidth),
-        height: loaded.height,
+        y: Math.max(0, (loaded.height - cropHeight) * focusY),
+        width: cropWidth,
+        height: cropHeight,
       };
     } else {
-      const cropHeight = loaded.width / boxRatio;
+      const baseCropHeight = loaded.width / boxRatio;
+      const cropWidth = Math.min(loaded.width, loaded.width / cropScale);
+      const cropHeight = Math.min(loaded.height, baseCropHeight / cropScale);
       crop = {
-        x: 0,
+        x: Math.max(0, (loaded.width - cropWidth) * focusX),
         y: Math.max(0, (loaded.height - cropHeight) * focusY),
-        width: loaded.width,
-        height: Math.min(loaded.height, cropHeight),
+        width: cropWidth,
+        height: cropHeight,
       };
     }
   } else if (fit === "contain") {

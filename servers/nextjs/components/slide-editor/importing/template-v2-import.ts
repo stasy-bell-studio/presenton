@@ -753,6 +753,7 @@ function adaptImage(raw: UnknownRecord): SlideElement {
     fit: readEnum(raw, ["contain", "cover", "fill"], "fit"),
     focus_x: readNumber(raw, "focus_x"),
     focus_y: readNumber(raw, "focus_y"),
+    crop_scale: readNumber(raw, "crop_scale"),
     border_radius: adaptBorderRadius(readRecord(raw, "border_radius")),
     clippath: readString(raw.clippath ?? raw.clipPath ?? raw.clip_path),
     color: readString(raw.color),
