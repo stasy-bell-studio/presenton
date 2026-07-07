@@ -13,6 +13,8 @@ const ROTATION_ICON_SCALE = 1.2;
 const ROTATION_ICON_PATH =
   "M11.0835 5.83331C11.0835 6.87166 10.7756 7.8867 10.1987 8.75006C9.62184 9.61341 8.8019 10.2863 7.84259 10.6837C6.88327 11.081 5.82767 11.185 4.80927 10.9824C3.79087 10.7799 2.85541 10.2798 2.12119 9.54562C1.38696 8.8114 0.886948 7.87594 0.684376 6.85754C0.481803 5.83914 0.585771 4.78354 0.983131 3.82422C1.38049 2.86491 2.0534 2.04498 2.91675 1.4681C3.78011 0.89122 4.79515 0.583313 5.8335 0.583313C7.3035 0.583313 8.70933 1.16665 9.76516 2.18165L11.0835 3.49998";
 const SHADOW_EVENT_NAMESPACE = ".presentonSelectionShadows";
+const MULTI_SELECTION_GROUP_DASH = [5, 5];
+const MULTI_SELECTION_MEMBER_DASH = [7, 4];
 let rotationIconPath: Path2D | null = null;
 
 type SelectionKind = "component" | "multi-component" | "element" | null;
@@ -149,6 +151,46 @@ function setTransformerShadowsEnabled(
   transformers[0]?.getLayer()?.batchDraw();
 }
 
+function TemplateV2MultiSelectionMemberOutline({
+  nodeRefs,
+  selectedKey,
+}: {
+  nodeRefs: RefObject<Map<string, Konva.Node>>;
+  selectedKey: string;
+}) {
+  const transformerRef = useRef<Konva.Transformer | null>(null);
+
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) return;
+
+    const node = nodeRefs.current?.get(selectedKey);
+    transformer.nodes(node ? [node] : []);
+    transformer.getLayer()?.batchDraw();
+
+    return () => {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+    };
+  }, [nodeRefs, selectedKey]);
+
+  return (
+    <Transformer
+      ref={transformerRef}
+      anchorSize={0}
+      borderDash={MULTI_SELECTION_MEMBER_DASH}
+      borderEnabled
+      borderStroke="#7A5AF8"
+      borderStrokeWidth={1}
+      enabledAnchors={[]}
+      listening={false}
+      resizeEnabled={false}
+      rotateEnabled={false}
+      rotateLineVisible={false}
+    />
+  );
+}
+
 function rotationAnchorPlacementForNode(
   node: Konva.Node | null | undefined,
 ): RotationAnchorPlacement {
@@ -200,6 +242,11 @@ export function TemplateV2SelectionTransformers({
   const selectedTransformerRef = useRef<Konva.Transformer | null>(null);
   const contextTransformerRef = useRef<Konva.Transformer | null>(null);
   const selectedNode = selectedKey ? nodeRefs.current?.get(selectedKey) : null;
+  const isMultiComponentSelection = selectionKind === "multi-component";
+  const multiSelectionMemberKeys =
+    isMultiComponentSelection && !suppressSelectedOutline
+      ? selectedKeys ?? []
+      : [];
   const rotationAnchorPlacement =
     selectionKind === "component"
       ? rotationAnchorPlacementForNode(selectedNode)
@@ -257,6 +304,7 @@ export function TemplateV2SelectionTransformers({
     parentComponentKey,
     selectedKey,
     selectedKeys,
+    selectionKind,
     suppressSelectedOutline,
   ]);
 
@@ -282,8 +330,11 @@ export function TemplateV2SelectionTransformers({
         anchorStroke="#E5E7EB"
         anchorStrokeWidth={1}
         anchorStyleFunc={styleAnchor}
+        borderDash={
+          isMultiComponentSelection ? MULTI_SELECTION_GROUP_DASH : undefined
+        }
         borderEnabled
-        borderStroke="#7A5AF8"
+        borderStroke={isMultiComponentSelection ? "#D9D9DE" : "#7A5AF8"}
         borderStrokeWidth={1}
         enabledAnchors={selectionKind === "component" ? undefined : []}
         resizeEnabled={selectionKind === "component"}
@@ -292,6 +343,13 @@ export function TemplateV2SelectionTransformers({
         rotateEnabled={selectionKind === "component"}
         rotateLineVisible={false}
       />
+      {multiSelectionMemberKeys.map((key) => (
+        <TemplateV2MultiSelectionMemberOutline
+          key={key}
+          nodeRefs={nodeRefs}
+          selectedKey={key}
+        />
+      ))}
     </>
   );
 }

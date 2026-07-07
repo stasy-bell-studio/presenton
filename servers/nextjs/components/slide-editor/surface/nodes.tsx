@@ -561,7 +561,9 @@ function RawElementNode({
         }));
       }}
     >
-      {editing ? <SelectionBoundsRect width={box.width} height={box.height} /> : null}
+      {isEditMode ? (
+        <SelectionBoundsRect width={box.width} height={box.height} />
+      ) : null}
       {editing ? null : (
         <MemoizedRawElementVisual
           element={element}
@@ -1035,14 +1037,32 @@ function RawImageElement({
   let drawH = height;
   let offsetX = 0;
   let offsetY = 0;
+  let crop:
+    | {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }
+    | undefined;
 
   if (fit === "cover") {
     if (naturalRatio > boxRatio) {
-      drawW = height * naturalRatio;
-      offsetX = -(drawW - width) * focusX;
+      const cropWidth = loaded.height * boxRatio;
+      crop = {
+        x: Math.max(0, (loaded.width - cropWidth) * focusX),
+        y: 0,
+        width: Math.min(loaded.width, cropWidth),
+        height: loaded.height,
+      };
     } else {
-      drawH = width / naturalRatio;
-      offsetY = -(drawH - height) * focusY;
+      const cropHeight = loaded.width / boxRatio;
+      crop = {
+        x: 0,
+        y: Math.max(0, (loaded.height - cropHeight) * focusY),
+        width: loaded.width,
+        height: Math.min(loaded.height, cropHeight),
+      };
     }
   } else if (fit === "contain") {
     if (naturalRatio > boxRatio) {
@@ -1061,6 +1081,7 @@ function RawImageElement({
       y={offsetY + (flipV ? drawH : 0)}
       width={drawW}
       height={drawH}
+      crop={crop}
       scaleX={flipH ? -1 : 1}
       scaleY={flipV ? -1 : 1}
       listening={interactive}

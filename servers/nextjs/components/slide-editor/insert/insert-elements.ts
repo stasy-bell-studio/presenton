@@ -9,6 +9,7 @@ import type {
 
 const DEFAULT_CHART_INSERT_POSITION = { x: 128, y: 115 };
 const DEFAULT_CHART_INSERT_SIZE = { width: 717, height: 410 };
+const DEFAULT_IMAGE_PLACEHOLDER_SRC = "/placeholder.jpg";
 const TEXT_INSERT_VERTICAL_PADDING_PX = 14;
 const IMAGE_RADIUS = { tl: 10, tr: 10, bl: 10, br: 10 };
 
@@ -463,6 +464,7 @@ function makeImageElement({
     type: "image",
     position: { x, y },
     size: { width, height },
+    data: DEFAULT_IMAGE_PLACEHOLDER_SRC,
     fit: "cover",
     name,
     border_radius: IMAGE_RADIUS,
