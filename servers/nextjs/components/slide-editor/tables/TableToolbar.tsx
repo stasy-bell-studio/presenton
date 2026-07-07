@@ -5,13 +5,27 @@ import {
   ChevronLeft,
   ChevronRight,
   Columns3,
+  Copy,
   MoreVertical,
   Plus,
   Rows3,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { cn } from "@/lib/utils";
 import type { TableCellSelection, TableSlideElement } from "@/components/slide-editor/state/state";
+import {
+  canApplyComponentLayerAction,
+  type ComponentLayerAction,
+} from "@/components/slide-editor/selection/layering";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { withHash } from "@/components/slide-editor/utils/color";
 import {
   elementBox,
@@ -31,12 +45,49 @@ type TableCellAlignment = NonNullable<TableCell["alignment"]>;
 const TABLE_CELL_ALIGNMENTS = ["left", "center", "right"] as const satisfies
   readonly TableCellAlignment[];
 
+const TABLE_COMPONENT_LAYER_ACTIONS: Array<{
+  action: ComponentLayerAction;
+  label: string;
+  shortcut: string;
+}> = [
+  {
+    action: "bring-to-front",
+    label: "Bring to Front",
+    shortcut: "⌥⌘]",
+  },
+  {
+    action: "bring-forward",
+    label: "Bring Forward",
+    shortcut: "⌘]",
+  },
+  {
+    action: "send-backward",
+    label: "Send Backward",
+    shortcut: "⌘[",
+  },
+  {
+    action: "send-to-back",
+    label: "Send Back",
+    shortcut: "⌥⌘[",
+  },
+];
+
+export type TableSelectionActions = {
+  componentCount?: number;
+  componentIndex?: number;
+  deleteLabel?: string;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onLayerAction?: (action: ComponentLayerAction) => void;
+};
+
 export function TableToolbar({
   anchorBox,
   element,
   index,
   scale,
   selectedCell,
+  selectionActions,
   onChange,
 }: {
   anchorBox?: FloatingToolbarBox | null;
@@ -44,9 +95,11 @@ export function TableToolbar({
   index: number;
   scale: number;
   selectedCell: TableCellSelection | null;
+  selectionActions?: TableSelectionActions | null;
   onChange: (index: number, element: TableSlideElement) => void;
 }) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [componentMenuOpen, setComponentMenuOpen] = useState(false);
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const box = elementBox(element);
@@ -65,7 +118,10 @@ export function TableToolbar({
       ? element.columns[activeColumn]
       : element.rows[activeRow - 1]?.[activeColumn];
   const activeCellFillColor =
-    activeCell?.color?.color ?? (activeRow === 0 ? "F7F7FA" : "FFFFFF");
+    activeCell?.color?.color ??
+    (activeCell as TableCell & { fill?: { color?: string | null } | null })
+      ?.fill?.color;
+  const colorPickerValue = activeCellFillColor ?? "FFFFFF";
   const activeCellAlignment: TableCellAlignment =
     activeCell?.alignment ?? "left";
   const ActiveCellAlignmentIcon =
@@ -82,14 +138,17 @@ export function TableToolbar({
   const canMoveColumnRight = activeColumn < columnCount - 1;
 
   useEffect(() => {
-    if (!menuOpen) return;
+    if (!tableMenuOpen && !componentMenuOpen) return;
     const onPointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-inline-edit-ignore='true']")) return;
       if (toolbarRef.current?.contains(event.target as Node)) return;
-      setMenuOpen(false);
+      setTableMenuOpen(false);
+      setComponentMenuOpen(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
-  }, [menuOpen]);
+  }, [componentMenuOpen, tableMenuOpen]);
 
   const normalizeRows = (nextRows: string[][]) =>
     nextRows.map((row) =>
@@ -214,9 +273,13 @@ export function TableToolbar({
       alignment: nextAlignment,
     }));
   };
-  const runMenuAction = (action: () => void) => {
+  const runTableMenuAction = (action: () => void) => {
     action();
-    setMenuOpen(false);
+    setTableMenuOpen(false);
+  };
+  const runComponentMenuAction = (action: () => void) => {
+    action();
+    setComponentMenuOpen(false);
   };
 
   return (
@@ -230,86 +293,125 @@ export function TableToolbar({
             height: box.h * scale,
           }
         }
-        fallbackWidth={290}
+        fallbackWidth={selectionActions ? 350 : 290}
         inlineEditIgnore
       >
-        <div ref={toolbarRef} style={toolbarShellStyle}>
-          <button
-            type="button"
-            aria-label="Cell background color"
-            title="Cell background"
-            style={iconButtonStyle}
-            onClick={openColorPicker}
-          >
-            <span
+        <div ref={toolbarRef} style={toolbarGroupStyle}>
+          <div style={toolbarShellStyle}>
+            <button
+              type="button"
+              aria-label="Cell background color"
+              title="Cell background"
+              style={iconButtonStyle}
+              onClick={openColorPicker}
+            >
+              <span
+                style={{
+                  ...colorDotStyle,
+                  background: activeCellFillColor
+                    ? withHash(activeCellFillColor)
+                    : "transparent",
+                }}
+              />
+              <DeferredColorInput
+                ref={colorInputRef}
+                aria-hidden="true"
+                tabIndex={-1}
+                value={colorPickerValue}
+                onCommit={updateActiveCellFillColor}
+                style={hiddenColorInputStyle}
+              />
+            </button>
+            <Divider />
+            <button
+              type="button"
+              aria-label="Table alignment"
+              title={`Align ${nextAlignmentLabel(activeCellAlignment)}`}
+              style={iconButtonStyle}
+              onClick={cycleActiveCellAlignment}
+            >
+              <ActiveCellAlignmentIcon size={20} strokeWidth={2.25} />
+            </button>
+            <Divider />
+            <button
+              type="button"
+              aria-label="Delete row"
+              title="Delete row"
+              disabled={!canDeleteRow}
               style={{
-                ...colorDotStyle,
-                background: withHash(activeCellFillColor),
+                ...iconButtonStyle,
+                opacity: canDeleteRow ? 1 : 0.36,
+                cursor: canDeleteRow ? "pointer" : "not-allowed",
               }}
+              onClick={deleteRow}
+            >
+              <Trash2 size={20} strokeWidth={2.25} />
+            </button>
+            <Divider />
+            <button
+              type="button"
+              aria-label="Table cell actions"
+              aria-expanded={tableMenuOpen}
+              title="Table cell actions"
+              style={{
+                ...iconButtonStyle,
+                ...(tableMenuOpen ? activeButtonStyle : null),
+              }}
+              onClick={() => {
+                setComponentMenuOpen(false);
+                setTableMenuOpen((open) => !open);
+              }}
+            >
+              <MoreVertical size={20} strokeWidth={2.4} />
+            </button>
+            <TableToolbarMenu
+              canAddColumn={canAddColumn}
+              canAddRow={canAddRow}
+              canDeleteColumn={canDeleteColumn}
+              canDeleteRow={canDeleteRow}
+              canMoveColumnLeft={canMoveColumnLeft}
+              canMoveColumnRight={canMoveColumnRight}
+              menuOpen={tableMenuOpen}
+              onAddColumn={() => runTableMenuAction(addColumn)}
+              onAddRow={() => runTableMenuAction(addRow)}
+              onDeleteColumn={() => runTableMenuAction(deleteColumn)}
+              onDeleteRow={() => runTableMenuAction(deleteRow)}
+              onMoveColumnLeft={() =>
+                runTableMenuAction(() => moveColumn("left"))
+              }
+              onMoveColumnRight={() =>
+                runTableMenuAction(() => moveColumn("right"))
+              }
             />
-            <DeferredColorInput
-              ref={colorInputRef}
-              aria-hidden="true"
-              tabIndex={-1}
-              value={activeCellFillColor}
-              onCommit={updateActiveCellFillColor}
-              style={hiddenColorInputStyle}
-            />
-          </button>
-          <Divider />
-          <button
-            type="button"
-            aria-label="Table alignment"
-            title={`Align ${nextAlignmentLabel(activeCellAlignment)}`}
-            style={iconButtonStyle}
-            onClick={cycleActiveCellAlignment}
-          >
-            <ActiveCellAlignmentIcon size={20} strokeWidth={2.25} />
-          </button>
-          <Divider />
-          <button
-            type="button"
-            aria-label="Table actions"
-            aria-expanded={menuOpen}
-            title="Table actions"
-            style={{
-              ...iconButtonStyle,
-              ...(menuOpen ? activeButtonStyle : null),
-            }}
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <MoreVertical size={20} strokeWidth={2.4} />
-          </button>
-          <Divider />
-          <button
-            type="button"
-            aria-label="Delete row"
-            title="Delete row"
-            disabled={!canDeleteRow}
-            style={{
-              ...iconButtonStyle,
-              opacity: canDeleteRow ? 1 : 0.36,
-              cursor: canDeleteRow ? "pointer" : "not-allowed",
-            }}
-            onClick={deleteRow}
-          >
-            <Trash2 size={20} strokeWidth={2.25} />
-          </button>
-          <TableToolbarMenu
-            canAddColumn={canAddColumn}
-            canAddRow={canAddRow}
-            canDeleteColumn={canDeleteColumn}
-            canDeleteRow={canDeleteRow}
-            canMoveColumnLeft={canMoveColumnLeft}
-            canMoveColumnRight={canMoveColumnRight}
-            menuOpen={menuOpen}
-            onAddColumn={() => runMenuAction(addColumn)}
-            onAddRow={() => runMenuAction(addRow)}
-            onDeleteColumn={() => runMenuAction(deleteColumn)}
-            onDeleteRow={() => runMenuAction(deleteRow)}
-            onMoveColumnLeft={() => runMenuAction(() => moveColumn("left"))}
-            onMoveColumnRight={() => runMenuAction(() => moveColumn("right"))}
-          />
+          </div>
+          {selectionActions ? (
+            <div style={componentToolbarShellStyle}>
+              <ComponentSelectionDropdown
+                open={componentMenuOpen}
+                onOpenChange={(open) => {
+                  if (open) setTableMenuOpen(false);
+                  setComponentMenuOpen(open);
+                }}
+                selectionActions={
+                  selectionActions
+                    ? {
+                      ...selectionActions,
+                      onDelete: () =>
+                        runComponentMenuAction(selectionActions.onDelete),
+                      onDuplicate: () =>
+                        runComponentMenuAction(selectionActions.onDuplicate),
+                      onLayerAction: selectionActions.onLayerAction
+                        ? (action) =>
+                          runComponentMenuAction(() =>
+                            selectionActions.onLayerAction?.(action),
+                          )
+                        : undefined,
+                    }
+                    : null
+                }
+              />
+            </div>
+          ) : null}
         </div>
       </FloatingToolbar>
       <TableEdgeAddButtons
@@ -398,6 +500,129 @@ function TableToolbarMenu({
   );
 }
 
+function ComponentSelectionDropdown({
+  open,
+  onOpenChange,
+  selectionActions,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  selectionActions?: TableSelectionActions | null;
+}) {
+  if (!selectionActions) return null;
+  const hasLayerActions =
+    selectionActions.onLayerAction &&
+    typeof selectionActions.componentIndex === "number" &&
+    typeof selectionActions.componentCount === "number";
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          title="More"
+          aria-label="More"
+          className={cn(
+            "grid h-8 w-8 place-items-center rounded-[4px] border-0 bg-transparent font-manrope text-black hover:bg-[#F6F6F9]",
+            open && "bg-[#F6F6F9]",
+          )}
+        >
+          <MoreVertical
+            size={16}
+            className="text-black"
+            strokeWidth={1.33}
+            aria-hidden
+          />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        data-template-v2-floating-toolbar="true"
+        data-inline-edit-ignore="true"
+        align="end"
+        sideOffset={12}
+        collisionPadding={8}
+        onMouseDown={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+        className="z-[10001] box-border w-[206px] rounded-[12px] border border-[#EDEEEF] bg-white py-2 font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] shadow-[0_6px_18px_rgba(16,24,40,0.08)]"
+      >
+        <ComponentDropdownItem
+          strong
+          icon={Copy}
+          label="Duplicate"
+          onClick={selectionActions.onDuplicate}
+        />
+        {hasLayerActions
+          ? TABLE_COMPONENT_LAYER_ACTIONS.map(({ action, label, shortcut }) => (
+            <ComponentDropdownItem
+              key={action}
+              disabled={
+                !canApplyComponentLayerAction(
+                  selectionActions.componentIndex ?? -1,
+                  selectionActions.componentCount ?? 0,
+                  action,
+                )
+              }
+              label={label}
+              shortcut={shortcut}
+              onClick={() => selectionActions.onLayerAction?.(action)}
+            />
+          ))
+          : null}
+        <DropdownMenuSeparator className="my-1 h-px bg-[#E7E8EC]" />
+        <ComponentDropdownItem
+          strong
+          icon={Trash2}
+          label={selectionActions.deleteLabel ?? "Delete Component"}
+          onClick={selectionActions.onDelete}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function ComponentDropdownItem({
+  disabled,
+  icon: Icon = undefined,
+  label,
+  shortcut,
+  strong,
+  onClick,
+}: {
+  disabled?: boolean;
+  icon?: LucideIcon;
+  label: string;
+  shortcut?: string;
+  strong?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      disabled={disabled}
+      onSelect={onClick}
+      style={{ cursor: disabled ? "not-allowed" : "pointer" }}
+      className={cn(
+        "flex w-full cursor-default items-center gap-2 rounded-none px-4 py-2.5 text-left font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] outline-none hover:bg-[#F6F6F9] focus:bg-[#F6F6F9] focus:text-[#191919]",
+        strong && "text-black",
+        disabled &&
+          "cursor-not-allowed text-[#A0A3AD] hover:bg-transparent focus:bg-transparent data-[disabled]:opacity-100",
+      )}
+    >
+      {Icon ? <Icon size={16} strokeWidth={1.33} aria-hidden /> : null}
+      <span>{label}</span>
+      {shortcut ? (
+        <span
+          className={cn(
+            "ml-auto inline-flex px-1.5 py-1 items-center justify-center rounded-[6px] bg-[#F6F6F9] font-manrope text-[14px] font-normal leading-none tracking-[0.14px] text-[#808080]",
+            disabled && "bg-[#F7F7FA] text-[#B0B3BB]",
+          )}
+        >
+          {shortcut}
+        </span>
+      ) : null}
+    </DropdownMenuItem>
+  );
+}
+
 function TableEdgeAddButtons({
   box,
   canAddColumn,
@@ -459,11 +684,15 @@ function MenuItem({
   disabled = false,
   icon,
   label,
+  shortcut,
+  strong = false,
   onClick,
 }: {
   disabled?: boolean;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   label: string;
+  shortcut?: string;
+  strong?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -472,6 +701,7 @@ function MenuItem({
       disabled={disabled}
       style={{
         ...menuItemStyle,
+        ...(strong ? strongMenuItemStyle : null),
         opacity: disabled ? 0.38 : 1,
         cursor: disabled ? "not-allowed" : "pointer",
       }}
@@ -480,8 +710,9 @@ function MenuItem({
         onClick();
       }}
     >
-      <span style={menuIconStyle}>{icon}</span>
+      {icon ? <span style={menuIconStyle}>{icon}</span> : null}
       <span>{label}</span>
+      {shortcut ? <span style={menuShortcutStyle}>{shortcut}</span> : null}
     </button>
   );
 }
@@ -512,6 +743,33 @@ const toolbarShellStyle: CSSProperties = {
   boxShadow: "0 12px 32px rgba(15, 23, 42, 0.18)",
   fontFamily:
     "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
+
+const toolbarGroupStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+};
+
+const componentToolbarShellStyle: CSSProperties = {
+  position: "relative",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  boxSizing: "border-box",
+  width: 44,
+  height: 44,
+  gap: 6,
+  padding: 6,
+  borderRadius: 6,
+  background: "#FFFFFF",
+  boxShadow: "0 0 4px rgba(0, 0, 0, 0.15)",
+  color: "#191919",
+  fontFamily:
+    "var(--font-manrope), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+  fontSize: 14,
+  fontWeight: 500,
+  lineHeight: "16px",
 };
 
 const iconButtonStyle: CSSProperties = {
@@ -583,6 +841,10 @@ const menuItemStyle: CSSProperties = {
   textAlign: "left",
 };
 
+const strongMenuItemStyle: CSSProperties = {
+  color: "#000000",
+};
+
 const menuIconStyle: CSSProperties = {
   width: 22,
   height: 22,
@@ -590,6 +852,17 @@ const menuIconStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   color: "#111827",
+};
+
+const menuShortcutStyle: CSSProperties = {
+  marginLeft: "auto",
+  padding: "4px 6px",
+  borderRadius: 6,
+  background: "#F6F6F9",
+  color: "#808080",
+  fontSize: 12,
+  lineHeight: 1,
+  whiteSpace: "nowrap",
 };
 
 const menuDividerStyle: CSSProperties = {

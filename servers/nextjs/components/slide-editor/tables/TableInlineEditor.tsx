@@ -61,7 +61,7 @@ export function TableInlineEditor({
   const tableFont = elementFont(element);
   const isHeader = rowIndex === 0;
   const cell = rows[rowIndex]?.[colIndex] ?? { runs: [] };
-  const cellBackground = tableCellBackground(cell, isHeader);
+  const cellBackground = tableCellBackground(cell);
   const font = readableTableCellFont(
     tableCellFont(cell, tableFont, isHeader),
     cellBackground,
@@ -275,13 +275,12 @@ function readableTableCellRun(
   };
 }
 
-function tableCellBackground(cell: TableCell, isHeader: boolean) {
+function tableCellBackground(cell: TableCell) {
   const fill =
     cell.color?.color ??
     (cell as TableCell & { fill?: { color?: string | null } | null }).fill
-      ?.color ??
-    (isHeader ? "F7F7FA" : "FFFFFF");
-  return withHash(fill) ?? (isHeader ? "#F7F7FA" : "#FFFFFF");
+      ?.color;
+  return fill ? withHash(fill) : "transparent";
 }
 
 function normalizedTextRuns(

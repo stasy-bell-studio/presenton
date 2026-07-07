@@ -413,6 +413,7 @@ function makeSimpleTableElement(): SlideElement {
     wrap: "none",
   };
   const headerFill: Fill = { color: "#F2F4F7", opacity: 1 };
+  const bodyFill: Fill = { color: "#FFFFFF", opacity: 1 };
 
   return {
     type: "table",
@@ -426,14 +427,14 @@ function makeSimpleTableElement(): SlideElement {
     ],
     rows: [
       [
-        makeTableCell({ text: "Activation", font: baseFont }),
-        makeTableCell({ text: "68%", font: baseFont }),
-        makeTableCell({ text: "75%", font: baseFont }),
+        makeTableCell({ text: "Activation", font: baseFont, color: bodyFill }),
+        makeTableCell({ text: "68%", font: baseFont, color: bodyFill }),
+        makeTableCell({ text: "75%", font: baseFont, color: bodyFill }),
       ],
       [
-        makeTableCell({ text: "Retention", font: baseFont }),
-        makeTableCell({ text: "42%", font: baseFont }),
-        makeTableCell({ text: "50%", font: baseFont }),
+        makeTableCell({ text: "Retention", font: baseFont, color: bodyFill }),
+        makeTableCell({ text: "42%", font: baseFont, color: bodyFill }),
+        makeTableCell({ text: "50%", font: baseFont, color: bodyFill }),
       ],
     ],
     min_columns: 2,

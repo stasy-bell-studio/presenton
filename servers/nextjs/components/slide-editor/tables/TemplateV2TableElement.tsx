@@ -55,9 +55,7 @@ export function TemplateV2TableElement({
             asRecord(cell.font) ?? asRecord(firstRun.font),
             font,
           );
-          const fill =
-            fillColor(cell.fill ?? cell.color) ??
-            (rowIndex === 0 ? "#F2F4F7" : "#FFFFFF");
+          const fill = fillColor(cell.fill ?? cell.color);
           const runs = readableTableCellRuns(
             rawTableCellRuns(cell, cellFont),
             fill,
@@ -112,7 +110,7 @@ export function TemplateV2TableElement({
               <Rect
                 width={cellW}
                 height={cellH}
-                fill={fill}
+                fill={fill ?? "rgba(0,0,0,0)"}
                 stroke={strokeColor(cell.stroke) ?? "#D0D5DD"}
                 strokeWidth={strokeWidth(cell.stroke) || 1}
               />
