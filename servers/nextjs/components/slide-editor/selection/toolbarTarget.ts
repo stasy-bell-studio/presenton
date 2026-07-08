@@ -3,6 +3,11 @@ import {
   type TemplateV2ToolbarElement,
 } from "@/components/slide-editor/layout/LayoutToolbar";
 import { findFirstComponentLayoutElement } from "@/components/slide-editor/layout/layoutToolbarTarget";
+import { rawChartToEditorChart } from "@/components/slide-editor/model/chart-model";
+import type {
+  ChartSlideElement,
+  TableSlideElement,
+} from "@/components/slide-editor/state/state";
 import type {
   TemplateV2ToolbarBox,
   TemplateV2ToolbarElementSelection,
@@ -14,6 +19,18 @@ type RawRecord = Record<string, unknown>;
 export type TemplateV2SelectionToolbarTarget = {
   selection: TemplateV2ToolbarElementSelection;
   element: TemplateV2ToolbarElement;
+  box: TemplateV2ToolbarBox;
+};
+
+export type TemplateV2ChartSelectionToolbarTarget = {
+  selection: TemplateV2ToolbarElementSelection;
+  element: ChartSlideElement;
+  box: TemplateV2ToolbarBox;
+};
+
+export type TemplateV2TableSelectionToolbarTarget = {
+  selection: TemplateV2ToolbarElementSelection;
+  element: TableSlideElement;
   box: TemplateV2ToolbarBox;
 };
 
@@ -40,7 +57,11 @@ export function getTemplateV2SelectionToolbarTarget({
     selectedBox &&
     isTemplateV2LayoutElement(selectedElement)
   ) {
-    return { selection, element: selectedElement as TemplateV2ToolbarElement, box: selectedBox };
+    return {
+      selection,
+      element: selectedElement as TemplateV2ToolbarElement,
+      box: selectedBox,
+    };
   }
 
   if (selection?.kind !== "component" || !selectedComponent) return null;
@@ -61,6 +82,194 @@ export function getTemplateV2SelectionToolbarTarget({
     : null;
 }
 
+export function getTemplateV2SelectionChartToolbarTarget({
+  selection,
+  selectedBox,
+  selectedComponent,
+  selectedElement,
+  absoluteBoxForSelection,
+}: SelectionToolbarTargetOptions): TemplateV2ChartSelectionToolbarTarget | null {
+  if (
+    selection?.kind === "element" &&
+    selectedElement &&
+    selectedBox &&
+    isTemplateV2ChartElement(selectedElement)
+  ) {
+    return {
+      selection,
+      element: chartToolbarElement(selectedElement, selectedBox),
+      box: selectedBox,
+    };
+  }
+
+  if (selection?.kind !== "component" || !selectedComponent) return null;
+
+  const chartRoot = findFirstComponentChartElement(
+    readArray(selectedComponent.elements),
+  );
+  if (!chartRoot) return null;
+
+  const elementSelection: TemplateV2ToolbarElementSelection = {
+    kind: "element",
+    componentIndex: selection.componentIndex,
+    elementPath: chartRoot.elementPath,
+  };
+  const box = absoluteBoxForSelection(elementSelection);
+  return box
+    ? {
+        selection: elementSelection,
+        element: chartToolbarElement(chartRoot.element, box),
+        box,
+      }
+    : null;
+}
+
+export function getTemplateV2SelectionTableToolbarTarget({
+  selection,
+  selectedBox,
+  selectedComponent,
+  selectedElement,
+  absoluteBoxForSelection,
+}: SelectionToolbarTargetOptions): TemplateV2TableSelectionToolbarTarget | null {
+  if (
+    selection?.kind === "element" &&
+    selectedElement &&
+    selectedBox &&
+    isTemplateV2TableElement(selectedElement)
+  ) {
+    return {
+      selection,
+      element: tableToolbarElement(selectedElement, selectedBox),
+      box: selectedBox,
+    };
+  }
+
+  if (selection?.kind !== "component" || !selectedComponent) return null;
+
+  const tableRoot = findFirstComponentTableElement(
+    readArray(selectedComponent.elements),
+  );
+  if (!tableRoot) return null;
+
+  const elementSelection: TemplateV2ToolbarElementSelection = {
+    kind: "element",
+    componentIndex: selection.componentIndex,
+    elementPath: tableRoot.elementPath,
+  };
+  const box = absoluteBoxForSelection(elementSelection);
+  return box
+    ? {
+        selection: elementSelection,
+        element: tableToolbarElement(tableRoot.element, box),
+        box,
+      }
+    : null;
+}
+
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
+}
+
+function asRecord(value: unknown): RawRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as RawRecord)
+    : null;
+}
+
+function childElements(element: RawRecord): unknown[] {
+  if (Array.isArray(element.children)) return element.children;
+  if (Array.isArray(element.elements)) return element.elements;
+  if (asRecord(element.child)) return [element.child];
+  if (asRecord(element.item)) return [element.item];
+  return [];
+}
+
+function isTemplateV2ChartElement(
+  element: RawRecord | null | undefined,
+): element is RawRecord {
+  return element?.type === "chart";
+}
+
+function isTemplateV2TableElement(
+  element: RawRecord | null | undefined,
+): element is RawRecord {
+  return element?.type === "table";
+}
+
+function chartToolbarElement(
+  element: RawRecord,
+  box: TemplateV2ToolbarBox,
+): ChartSlideElement {
+  return {
+    ...rawChartToEditorChart(element),
+    position: {
+      x: box.x,
+      y: box.y,
+    },
+    size: {
+      width: box.width,
+      height: box.height,
+    },
+  };
+}
+
+function tableToolbarElement(
+  element: RawRecord,
+  box: TemplateV2ToolbarBox,
+): TableSlideElement {
+  return {
+    ...element,
+    type: "table",
+    position: {
+      x: box.x,
+      y: box.y,
+    },
+    size: {
+      width: box.width,
+      height: box.height,
+    },
+    columns: readArray(element.columns) as TableSlideElement["columns"],
+    rows: readArray(element.rows).map((row) => readArray(row)) as
+      TableSlideElement["rows"],
+  };
+}
+
+function findFirstComponentChartElement(
+  elements: unknown[],
+  parentPath: number[] = [],
+): { element: RawRecord; elementPath: number[] } | null {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = asRecord(elements[index]);
+    if (!element) continue;
+    const elementPath = [...parentPath, index];
+    if (isTemplateV2ChartElement(element)) {
+      return { element, elementPath };
+    }
+    const nested = findFirstComponentChartElement(
+      childElements(element),
+      elementPath,
+    );
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function findFirstComponentTableElement(
+  elements: unknown[],
+  parentPath: number[] = [],
+): { element: RawRecord; elementPath: number[] } | null {
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = asRecord(elements[index]);
+    if (!element) continue;
+    const elementPath = [...parentPath, index];
+    if (isTemplateV2TableElement(element)) {
+      return { element, elementPath };
+    }
+    const nested = findFirstComponentTableElement(
+      childElements(element),
+      elementPath,
+    );
+    if (nested) return nested;
+  }
+  return null;
 }

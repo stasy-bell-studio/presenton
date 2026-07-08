@@ -1,4 +1,8 @@
-import type { TemplateV2SelectionToolbarTarget } from "@/components/slide-editor/selection/toolbarTarget";
+import type {
+  TemplateV2ChartSelectionToolbarTarget,
+  TemplateV2SelectionToolbarTarget,
+  TemplateV2TableSelectionToolbarTarget,
+} from "@/components/slide-editor/selection/toolbarTarget";
 import type {
   TemplateV2ToolbarBox,
   TemplateV2ToolbarSelection,
@@ -30,34 +34,45 @@ const TOOLBAR_GAP = 8;
 const TOOLBAR_MARGIN = 8;
 
 export function getTemplateV2SelectionToolbarAnchorBox({
+  chartTarget,
   layoutTarget,
   selectedBox,
   selection,
+  tableTarget,
 }: {
+  chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   selectedBox: TemplateV2ToolbarBox | null;
   selection: TemplateV2ToolbarSelection;
+  tableTarget?: TemplateV2TableSelectionToolbarTarget | null;
 }) {
   return selection?.kind === "component"
     ? selectedBox
-    : layoutTarget?.box ?? null;
+    : layoutTarget?.box ?? chartTarget?.box ?? tableTarget?.box ?? null;
 }
 
 export function hasTemplateV2SelectionToolbar({
   anchorBox,
+  chartTarget,
   isEditMode,
   layoutTarget,
   selection,
+  tableTarget,
 }: {
   anchorBox: TemplateV2ToolbarBox | null;
+  chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
   isEditMode: boolean;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   selection: TemplateV2ToolbarSelection;
+  tableTarget?: TemplateV2TableSelectionToolbarTarget | null;
 }) {
   return Boolean(
     isEditMode &&
       anchorBox &&
-      (selection?.kind === "component" || layoutTarget),
+      (selection?.kind === "component" ||
+        layoutTarget ||
+        chartTarget ||
+        tableTarget),
   );
 }
 
@@ -67,8 +82,10 @@ export function getTemplateV2SelectionToolbarPosition({
   root,
 }: {
   anchorBox: TemplateV2ToolbarBox | null;
+  chartTarget?: TemplateV2ChartSelectionToolbarTarget | null;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   root: HTMLElement | null;
+  tableTarget?: TemplateV2TableSelectionToolbarTarget | null;
 }) {
   if (!anchorBox) return null;
   return viewportToolbarPosition({

@@ -15,42 +15,53 @@ import {
 import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
 
 const DEFAULT_CHART_TOOLBAR_SIZE = { width: 2.5, height: 2.5 };
+const CHART_TYPE_OPTIONS: Array<{
+  label: string;
+  value: ChartSlideElement["chart_type"];
+}> = [
+  { value: "bar", label: "Bar Chart" },
+  { value: "horizontal_bar", label: "Horizontal Bar" },
+  { value: "stacked_bar", label: "Stacked Bar" },
+  { value: "horizontal_stacked_bar", label: "Horizontal Stack Bar" },
+  { value: "line", label: "Line Chart" },
+  { value: "area", label: "Area Chart" },
+  { value: "pie", label: "Pie Chart" },
+  { value: "donut", label: "Donut Chart" },
+  { value: "scatter", label: "Scatter Chart" },
+  { value: "bubble", label: "Bubble Chart" },
+  { value: "radar", label: "Radar Chart" },
+  { value: "polar_area", label: "Polar Area" },
+];
 
-export function ChartToolbar({
-  anchorBox,
+export function ChartToolbarControls({
   element,
-  index,
-  scale,
+  paletteOpen: controlledPaletteOpen,
   onChange,
+  onPaletteOpenChange,
 }: {
-  anchorBox?: FloatingToolbarBox | null;
   element: ChartSlideElement;
-  index: number;
-  scale: number;
-  onChange: (index: number, element: ChartSlideElement) => void;
+  paletteOpen?: boolean;
+  onChange: (element: ChartSlideElement) => void;
+  onPaletteOpenChange?: (open: boolean) => void;
 }) {
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [uncontrolledPaletteOpen, setUncontrolledPaletteOpen] =
+    useState(false);
   const [activeColorIndex, setActiveColorIndex] = useState(0);
+  const paletteOpen = controlledPaletteOpen ?? uncontrolledPaletteOpen;
+  const setPaletteOpen = (open: boolean) => {
+    if (onPaletteOpenChange) {
+      onPaletteOpenChange(open);
+      return;
+    }
+    setUncontrolledPaletteOpen(open);
+  };
   const colorTargets = resolvedChartColorTargets(element);
   const activeTarget =
     colorTargets.find((target) => target.index === activeColorIndex) ??
     colorTargets[0];
 
   return (
-    <FloatingToolbar
-      anchorBox={
-        anchorBox ?? {
-          x: (element.position?.x ?? 0) * scale,
-          y: (element.position?.y ?? 0) * scale,
-          width: (element.size?.width ?? DEFAULT_CHART_TOOLBAR_SIZE.width) * scale,
-          height:
-            (element.size?.height ?? DEFAULT_CHART_TOOLBAR_SIZE.height) * scale,
-        }
-      }
-      fallbackWidth={220}
-      inlineEditIgnore
-      style={inlineStyles.toolbar}
-    >
+    <>
       <div
         style={{
           display: "inline-flex",
@@ -66,7 +77,7 @@ export function ChartToolbar({
           title="Chart type"
           value={element.chart_type}
           onChange={(event) =>
-            onChange(index, {
+            onChange({
               ...element,
               chart_type: event.target.value as ChartSlideElement["chart_type"],
             })
@@ -78,18 +89,11 @@ export function ChartToolbar({
             paddingLeft: 0,
           }}
         >
-          <option value="bar">Bar Chart</option>
-          <option value="horizontal_bar">Horizontal Bar</option>
-          <option value="stacked_bar">Stacked Bar</option>
-          <option value="horizontal_stacked_bar">Horizontal Stack Bar</option>
-          <option value="line">Line Chart</option>
-          <option value="area">Area Chart</option>
-          <option value="pie">Pie Chart</option>
-          <option value="donut">Donut Chart</option>
-          <option value="scatter">Scatter Chart</option>
-          <option value="bubble">Bubble Chart</option>
-          <option value="radar">Radar Chart</option>
-          <option value="polar_area">Polar Area</option>
+          {CHART_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
         </select>
       </div>
 
@@ -99,7 +103,7 @@ export function ChartToolbar({
           aria-expanded={paletteOpen}
           aria-label="Chart colors"
           title="Chart colors"
-          onClick={() => setPaletteOpen((current) => !current)}
+          onClick={() => setPaletteOpen(!paletteOpen)}
           style={{
             ...inlineStyles.iconButton,
             ...(paletteOpen ? inlineStyles.iconButtonActive : {}),
@@ -114,11 +118,10 @@ export function ChartToolbar({
               onAddColor={() => {
                 const nextIndex = Math.min(11, colorTargets.length);
                 setActiveColorIndex(nextIndex);
-                onChange(index, appendChartColorTarget(element));
+                onChange(appendChartColorTarget(element));
               }}
               onChange={(color) =>
                 onChange(
-                  index,
                   updateChartColorTarget(element, activeTarget.index, color),
                 )
               }
@@ -129,6 +132,42 @@ export function ChartToolbar({
           </FloatingToolbarPanel>
         ) : null}
       </div>
+    </>
+  );
+}
+
+export function ChartToolbar({
+  anchorBox,
+  element,
+  index,
+  scale,
+  onChange,
+}: {
+  anchorBox?: FloatingToolbarBox | null;
+  element: ChartSlideElement;
+  index: number;
+  scale: number;
+  onChange: (index: number, element: ChartSlideElement) => void;
+}) {
+  return (
+    <FloatingToolbar
+      anchorBox={
+        anchorBox ?? {
+          x: (element.position?.x ?? 0) * scale,
+          y: (element.position?.y ?? 0) * scale,
+          width: (element.size?.width ?? DEFAULT_CHART_TOOLBAR_SIZE.width) * scale,
+          height:
+            (element.size?.height ?? DEFAULT_CHART_TOOLBAR_SIZE.height) * scale,
+        }
+      }
+      fallbackWidth={220}
+      inlineEditIgnore
+      style={inlineStyles.toolbar}
+    >
+      <ChartToolbarControls
+        element={element}
+        onChange={(element) => onChange(index, element)}
+      />
     </FloatingToolbar>
   );
 }

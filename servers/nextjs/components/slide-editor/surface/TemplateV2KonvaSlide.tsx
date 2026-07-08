@@ -41,6 +41,7 @@ import type {
 import {
   useTableCellSelection,
   useTemplateV2InlineEditing,
+  type ChartSlideElement,
   type TableSlideElement,
 } from "@/components/slide-editor/state/state";
 import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar";
@@ -61,6 +62,7 @@ import { useTemplateV2Clipboard } from "@/components/slide-editor/clipboard/useC
 import {
   isTemplateV2FlowLayoutElement,
   isTemplateV2LayoutElement,
+  type TemplateV2SelectionComponentActions,
 } from "@/components/slide-editor/layout/LayoutToolbar";
 import { TemplateV2SelectionToolbar } from "@/components/slide-editor/selection/SelectionToolbar";
 import {
@@ -69,7 +71,11 @@ import {
   getTemplateV2SelectionToolbarPosition,
   hasTemplateV2SelectionToolbar,
 } from "@/components/slide-editor/selection/toolbarPosition";
-import { getTemplateV2SelectionToolbarTarget } from "@/components/slide-editor/selection/toolbarTarget";
+import {
+  getTemplateV2SelectionChartToolbarTarget,
+  getTemplateV2SelectionTableToolbarTarget,
+  getTemplateV2SelectionToolbarTarget,
+} from "@/components/slide-editor/selection/toolbarTarget";
 import { updateComponentLayoutElement } from "@/components/slide-editor/layout/layoutResize";
 import {
   reorderComponentLayer,
@@ -302,6 +308,50 @@ function TemplateV2KonvaSlideComponent({
       }),
     [selectedBox, selectedComponent, selectedElement, selection, uiDraft],
   );
+  const chartToolbarTarget = useMemo(
+    () =>
+      layoutToolbarTarget
+        ? null
+        : getTemplateV2SelectionChartToolbarTarget({
+            selection,
+            selectedBox,
+            selectedComponent,
+            selectedElement,
+            absoluteBoxForSelection: (targetSelection) =>
+              absoluteBoxForSelection(uiDraft, targetSelection),
+          }),
+    [
+      layoutToolbarTarget,
+      selectedBox,
+      selectedComponent,
+      selectedElement,
+      selection,
+      uiDraft,
+    ],
+  );
+  const tableToolbarTarget = useMemo(
+    () =>
+      layoutToolbarTarget || chartToolbarTarget || editingTableCell
+        ? null
+        : getTemplateV2SelectionTableToolbarTarget({
+            selection,
+            selectedBox,
+            selectedComponent,
+            selectedElement,
+            absoluteBoxForSelection: (targetSelection) =>
+              absoluteBoxForSelection(uiDraft, targetSelection),
+          }),
+    [
+      chartToolbarTarget,
+      editingTableCell,
+      layoutToolbarTarget,
+      selectedBox,
+      selectedComponent,
+      selectedElement,
+      selection,
+      uiDraft,
+    ],
+  );
   const toolbarElement = useMemo(
     () => {
       if (!selectedElement || !selectedBox) return null;
@@ -352,20 +402,26 @@ function TemplateV2KonvaSlideComponent({
     editingTableCell,
   );
   const floatingToolbarAnchorBox = getTemplateV2SelectionToolbarAnchorBox({
+    chartTarget: chartToolbarTarget,
     layoutTarget: layoutToolbarTarget,
     selectedBox,
     selection,
+    tableTarget: tableToolbarTarget,
   });
   const hasFloatingToolbar = hasTemplateV2SelectionToolbar({
     anchorBox: floatingToolbarAnchorBox,
+    chartTarget: chartToolbarTarget,
     isEditMode,
     layoutTarget: layoutToolbarTarget,
     selection,
+    tableTarget: tableToolbarTarget,
   });
   const selectionToolbarPosition = getTemplateV2SelectionToolbarPosition({
     anchorBox: floatingToolbarAnchorBox,
+    chartTarget: chartToolbarTarget,
     layoutTarget: layoutToolbarTarget,
     root: rootElement,
+    tableTarget: tableToolbarTarget,
   });
   const selectionToolbarBounds =
     getTemplateV2SelectionToolbarBounds(rootElement);
@@ -383,6 +439,12 @@ function TemplateV2KonvaSlideComponent({
     () => surfaceSelectionTarget(uiDraft, selection, surfaceSlideIndex),
     [selection, surfaceSlideIndex, uiDraft],
   );
+  const toolbarSelectedTableCell =
+    tableToolbarTarget &&
+    selectedTableCell?.elementPath ===
+      keyForSelection(tableToolbarTarget.selection)
+      ? selectedTableCell
+      : null;
   useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
@@ -1099,6 +1161,42 @@ function TemplateV2KonvaSlideComponent({
     [commitUi, layoutToolbarTarget, updateComponent],
   );
 
+  const applyChartToolbarElementChange = useCallback(
+    (editorElement: ChartSlideElement) => {
+      if (!chartToolbarTarget) return;
+      const current = getElementAtSelection(
+        currentUiRef.current,
+        chartToolbarTarget.selection,
+      );
+      const box = absoluteBoxForSelection(
+        currentUiRef.current,
+        chartToolbarTarget.selection,
+      );
+      if (!current || !box) return;
+      const next = mergeEditorToolbarElement(current, editorElement, box);
+      updateElement(chartToolbarTarget.selection, () => next);
+    },
+    [chartToolbarTarget, updateElement],
+  );
+
+  const applyTableToolbarElementChange = useCallback(
+    (editorElement: TableSlideElement) => {
+      if (!tableToolbarTarget) return;
+      const current = getElementAtSelection(
+        currentUiRef.current,
+        tableToolbarTarget.selection,
+      );
+      const box = absoluteBoxForSelection(
+        currentUiRef.current,
+        tableToolbarTarget.selection,
+      );
+      if (!current || !box) return;
+      const next = mergeEditorToolbarElement(current, editorElement, box);
+      updateElement(tableToolbarTarget.selection, () => next);
+    },
+    [tableToolbarTarget, updateElement],
+  );
+
   const ungroupComponentAtIndex = useCallback((componentIndex: number) => {
     if (componentIndex < 0) return;
     const component = asRecord(
@@ -1177,42 +1275,33 @@ function TemplateV2KonvaSlideComponent({
     [reorderComponentLayerAtIndex, selection],
   );
 
-  const tableSelectionActions = useMemo(() => {
-    if (
-      selection?.kind !== "element" ||
-      readString(selectedElement?.type) !== "table"
-    ) {
-      return null;
-    }
-
-    if (selection.componentIndex >= 0) {
-      const componentIndex = selection.componentIndex;
+  const targetComponentActions =
+    useMemo<TemplateV2SelectionComponentActions | null>(() => {
+      const componentIndex =
+        tableToolbarTarget?.selection.componentIndex ??
+        chartToolbarTarget?.selection.componentIndex;
+      if (componentIndex == null || componentIndex < 0) return null;
+      const component = asRecord(readArray(uiDraft.components)[componentIndex]);
       return {
+        canUngroup: canUngroupTemplateV2Component(component),
         componentCount: components.length,
         componentIndex,
-        deleteLabel: "Delete Component",
         onDelete: () => deleteComponentAtIndex(componentIndex),
         onDuplicate: () => duplicateComponentAtIndex(componentIndex),
         onLayerAction: (action: ComponentLayerAction) =>
           reorderComponentLayerAtIndex(componentIndex, action),
+        onUngroup: () => ungroupComponentAtIndex(componentIndex),
       };
-    }
-
-    return {
-      deleteLabel: "Delete Table",
-      onDelete: deleteSelection,
-      onDuplicate: duplicateSelection,
-    };
-  }, [
-    components.length,
-    deleteComponentAtIndex,
-    deleteSelection,
-    duplicateComponentAtIndex,
-    duplicateSelection,
-    reorderComponentLayerAtIndex,
-    selectedElement,
-    selection,
-  ]);
+    }, [
+      chartToolbarTarget,
+      components.length,
+      deleteComponentAtIndex,
+      duplicateComponentAtIndex,
+      reorderComponentLayerAtIndex,
+      tableToolbarTarget,
+      uiDraft.components,
+      ungroupComponentAtIndex,
+    ]);
 
   const openImageUpload = useCallback(
     (elementSelection: ElementSelection) => {
@@ -1614,17 +1703,23 @@ function TemplateV2KonvaSlideComponent({
         anchorBox={floatingToolbarAnchorBox}
         canUngroupComponent={canUngroupSelectedComponent}
         canUngroupLayoutTarget={canUngroupLayoutTargetComponent}
+        chartTarget={chartToolbarTarget}
         componentCount={components.length}
         isEditMode={isEditMode}
         layoutTarget={layoutToolbarTarget}
         position={selectionToolbarPosition}
+        selectedTableCell={toolbarSelectedTableCell}
         selection={selection}
         selectionKey={keyForSelection(selection)}
+        tableTarget={tableToolbarTarget}
+        targetComponentActions={targetComponentActions}
         toolbarBounds={selectionToolbarBounds}
+        onChartChange={applyChartToolbarElementChange}
         onDeleteSelection={deleteSelection}
         onDuplicateSelection={duplicateSelection}
         onLayoutChange={applyLayoutElementChange}
         onLayerAction={reorderSelectedComponentLayer}
+        onTableChange={applyTableToolbarElementChange}
         onUngroupComponent={ungroupSelectedComponent}
         onUngroupLayoutTarget={ungroupLayoutTargetComponent}
       />
@@ -1633,6 +1728,8 @@ function TemplateV2KonvaSlideComponent({
         selectedElement &&
         selectedBox &&
         toolbarElement &&
+        !chartToolbarTarget &&
+        !tableToolbarTarget &&
         !isTemplateV2LayoutElement(selectedElement) &&
         !isRawIconElement(selectedElement) &&
         !(editingTableCell && readString(selectedElement.type) === "table") ? (
@@ -1643,7 +1740,6 @@ function TemplateV2KonvaSlideComponent({
           path={keyForSelection(selection)}
           scale={1}
           selectedTableCell={selectedTableCell}
-          tableSelectionActions={tableSelectionActions}
           templateFonts={templateFonts}
           textSelectionRange={
             inlineEdit &&

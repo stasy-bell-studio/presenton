@@ -8,7 +8,7 @@ import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
 export interface PresentationData {
   id: string;
-  version?: "v1-standard" | "v2-standard";
+
   language: string;
   layout: any;
   n_slides: number;
