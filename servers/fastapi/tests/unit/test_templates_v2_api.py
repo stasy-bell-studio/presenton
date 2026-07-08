@@ -12,6 +12,7 @@ from api.v1.ppt.endpoints.templates import (
     GenerateTemplateV2BlocksRequest,
     InitTemplateV2Request,
     PatchTemplateV2SlideLayoutRequest,
+    UpdateTemplateV2MetadataRequest,
     create_template_v2_slide_layouts,
     create_template_v2,
     delete_template_v2,
@@ -20,6 +21,7 @@ from api.v1.ppt.endpoints.templates import (
     init_template_v2,
     list_templates_v2,
     patch_template_v2_slide_layout,
+    update_template_v2_metadata,
 )
 from models.sql.template_v2 import TemplateV2
 from services.export_task_service import PptxToJsonDocument
@@ -724,6 +726,49 @@ def test_get_template_v2_returns_template(fake_async_session):
     )
 
     assert response == template
+
+
+def test_update_template_v2_metadata_updates_name_and_description(fake_async_session):
+    template_id = uuid.uuid4()
+    template = TemplateV2(name="Custom", description=None, layouts=RAW_LAYOUTS)
+    fake_async_session._get_results[template_id] = template
+
+    response = asyncio.run(
+        update_template_v2_metadata(
+            template_id,
+            UpdateTemplateV2MetadataRequest(
+                name="  Sales Template  ",
+                description="  Quarterly report deck  ",
+            ),
+            sql_session=fake_async_session,
+        )
+    )
+
+    assert response == template
+    assert template.name == "Sales Template"
+    assert template.description == "Quarterly report deck"
+    assert fake_async_session.added == [template]
+    assert fake_async_session.commit_count == 1
+
+
+def test_update_template_v2_metadata_rejects_blank_name(fake_async_session):
+    template_id = uuid.uuid4()
+    template = TemplateV2(name="Custom", layouts=RAW_LAYOUTS)
+    fake_async_session._get_results[template_id] = template
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            update_template_v2_metadata(
+                template_id,
+                UpdateTemplateV2MetadataRequest(name="   "),
+                sql_session=fake_async_session,
+            )
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Template name is required"
+    assert template.name == "Custom"
+    assert fake_async_session.commit_count == 0
 
 
 def test_delete_template_v2_deletes_template(fake_async_session):

@@ -169,6 +169,11 @@ class PatchTemplateV2SlideLayoutRequest(BaseModel):
         ]
 
 
+class UpdateTemplateV2MetadataRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
 class TemplateV2ListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -915,6 +920,32 @@ async def patch_template_v2_slide_layout(
             len(updated_layouts.layouts),
         )
         return template
+
+
+@TEMPLATES_ROUTER.patch("/{template_id}", response_model=TemplateV2Response)
+async def update_template_v2_metadata(
+    template_id: uuid.UUID = Path(...),
+    request: UpdateTemplateV2MetadataRequest = Body(...),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    template = await sql_session.get(TemplateV2, template_id)
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if "name" in request.model_fields_set:
+        name = (request.name or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Template name is required")
+        template.name = name
+
+    if "description" in request.model_fields_set:
+        description = (request.description or "").strip()
+        template.description = description or None
+
+    sql_session.add(template)
+    await sql_session.commit()
+    await sql_session.refresh(template)
+    return template
 
 
 @TEMPLATES_ROUTER.get("/{template_id}", response_model=TemplateV2Response)

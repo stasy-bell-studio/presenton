@@ -1,7 +1,39 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
+import { Loader2 } from "lucide-react";
+import type { CompiledLayout } from "@/app/hooks/compileLayout";
 import { resolveBackendAssetUrl } from "@/utils/api";
+import { TemplateV2LayoutPreview } from "../custom-template/components/EachSlide/TemplateV2LayoutPreview";
+import type { TemplateV2Layout } from "../custom-template/types";
+
+type TemplateWithData = {
+    component: React.ComponentType<{ data: any }>;
+    layoutId: string;
+    sampleData: Record<string, unknown>;
+};
+
+const LOADING_PREVIEW_KEYS = ["loading-preview-a", "loading-preview-b"];
+
+function hashKey(value: string) {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+        hash = (hash * 31 + value.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash).toString(36);
+}
+
+function templateV2PreviewKey(templateId: string, layout: TemplateV2Layout) {
+    const explicitId =
+        typeof layout.id === "string" && layout.id.trim()
+            ? layout.id.trim()
+            : "";
+    const description =
+        typeof layout.description === "string" && layout.description.trim()
+            ? layout.description.trim()
+            : "";
+    return `${templateId}-preview-${explicitId || description || hashKey(JSON.stringify(layout))}`;
+}
 
 export function TemplatePreviewStage({ children }: { children: React.ReactNode }) {
     return (
@@ -55,11 +87,10 @@ export const TemplateThumbnailPreview = memo(function TemplateThumbnailPreview({
 
 export const ScaledSlidePreview = memo(function ScaledSlidePreview({
     children,
-    index,
     isOutline = false,
 }: {
     children: React.ReactNode;
-    index: number;
+    index?: number;
     isOutline?: boolean;
 }) {
     const PREVIEW_SCALE = isOutline ? 0.2 : 0.24;
@@ -82,6 +113,102 @@ export const ScaledSlidePreview = memo(function ScaledSlidePreview({
             >
                 {children}
             </div>
+        </div>
+    );
+});
+
+export const InbuiltTemplatePreview = memo(function InbuiltTemplatePreview({
+    layouts,
+    templateId,
+    isOutline = false,
+}: {
+    layouts: TemplateWithData[];
+    templateId: string;
+    isOutline?: boolean;
+}) {
+    const previewLayouts = useMemo(() => layouts.slice(0, 2), [layouts]);
+    return (
+        <div className="relative z-10 flex flex-col gap-3 overflow-hidden">
+            {previewLayouts.map((layout, index) => {
+                const LayoutComponent = layout.component;
+                return (
+                    <ScaledSlidePreview key={`${templateId}-preview-${layout.layoutId}`} index={index} isOutline={isOutline}>
+                        <LayoutComponent data={layout.sampleData} />
+                    </ScaledSlidePreview>
+                );
+            })}
+        </div>
+    );
+});
+
+export const CustomTemplatePreview = memo(function CustomTemplatePreview({
+    previewLayouts,
+    loading,
+    templateId,
+    isOutline = false,
+}: {
+    previewLayouts: CompiledLayout[];
+    loading: boolean;
+    templateId: string;
+    isOutline?: boolean;
+}) {
+    return (
+        <div className="relative z-10 flex flex-col gap-3">
+            {loading ? (
+                LOADING_PREVIEW_KEYS.map((loadingKey) => (
+                    <div
+                        key={`${templateId}-${loadingKey}`}
+                        className="relative w-full aspect-video flex items-center justify-center"
+                    >
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+                    </div>
+                ))
+            ) : (
+                previewLayouts.slice(0, 2).map((layout, index) => {
+                    const LayoutComponent = layout.component;
+                    return (
+                        <ScaledSlidePreview key={`${templateId}-preview-${layout.layoutId}`} index={index} isOutline={isOutline}>
+                            <LayoutComponent data={layout.sampleData} />
+                        </ScaledSlidePreview>
+                    );
+                })
+            )}
+        </div>
+    );
+});
+
+export const TemplateV2CustomTemplatePreview = memo(function TemplateV2CustomTemplatePreview({
+    previewLayouts,
+    loading,
+    templateId,
+    isOutline = false,
+}: {
+    previewLayouts: TemplateV2Layout[];
+    loading: boolean;
+    templateId: string;
+    isOutline?: boolean;
+}) {
+    return (
+        <div className="relative z-10 flex flex-col gap-3">
+            {loading ? (
+                LOADING_PREVIEW_KEYS.map((loadingKey) => (
+                    <div
+                        key={`${templateId}-${loadingKey}`}
+                        className="relative w-full aspect-video flex items-center justify-center"
+                    >
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-300" />
+                    </div>
+                ))
+            ) : (
+                previewLayouts.slice(0, 2).map((layout, index) => (
+                    <ScaledSlidePreview key={templateV2PreviewKey(templateId, layout)} index={index} isOutline={isOutline}>
+                        <TemplateV2LayoutPreview
+                            layout={layout}
+                            useKonvaRenderer={!isOutline}
+                        />
+                    </ScaledSlidePreview>
+                ))
+            )}
         </div>
     );
 });
