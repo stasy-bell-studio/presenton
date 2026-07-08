@@ -120,6 +120,26 @@ export function chartSeriesColor(element: ChartElement, index: number) {
   return DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length];
 }
 
+export function extendChartColors(
+  colors: Array<string | null | undefined> | null | undefined,
+  minLength: number,
+  fallback?: string | null,
+) {
+  const next = (colors ?? [])
+    .filter((color): color is string => Boolean(color))
+    .map((color) => normalizeChartColor(color));
+  if (next.length === 0) {
+    next.push(normalizeChartColor(fallback ?? DEFAULT_CHART_COLORS[0]));
+  }
+
+  const targetLength = Math.min(12, Math.max(1, minLength));
+  while (next.length < targetLength) {
+    next.push(DEFAULT_CHART_COLORS[next.length % DEFAULT_CHART_COLORS.length]);
+  }
+
+  return next;
+}
+
 export function normalizeChartColor(
   color: string | null | undefined,
   fallback = DEFAULT_CHART_COLORS[0],
@@ -252,6 +272,35 @@ export function updateChartColorTarget(
     color: primaryColor,
     data: nextData,
     colors,
+  };
+}
+
+export function appendChartColorTarget(element: ChartElement): ChartElement {
+  const currentLength = Math.max(
+    1,
+    element.colors?.filter(Boolean).length ?? 0,
+  );
+  if (currentLength >= 12) return element;
+
+  const colors = extendChartColors(
+    element.colors,
+    currentLength + 1,
+    element.color,
+  );
+  const primaryColor = colors[0] ?? DEFAULT_CHART_COLORS[0];
+  const mode = chartColorTargetMode(element);
+  const data = chartDataFromSeriesWithColors(
+    resolvedChartCategories(element),
+    element.series ?? [],
+    colors,
+    mode === "category",
+  );
+
+  return {
+    ...element,
+    color: primaryColor,
+    colors,
+    data: data.length > 0 ? data : element.data,
   };
 }
 

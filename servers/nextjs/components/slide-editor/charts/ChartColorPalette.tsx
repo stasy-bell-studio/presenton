@@ -9,6 +9,7 @@ import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredCo
 type ChartColorPaletteCardProps = {
   className?: string;
   colors: string[];
+  onAddColor?: () => void;
   onChange: (color: string) => void;
   onClose?: () => void;
   onSelectIndex: (index: number) => void;
@@ -19,6 +20,7 @@ type ChartColorPaletteCardProps = {
 export function ChartColorPaletteCard({
   className,
   colors,
+  onAddColor,
   onChange,
   onClose,
   onSelectIndex,
@@ -73,6 +75,17 @@ export function ChartColorPaletteCard({
             onClick={() => onSelectIndex(index)}
           />
         ))}
+        {onAddColor ? (
+          <button
+            type="button"
+            aria-label="Add chart color"
+            title="Add chart color"
+            style={styles.addSwatch}
+            onClick={onAddColor}
+          >
+            <Plus size={15} strokeWidth={2.2} />
+          </button>
+        ) : null}
       </div>
 
       <div style={styles.divider} />
@@ -156,6 +169,20 @@ const styles = {
       "var(--font-syne), var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     padding: 14,
     width: 296,
+  },
+  addSwatch: {
+    alignItems: "center",
+    background: "#FFFFFF",
+    border: "1px dashed #B8A3F8",
+    borderRadius: 999,
+    boxSizing: "border-box",
+    color: "#7C51F8",
+    cursor: "pointer",
+    display: "inline-grid",
+    height: 28,
+    justifyContent: "center",
+    padding: 0,
+    width: 28,
   },
   closeButton: {
     alignItems: "center",

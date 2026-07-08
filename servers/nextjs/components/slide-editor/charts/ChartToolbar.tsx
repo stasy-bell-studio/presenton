@@ -2,6 +2,7 @@ import { useState } from "react";
 import { BarChart3, Palette } from "lucide-react";
 import type { ChartSlideElement } from "@/components/slide-editor/state/state";
 import {
+  appendChartColorTarget,
   resolvedChartColorTargets,
   updateChartColorTarget,
 } from "@/components/slide-editor/charts/chart-data";
@@ -110,6 +111,11 @@ export function ChartToolbar({
           <FloatingToolbarPanel>
             <ChartColorPaletteCard
               colors={colorTargets.map((target) => target.color)}
+              onAddColor={() => {
+                const nextIndex = Math.min(11, colorTargets.length);
+                setActiveColorIndex(nextIndex);
+                onChange(index, appendChartColorTarget(element));
+              }}
               onChange={(color) =>
                 onChange(
                   index,

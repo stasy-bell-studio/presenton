@@ -721,6 +721,7 @@ function BlockThumbnail({ block }: { block: TemplateBlock }) {
           slideId={null}
           slideIndex={block.index}
         />
+
       </div>
     </div>
   );

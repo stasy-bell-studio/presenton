@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Layer, Stage } from "react-konva";
 import {
@@ -23,9 +23,11 @@ import {
 } from "@/components/slide-editor/toolbar/numericInput";
 import {
   DEFAULT_CHART_COLORS,
+  appendChartColorTarget,
   chartColorTargetMode,
   chartDataFromSeriesWithColors,
   chartSupportsMultipleSeries,
+  extendChartColors,
   resolvedChartColorTargets,
   resolvedChartCategories,
   updateChartColorTarget,
@@ -143,14 +145,14 @@ export function ChartEditorContent({
 
       {dataModalOpen && typeof document !== "undefined"
         ? createPortal(
-            <ChartDataModal
-              chart={chart}
-              chartPath={chartPath ?? "chart"}
-              onChange={onChange}
-              onClose={() => setDataModalOpen(false)}
-            />,
-            document.body,
-          )
+          <ChartDataModal
+            chart={chart}
+            chartPath={chartPath ?? "chart"}
+            onChange={onChange}
+            onClose={() => setDataModalOpen(false)}
+          />,
+          document.body,
+        )
         : null}
     </>
   );
@@ -477,11 +479,10 @@ function ChartSeriesColorControls({
             type="button"
             key={`${target.mode}-${target.index}`}
             aria-label={`Change chart color ${target.index + 1}`}
-            className={`grid h-8 w-8 place-items-center rounded-full border bg-white p-1 transition ${
-              paletteAnchor?.index === target.index
-                ? "border-[#7C51F8] ring-2 ring-[#E9E2FF]"
-                : "border-[#E6E6EA] hover:border-[#B8A3F8]"
-            }`}
+            className={`grid h-8 w-8 place-items-center rounded-full border bg-white p-1 transition ${paletteAnchor?.index === target.index
+              ? "border-[#7C51F8] ring-2 ring-[#E9E2FF]"
+              : "border-[#E6E6EA] hover:border-[#B8A3F8]"
+              }`}
             ref={(node) => {
               if (node) {
                 swatchRefs.current.set(target.index, node);
@@ -507,25 +508,40 @@ function ChartSeriesColorControls({
             />
           </button>
         ))}
+        {targets.length < 12 ? (
+          <button
+            type="button"
+            aria-label="Add chart color"
+            className="grid h-8 w-8 place-items-center rounded-full border border-dashed border-[#B8A3F8] bg-white text-[#7C51F8] transition hover:bg-[#F7F3FF]"
+            title="Add chart color"
+            onClick={() => onChange(appendChartColorTarget(chart))}
+          >
+            <Plus size={15} strokeWidth={2.2} />
+          </button>
+        ) : null}
       </div>
       {openTarget && paletteAnchor && typeof document !== "undefined"
         ? createPortal(
-            <ChartColorPaletteCard
-              colors={targets.map((target) => target.color)}
-              onChange={(color) =>
-                onChange(updateChartColorTarget(chart, openTarget.index, color))
-              }
-              onClose={() => setPaletteAnchor(null)}
-              onSelectIndex={(index) =>
-                setPaletteAnchor((current) =>
-                  current ? { ...current, index } : current,
-                )
-              }
-              selectedIndex={openTarget.index}
-              style={chartPalettePortalStyle(paletteAnchor.rect)}
-            />,
-            document.body,
-          )
+          <ChartColorPaletteCard
+            colors={targets.map((target) => target.color)}
+            onAddColor={() => {
+              onChange(appendChartColorTarget(chart));
+              setPaletteAnchor(null);
+            }}
+            onChange={(color) =>
+              onChange(updateChartColorTarget(chart, openTarget.index, color))
+            }
+            onClose={() => setPaletteAnchor(null)}
+            onSelectIndex={(index) =>
+              setPaletteAnchor((current) =>
+                current ? { ...current, index } : current,
+              )
+            }
+            selectedIndex={openTarget.index}
+            style={chartPalettePortalStyle(paletteAnchor.rect)}
+          />,
+          document.body,
+        )
         : null}
     </div>
   );
@@ -612,14 +628,32 @@ function TextField({
   placeholder?: string;
   value: string;
 }) {
+  const [draftValue, setDraftValue] = useState(value);
+
+  useEffect(() => {
+    setDraftValue(value);
+  }, [value]);
+
+  const commitValue = () => {
+    if (draftValue !== value) {
+      onChange(draftValue);
+    }
+  };
+
   return (
     <label className="block text-[12px] font-medium text-[#686873]">
       {label}
       <input
         className="mt-1.5 h-9 w-full rounded-lg border border-[#E6E6EA] bg-white px-3 text-[12px] text-[#191919] outline-none transition placeholder:text-[#A6A6AF] focus:border-[#7C51F8]"
         placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+        value={draftValue}
+        onBlur={commitValue}
+        onChange={(event) => setDraftValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
       />
     </label>
   );
@@ -657,15 +691,13 @@ function CompactSwitch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition ${
-        checked ? "bg-[#7C51F8]" : "bg-[#D8D8DE]"
-      }`}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition ${checked ? "bg-[#7C51F8]" : "bg-[#D8D8DE]"
+        }`}
       onClick={() => onChange(!checked)}
     >
       <span
-        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-          checked ? "translate-x-4" : "translate-x-0"
-        }`}
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0"
+          }`}
       />
     </button>
   );
@@ -703,50 +735,60 @@ function ChartDataModal({
   onChange: (chart: ChartElement) => void;
   onClose: () => void;
 }) {
-  const categories = safeCategoriesForChart(chart);
-  const series = normalizedSeries(chart, categories.length);
-  const previewChart = useMemo(() => chartPreviewElement(chart), [chart]);
+  const [draftChart, setDraftChart] = useState<ChartElement>(() => chart);
+  const categories = safeCategoriesForChart(draftChart);
+  const series = normalizedSeries(draftChart, categories.length);
+  const previewChart = useMemo(
+    () => chartPreviewElement(draftChart),
+    [draftChart],
+  );
 
   const updateData = (
     nextCategories: string[],
     nextSeries: ChartSeries[],
-    nextColors = chart.colors ?? [],
+    nextColors = draftChart.colors ?? [],
   ) => {
-    const normalizedCategories = nextCategories.slice(0, 24);
-    const normalized = nextSeries
-      .map((item) => ({
-        name: item.name,
-        values: normalizeValues(item.values, normalizedCategories.length),
-      }))
-      .slice(0, chartSupportsMultipleSeries(chart.chart_type) ? 12 : 1);
-    const colorMode = chartColorTargetMode({
-      ...chart,
-      categories: normalizedCategories,
-      series: normalized,
-    });
-    const colorCount = Math.min(
-      12,
-      Math.max(1, nextColors.length, chart.colors?.length ?? 0),
-    );
-    const colors = Array.from({ length: colorCount }, (_, index) =>
-      nextColors[index] ??
-      chart.colors?.[index] ??
-      (index === 0 ? chart.color : null) ??
-      DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length],
-    );
+    setDraftChart((currentChart) => {
+      const normalizedCategories = nextCategories.slice(0, 24);
+      const normalized = nextSeries
+        .map((item) => ({
+          name: item.name,
+          values: normalizeValues(item.values, normalizedCategories.length),
+        }))
+        .slice(
+          0,
+          chartSupportsMultipleSeries(currentChart.chart_type) ? 12 : 1,
+        );
+      const colorMode = chartColorTargetMode({
+        ...currentChart,
+        categories: normalizedCategories,
+        series: normalized,
+      });
+      const minimumColorCount = Math.max(
+        1,
+        nextColors.length,
+        currentChart.colors?.length ?? 0,
+        colorMode === "series" ? normalized.length : 1,
+      );
+      const colors = extendChartColors(
+        nextColors.length > 0 ? nextColors : currentChart.colors,
+        minimumColorCount,
+        currentChart.color ?? DEFAULT_CHART_COLORS[0],
+      );
 
-    onChange({
-      ...chart,
-      categories: normalizedCategories,
-      color: colors[0] ?? chart.color,
-      series: normalized,
-      colors,
-      data: chartDataFromSeriesWithColors(
-        normalizedCategories,
-        normalized,
+      return {
+        ...currentChart,
+        categories: normalizedCategories,
+        color: colors[0] ?? currentChart.color,
+        series: normalized,
         colors,
-        colorMode === "category",
-      ),
+        data: chartDataFromSeriesWithColors(
+          normalizedCategories,
+          normalized,
+          colors,
+          colorMode === "category",
+        ),
+      };
     });
   };
 
@@ -776,7 +818,10 @@ function ChartDataModal({
             <button
               type="button"
               className="h-8 min-w-[76px] rounded-full bg-[linear-gradient(100deg,#FFE6A6_0%,#D8B4FE_100%)] px-5 text-[12px] font-semibold text-[#191919] transition hover:brightness-95"
-              onClick={onClose}
+              onClick={() => {
+                onChange(draftChart);
+                onClose();
+              }}
             >
               Save
             </button>
@@ -789,9 +834,12 @@ function ChartDataModal({
               </label>
               <ChartTypeSelect
                 compact
-                value={chart.chart_type}
+                value={draftChart.chart_type}
                 onChange={(chartType) =>
-                  onChange({ ...chart, chart_type: chartType })
+                  setDraftChart((currentChart) => ({
+                    ...currentChart,
+                    chart_type: chartType,
+                  }))
                 }
               />
               <div
@@ -826,10 +874,10 @@ function ChartDataModal({
               </div>
               <div className="mt-2">
                 <ChartCustomizePanel
-                  chart={chart}
+                  chart={draftChart}
                   compact
                   defaultTextOpen={false}
-                  onChange={onChange}
+                  onChange={setDraftChart}
                 />
               </div>
             </aside>
@@ -837,12 +885,13 @@ function ChartDataModal({
             <main className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-8 py-5">
               <EditableDataTable
                 allowMultipleSeries={chartSupportsMultipleSeries(
-                  chart.chart_type,
+                  draftChart.chart_type,
                 )}
                 categories={categories}
                 chartPath={chartPath}
                 series={series}
-                colors={chart.colors ?? []}
+                colors={draftChart.colors ?? []}
+                fallbackColor={draftChart.color}
                 onUpdate={updateData}
               />
             </main>
@@ -868,9 +917,11 @@ function EditableDataTable({
   onUpdate,
   series,
   colors,
+  fallbackColor,
 }: {
   allowMultipleSeries: boolean;
   categories: string[];
+  fallbackColor?: string | null;
   chartPath: string;
   onUpdate: (
     categories: string[],
@@ -993,16 +1044,17 @@ function EditableDataTable({
     clearValueDrafts();
   };
   const addSeries = () => {
+    const nextSeries = [
+      ...safeSeries,
+      {
+        name: `Series ${safeSeries.length + 1}`,
+        values: normalizeValues([], safeCategories.length),
+      },
+    ];
     onUpdate(
       safeCategories,
-      [
-        ...safeSeries,
-        {
-          name: `Series ${safeSeries.length + 1}`,
-          values: normalizeValues([], safeCategories.length),
-        },
-      ],
-      colors,
+      nextSeries,
+      extendChartColors(colors, nextSeries.length, fallbackColor),
     );
     clearValueDrafts();
   };
@@ -1364,20 +1416,58 @@ function normalizeValues(values: number[], length: number) {
 }
 
 function clearChartData(chart: ChartElement): ChartElement {
-  const categories = ["Item 1"];
-  const series = [{ name: "Series 1", values: [0] }];
-  const color = chart.color ?? DEFAULT_CHART_COLORS[0];
+  const sourceCategories =
+    chart.categories && chart.categories.length > 0
+      ? chart.categories
+      : chart.data.length > 0
+        ? chart.data.map((datum, index) => datum.label || `Item ${index + 1}`)
+        : resolvedChartCategories(chart);
+  const sourceSeries =
+    chart.series && chart.series.length > 0
+      ? chart.series
+      : [
+        {
+          name: chart.title ?? "Series 1",
+          values: chart.data.map((datum) => datum.value),
+        },
+      ];
+  const valueLength = Math.min(
+    24,
+    Math.max(
+      1,
+      sourceCategories.length,
+      chart.data.length,
+      ...sourceSeries.map((item) => item.values.length),
+    ),
+  );
+  const categories = Array.from(
+    { length: valueLength },
+    (_, index) => sourceCategories[index] ?? `Item ${index + 1}`,
+  );
+  const series = sourceSeries.map((item) => ({
+    ...item,
+    values: Array.from({ length: valueLength }, () => 0),
+  }));
+  const fallbackColors =
+    chart.colors && chart.colors.length > 0
+      ? chart.colors
+      : [chart.color ?? DEFAULT_CHART_COLORS[0]];
+  const fallbackData = chartDataFromSeriesWithColors(
+    categories,
+    series,
+    fallbackColors,
+    chartColorTargetMode({ ...chart, categories, series }) === "category",
+  );
+  const data =
+    chart.data.length > 0
+      ? chart.data.map((datum) => ({ ...datum, value: 0 }))
+      : fallbackData;
+
   return {
     ...chart,
     categories,
     series,
-    colors: [color],
-    data: chartDataFromSeriesWithColors(
-      categories,
-      series,
-      [color],
-      true,
-    ),
+    data,
   };
 }
 
