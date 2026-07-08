@@ -1403,7 +1403,6 @@ async def duplicate_presentation(
 @PRESENTATION_ROUTER.post("/create", response_model=PresentationModel)
 async def create_presentation(
     content: Annotated[str, Body()],
-    version: Annotated[PresentationVersion, Body()],
     n_slides: Annotated[Optional[int], Body()] = None,
     language: Annotated[Optional[str], Body()] = None,
     file_paths: Annotated[Optional[List[str]], Body()] = None,
@@ -1446,7 +1445,7 @@ async def create_presentation(
 
     presentation = PresentationModel(
         id=presentation_id,
-        version=version,
+        version=PresentationVersion.V2_STANDARD,
         content=content,
         n_slides=n_slides_to_store,
         language=language_to_store,
