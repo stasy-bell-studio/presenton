@@ -17,7 +17,10 @@ import {
 } from "@/components/slide-editor/text/template-v2-text-editing";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import type { TextSelectionRange } from "@/components/slide-editor/text/text-runs";
-import { TiptapInlineTextEditor } from "@/components/slide-editor/text/TiptapInlineTextEditor";
+import {
+  cssFontFamilyStack,
+  TiptapInlineTextEditor,
+} from "@/components/slide-editor/text/TiptapInlineTextEditor";
 
 const DEFAULT_TEXT_EDIT_STYLE: TemplateV2TextEditStyle = {
   family: "Arial",
@@ -105,7 +108,7 @@ export function TemplateV2InlineEditor({
     caretColor: isCode ? "#E7EDF8" : withHash(font.color),
     fontFamily: isCode
       ? "Menlo, Consolas, monospace"
-      : `${font.family}, Helvetica, sans-serif`,
+      : cssFontFamilyStack(font.family),
     fontSize,
     fontWeight: font.bold ? 700 : 400,
     fontStyle: font.italic ? "italic" : "normal",

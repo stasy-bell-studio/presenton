@@ -612,7 +612,7 @@ function fontFromRunStyleAttrs(attrs: RunStyleAttrs, baseFont: Font): Font {
 
 function runStyleAttrsToCss(attrs: RunStyleAttrs) {
   const styles = [
-    attrs.family ? `font-family:${cssFontFamily(attrs.family)}` : null,
+    attrs.family ? `font-family:${cssFontFamilyStack(attrs.family)}` : null,
     attrs.size != null ? `font-size:${attrs.size}px` : null,
     attrs.color ? `color:${cssColor(attrs.color)}` : null,
     attrs.bold != null ? `font-weight:${attrs.bold ? 700 : 400}` : null,
@@ -642,7 +642,7 @@ function tiptapEditorStyle(font: Font, runs: TextRun[]) {
     "padding:0",
     "white-space:pre-wrap",
     "overflow-wrap:break-word",
-    `font-family:${cssFontFamily(font.family ?? "Arial")}`,
+    `font-family:${cssFontFamilyStack(font.family ?? "Arial")}`,
     `font-size:${font.size ?? 18}px`,
     `color:${cssColor(font.color ?? "111827")}`,
     font.bold ? "font-weight:700" : "font-weight:400",
@@ -668,8 +668,13 @@ function cssColor(color: string) {
   return color.startsWith("#") ? color : `#${color}`;
 }
 
-function cssFontFamily(family: string) {
-  return `${family}, Helvetica, sans-serif`;
+export function cssFontFamilyStack(family: string) {
+  const escapedFamily = family
+    .trim()
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/[\r\n\f]/g, " ");
+  return `"${escapedFamily || "Arial"}", Helvetica, sans-serif`;
 }
 
 const TIPTAP_INLINE_EDITOR_CSS = `

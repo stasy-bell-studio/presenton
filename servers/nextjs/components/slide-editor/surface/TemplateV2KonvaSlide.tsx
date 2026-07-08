@@ -160,13 +160,18 @@ import {
   type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
 
-const MIN_EDITING_SCENE_PIXEL_RATIO = 2;
+const EDITING_SCENE_DEVICE_OVERSAMPLE = 1.5;
+const MIN_EDITING_SCENE_PIXEL_RATIO = 3;
+const MAX_EDITING_SCENE_PIXEL_RATIO = 4;
 
 function syncEditingScenePixelRatio(layer: Konva.Layer | null) {
   if (!layer || typeof window === "undefined") return;
-  const pixelRatio = Math.max(
-    MIN_EDITING_SCENE_PIXEL_RATIO,
-    window.devicePixelRatio || 1,
+  const pixelRatio = Math.min(
+    MAX_EDITING_SCENE_PIXEL_RATIO,
+    Math.max(
+      MIN_EDITING_SCENE_PIXEL_RATIO,
+      (window.devicePixelRatio || 1) * EDITING_SCENE_DEVICE_OVERSAMPLE,
+    ),
   );
   const canvas = layer.getCanvas();
   if (Math.abs(canvas.getPixelRatio() - pixelRatio) < 0.01) return;
