@@ -5,10 +5,8 @@ import { notify } from "@/components/ui/sonner";
 import { clearPresentationData } from "@/store/slices/presentationGeneration";
 import { PresentationGenerationApi } from "../../services/api/presentation-generation";
 import { LoadingState, TABS } from "../types/index";
-import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
-import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
+
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
-import { parseTemplateV2SelectionId } from "../utils/templateSelection";
 import {
   limitOutlines,
   MAX_NUMBER_OF_SLIDES,
@@ -24,7 +22,7 @@ const DEFAULT_LOADING_STATE: LoadingState = {
 export const usePresentationGeneration = (
   presentationId: string | null,
   outlines: { content: string }[] | null,
-  selectedTemplate: TemplateLayoutsWithSettings | string | null,
+  selectedTemplateId: string | null,
   setActiveTab: (tab: string) => void
 ) => {
   const dispatch = useDispatch();
@@ -43,10 +41,10 @@ export const usePresentationGeneration = (
       return false;
     }
 
-    if (!selectedTemplate) {
+    if (!selectedTemplateId) {
       notify.warning(
-        "Layout not selected",
-        "Choose a layout group before generating your presentation."
+        "Template not selected",
+        "Choose a template before generating your presentation."
       );
       return false;
     }
@@ -60,7 +58,7 @@ export const usePresentationGeneration = (
     }
 
     return true;
-  }, [outlines, selectedTemplate]);
+  }, [outlines, selectedTemplateId]);
 
   const clearTheme = () => {
     const element = document.getElementById("presentation-page");
@@ -84,44 +82,14 @@ export const usePresentationGeneration = (
   };
 
   const handleSubmit = useCallback(async () => {
-    if (!selectedTemplate) {
-      setActiveTab(TABS.LAYOUTS);
-      return;
-    }
     if (!validateInputs()) return;
     const preparedOutlines = limitOutlines(outlines);
-
-    const selectedTemplateId =
-      typeof selectedTemplate === "string"
-        ? parseTemplateV2SelectionId(selectedTemplate) ?? selectedTemplate
-        : selectedTemplate?.id || null;
-    const selectedTemplateV2Id =
-      typeof selectedTemplate === "string"
-        ? parseTemplateV2SelectionId(selectedTemplate)
-        : null;
-    const selectedTemplateType =
-      selectedTemplateV2Id
-        ? "template_v2"
-        : typeof selectedTemplate === "string"
-          ? "custom"
-          : "built_in";
-    const selectedTemplateName =
-      typeof selectedTemplate === "string"
-        ? null
-        : selectedTemplate?.name || null;
-    const selectedTemplateLayoutCount =
-      typeof selectedTemplate === "string"
-        ? null
-        : selectedTemplate?.layouts?.length || 0;
 
     trackEvent(MixpanelEvent.Outline_Presentation_Generation_Started, {
       pathname,
       presentation_id: presentationId,
       outline_count: preparedOutlines.length,
       template_id: selectedTemplateId,
-      template_type: selectedTemplateType,
-      template_name: selectedTemplateName,
-      template_layout_count: selectedTemplateLayoutCount,
     });
 
     setLoadingState({
@@ -132,97 +100,18 @@ export const usePresentationGeneration = (
     });
 
     try {
-      if (selectedTemplateV2Id) {
-        setLoadingState({
-          message: "Generating presentation data...",
-          isLoading: true,
-          showProgress: true,
-          duration: 30,
-        });
 
-        const response = await PresentationGenerationApi.presentationPrepare({
-          presentation_id: presentationId,
-          outlines: preparedOutlines,
-          layout: selectedTemplateV2Id,
-        });
-
-        if (response) {
-          dispatch(clearPresentationData());
-          clearTheme();
-          router.replace(
-            `/presentation?id=${presentationId}&stream=true&type=standard`
-          );
-        }
-        return;
-      }
-
-      let layout;
-
-      // Check if it's a custom template (string = presentationId)
-      if (typeof selectedTemplate === "string") {
-        setLoadingState({
-          message: "Loading custom template...",
-          isLoading: true,
-          showProgress: true,
-          duration: 30,
-        });
-
-        // Fetch custom template details using the shared function
-        const customTemplateDetail = await getCustomTemplateDetails(
-          selectedTemplate
-        );
-
-        if (
-          !customTemplateDetail ||
-          customTemplateDetail.layouts.length === 0
-        ) {
-          notify.error("Template error", "Failed to load custom template layouts.");
-          return;
-        }
-
-        setLoadingState({
-          message: "Generating presentation data...",
-          isLoading: true,
-          showProgress: true,
-          duration: 30,
-        });
-
-        layout = {
-          name: customTemplateDetail.id,
-          ordered: false,
-          icon_weight: "bold",
-          slides: customTemplateDetail.layouts.map((compiledLayout) => ({
-            id: customTemplateDetail.id.startsWith("custom-")
-              ? `${customTemplateDetail.id}:${compiledLayout.layoutId}`
-              : `custom-${customTemplateDetail.id}:${compiledLayout.layoutId}`,
-            name: compiledLayout.layoutName,
-            description: compiledLayout.layoutDescription,
-            templateID: customTemplateDetail.id,
-            templateName: customTemplateDetail.name,
-            json_schema: compiledLayout.schemaJSON,
-          })),
-        };
-      } else {
-        // Built-in template
-        layout = {
-          name: selectedTemplate.id,
-          ordered: false,
-          icon_weight: selectedTemplate.settings?.icon_weight || "bold",
-          slides: selectedTemplate.layouts.map((layoutItem: any) => ({
-            id: layoutItem.layoutId,
-            name: layoutItem.layoutName,
-            description: layoutItem.layoutDescription,
-            templateID: selectedTemplate.id,
-            templateName: selectedTemplate.name,
-            json_schema: layoutItem.schemaJSON,
-          })),
-        };
-      }
+      setLoadingState({
+        message: "Generating presentation data...",
+        isLoading: true,
+        showProgress: true,
+        duration: 30,
+      });
 
       const response = await PresentationGenerationApi.presentationPrepare({
         presentation_id: presentationId,
         outlines: preparedOutlines,
-        layout: layout,
+        layout: selectedTemplateId,
       });
 
       if (response) {
@@ -232,6 +121,8 @@ export const usePresentationGeneration = (
           `/presentation?id=${presentationId}&stream=true&type=standard`
         );
       }
+
+
     } catch (error: any) {
       console.error("Error In Presentation Generation(prepare).", error);
       notify.error(
@@ -247,7 +138,7 @@ export const usePresentationGeneration = (
     outlines,
     dispatch,
     router,
-    selectedTemplate,
+    selectedTemplateId,
     pathname,
     setActiveTab,
   ]);

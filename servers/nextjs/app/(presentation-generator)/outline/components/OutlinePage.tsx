@@ -15,7 +15,6 @@ import { useOutlineStreaming } from "../hooks/useOutlineStreaming";
 import { useOutlineManagement } from "../hooks/useOutlineManagement";
 import { usePresentationGeneration } from "../hooks/usePresentationGeneration";
 import TemplateSelection from "./TemplateSelection";
-import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
 import { Separator } from "@/components/ui/separator";
 import OutlinePromptBar from "./OutlinePromptBar";
 import Chat from "../../presentation/components/Chat";
@@ -83,13 +82,7 @@ const getOutlinesFromResponse = (outline: any): { content: string }[] => {
   }));
 };
 
-interface OutlinePageProps {
-  useTemplateV2Templates?: boolean;
-}
-
-const OutlinePage: React.FC<OutlinePageProps> = ({
-  useTemplateV2Templates = false,
-}) => {
+const OutlinePage: React.FC = () => {
   const dispatch = useDispatch();
   const { presentation_id, outlines } = useSelector(
     (state: RootState) => state.presentationGeneration
@@ -99,7 +92,7 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
   );
 
   const [activeTab, setActiveTab] = useState<string>(TABS.LAYOUTS);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateLayoutsWithSettings | string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [draftConfig, setDraftConfig] = useState<PresentationConfig>(
     savedConfig ? normalizeOutlineConfig(savedConfig) : DEFAULT_OUTLINE_CONFIG
   );
@@ -116,14 +109,14 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
   const { loadingState, handleSubmit } = usePresentationGeneration(
     presentation_id,
     outlines,
-    selectedTemplate,
+    selectedTemplateId,
     setActiveTab
   );
 
   const documentPaths = useMemo(() => getDocumentPaths(files), [files]);
   const outlineControlsBusy =
     isRegeneratingOutline || streamState.isLoading || streamState.isStreaming;
-  const hasSelectedTemplate = selectedTemplate !== null;
+  const hasSelectedTemplate = selectedTemplateId !== null;
   const isOutlineReady =
     hasSelectedTemplate && hasOutlineStreamFinished && !outlineControlsBusy;
   const isOutlineAssistantVisible =
@@ -186,9 +179,9 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
     }));
   };
 
-  const handleTemplateSelect = useCallback(
-    (template: TemplateLayoutsWithSettings | string) => {
-      setSelectedTemplate(template);
+  const handleTemplateSelectId = useCallback(
+    (templateId: string) => {
+      setSelectedTemplateId(templateId);
       setActiveTab(TABS.OUTLINE);
     },
     []
@@ -354,9 +347,8 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
 
                 <TabsContent value={TABS.LAYOUTS} className="mt-0">
                   <TemplateSelection
-                    selectedTemplate={selectedTemplate}
-                    onSelectTemplate={handleTemplateSelect}
-                    useTemplateV2Templates={useTemplateV2Templates}
+                    selectedTemplateId={selectedTemplateId}
+                    onSelectTemplateId={handleTemplateSelectId}
                   />
                 </TabsContent>
               </div>
@@ -386,7 +378,7 @@ const OutlinePage: React.FC<OutlinePageProps> = ({
             <GenerateButton
               loadingState={loadingState}
               streamState={streamState}
-              selectedTemplate={selectedTemplate}
+              selectedTemplateId={selectedTemplateId}
               onSubmit={handleSubmit}
             />
           </div>

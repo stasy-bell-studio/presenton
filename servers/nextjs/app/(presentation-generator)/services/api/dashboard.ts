@@ -6,7 +6,7 @@ import { getApiUrl } from "@/utils/api";
 
 export interface PresentationResponse {
   id: string;
-  version?: "v1-standard" | "v2-standard";
+  version?: "v1-standard" | "v1-standard";
   title: string;
   created_at: string;
   updated_at: string;

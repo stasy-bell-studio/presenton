@@ -11,8 +11,7 @@ import { addNewSlide } from "@/store/slices/presentationGeneration";
 import { Loader2, Plus, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { notify } from "@/components/ui/sonner";
-import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
-import { getTemplatesByTemplateName } from "@/app/presentation-templates";
+
 import { RootState } from "@/store/store";
 import { TemplateV2HtmlSlidePreview } from "./TemplateV2HtmlSlidePreview";
 import {
@@ -79,24 +78,7 @@ const LayoutItem = memo(({ layout, onSelect }: LayoutItemProps) => {
     isEmptySlide,
   } = layout;
 
-  useEffect(() => {
-    if (!previewRef.current) return;
 
-    const previewElement = previewRef.current;
-    const updateScale = () => {
-      const nextScale = Math.min(
-        previewElement.clientWidth / PREVIEW_WIDTH,
-        previewElement.clientHeight / PREVIEW_HEIGHT
-      );
-      setScale(nextScale || 0.2);
-    };
-
-    const resizeObserver = new ResizeObserver(updateScale);
-    resizeObserver.observe(previewElement);
-    updateScale();
-
-    return () => resizeObserver.disconnect();
-  }, []);
 
   const selectLayout = () => onSelect(sampleData, layoutId);
 
@@ -229,24 +211,13 @@ const NewSlideV1 = ({
     const fetchLayouts = async () => {
       try {
         setLoading(true);
-        if (isTemplateV2) {
-          const templateV2Layouts = extractTemplateV2Layouts(presentationLayout);
-          const layoutItems = templateV2Layouts.map((layout, layoutIndex) =>
-            createTemplateV2LayoutItem(layout, layoutIndex)
-          );
-          if (isMounted) setLayouts(layoutItems);
-        } else if (isCustomTemplate) {
-          const customTemplateId = templateID.split("custom-")[1];
-          const templateDetails = await getCustomTemplateDetails(
-            customTemplateId,
-            "Custom Template",
-            "User-created template"
-          );
-          if (isMounted) setLayouts(templateDetails?.layouts || []);
-        } else {
-          const templateDetails = getTemplatesByTemplateName(templateID);
-          if (isMounted) setLayouts(templateDetails || []);
-        }
+
+        const templateV2Layouts = extractTemplateV2Layouts(presentationLayout);
+        const layoutItems = templateV2Layouts.map((layout, layoutIndex) =>
+          createTemplateV2LayoutItem(layout, layoutIndex)
+        );
+        if (isMounted) setLayouts(layoutItems);
+
       } catch (error) {
         console.error("Error loading slide layouts:", error);
         if (isMounted) setLayouts([]);

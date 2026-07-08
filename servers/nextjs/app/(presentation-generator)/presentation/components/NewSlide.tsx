@@ -11,8 +11,7 @@ import { addNewSlide } from "@/store/slices/presentationGeneration";
 import { Loader2, Plus, X } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { notify } from "@/components/ui/sonner";
-import { getCustomTemplateDetails } from "@/app/hooks/useCustomTemplates";
-import { getTemplatesByTemplateName } from "@/app/presentation-templates";
+
 import { usePathname } from "next/navigation";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { RootState } from "@/store/store";
@@ -183,9 +182,6 @@ const NewSlideV1 = ({
   const [layouts, setLayouts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isCustomTemplate = templateID.startsWith("custom-");
-  const isTemplateV2 = templateID.startsWith("template-v2");
-
   useEffect(() => {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setShowNewSlideSelection(false);
@@ -207,25 +203,16 @@ const NewSlideV1 = ({
 
       try {
         const slideId = uuidv4();
-        const newSlide = {
-          id: slideId,
-          index: index,
-          content: isTemplateV2 ? {} : sampleData,
-          ...(isTemplateV2 ? { ui: sampleData } : {}),
-          layout_group: templateID,
-          layout: isCustomTemplate ? `${templateID}:${id}` : id,
-          presentation: presentationId,
-        };
-        dispatch(addNewSlide({ slideData: newSlide, index }));
+
+
         onSlideAdded?.(
           index + 1,
-          isTemplateV2
-            ? {
-                promptOverlaySlideId: slideId,
-                promptOverlayKind:
-                  id === BLANK_SLIDE_LAYOUT_ID ? "blank" : "layout",
-              }
-            : undefined,
+          {
+            promptOverlaySlideId: slideId,
+            promptOverlayKind:
+              id === BLANK_SLIDE_LAYOUT_ID ? "blank" : "layout",
+          }
+
         );
         trackEvent(MixpanelEvent.Presentation_Slide_Added, {
           pathname,
@@ -233,8 +220,6 @@ const NewSlideV1 = ({
           inserted_after_index: index,
           template_id: templateID,
           layout_id: id,
-          is_custom_template: isCustomTemplate,
-          is_template_v2: isTemplateV2,
         });
         setShowNewSlideSelection(false);
       } catch (error: any) {
@@ -248,8 +233,6 @@ const NewSlideV1 = ({
       presentationId,
       dispatch,
       setShowNewSlideSelection,
-      isCustomTemplate,
-      isTemplateV2,
       pathname,
       onSlideAdded,
       slideCount,
@@ -262,24 +245,13 @@ const NewSlideV1 = ({
     const fetchLayouts = async () => {
       try {
         setLoading(true);
-        if (isTemplateV2) {
-          const templateV2Layouts = extractTemplateV2Layouts(presentationLayout);
-          const layoutItems = templateV2Layouts.map((layout, layoutIndex) =>
-            createTemplateV2LayoutItem(layout, layoutIndex)
-          );
-          if (isMounted) setLayouts(layoutItems);
-        } else if (isCustomTemplate) {
-          const customTemplateId = templateID.split("custom-")[1];
-          const templateDetails = await getCustomTemplateDetails(
-            customTemplateId,
-            "Custom Template",
-            "User-created template"
-          );
-          if (isMounted) setLayouts(templateDetails?.layouts || []);
-        } else {
-          const templateDetails = getTemplatesByTemplateName(templateID);
-          if (isMounted) setLayouts(templateDetails || []);
-        }
+
+        const templateV2Layouts = extractTemplateV2Layouts(presentationLayout);
+        const layoutItems = templateV2Layouts.map((layout, layoutIndex) =>
+          createTemplateV2LayoutItem(layout, layoutIndex)
+        );
+        if (isMounted) setLayouts(layoutItems);
+
       } catch (error) {
         console.error("Error loading slide layouts:", error);
         if (isMounted) setLayouts([]);
@@ -293,9 +265,9 @@ const NewSlideV1 = ({
     return () => {
       isMounted = false;
     };
-  }, [isCustomTemplate, isTemplateV2, presentationLayout, templateID]);
+  }, [presentationLayout]);
 
-  const showEmptySlideLayout = isTemplateV2;
+  const showEmptySlideLayout = true;
   const selectableLayouts = showEmptySlideLayout
     ? [EMPTY_SLIDE_LAYOUT, ...layouts]
     : layouts;

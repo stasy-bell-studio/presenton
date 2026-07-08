@@ -396,7 +396,7 @@ const UploadPage = () => {
     // Start the outline job; template selection happens on the outline page.
     const createResponse = await PresentationGenerationApi.createPresentation({
       content: config?.prompt ?? "",
-      version: "v1-standard",
+
       n_slides: parseLimitedSlideCount(config?.slides),
       file_paths: [],
       language: selectedLanguage,

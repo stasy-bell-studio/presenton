@@ -1,11 +1,11 @@
-export const TEMPLATE_V2_SELECTION_PREFIX = "template-v2:";
+export const TEMPLATE_SELECTION_PREFIX = "template-v2:";
 
-export function createTemplateV2SelectionId(templateId: string): string {
-  return `${TEMPLATE_V2_SELECTION_PREFIX}${templateId}`;
+export function createTemplateSelectionId(templateId: string): string {
+  return `${TEMPLATE_SELECTION_PREFIX}${templateId}`;
 }
 
-export function parseTemplateV2SelectionId(selection: string): string | null {
-  if (!selection.startsWith(TEMPLATE_V2_SELECTION_PREFIX)) return null;
-  const templateId = selection.slice(TEMPLATE_V2_SELECTION_PREFIX.length);
+export function parseTemplateSelectionId(selection: string): string | null {
+  if (!selection.startsWith(TEMPLATE_SELECTION_PREFIX)) return null;
+  const templateId = selection.slice(TEMPLATE_SELECTION_PREFIX.length);
   return templateId || null;
 }

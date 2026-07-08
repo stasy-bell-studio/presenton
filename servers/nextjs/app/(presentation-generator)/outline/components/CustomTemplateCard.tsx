@@ -2,40 +2,31 @@
 import React, { memo, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CustomTemplates, useCustomTemplatePreview, useTemplateV2Preview } from "@/app/hooks/useCustomTemplates";
 import { CheckCircle2 } from "lucide-react";
 import {
     TemplatePreviewStage,
     LayoutsBadge,
     CustomTemplatePreview,
-    TemplateV2CustomTemplatePreview,
 } from "../../components/TemplatePreviewComponents";
-import { createTemplateV2SelectionId } from "../utils/templateSelection";
+
+interface TemplateListItem {
+    id: string;
+    name: string;
+    layout_count?: number;
+    layouts?: any[];
+}
 
 export const CustomTemplateCard = memo(function CustomTemplateCard({
     template,
     onSelectTemplate,
     selectedTemplate,
 }: {
-    template: CustomTemplates;
+    template: TemplateListItem;
     onSelectTemplate: (template: string) => void;
     selectedTemplate: string | null;
 }) {
-    const isTemplateV2 = template.source === "v2";
-    const { previewLayouts, loading } = useCustomTemplatePreview(template.id, {
-        enabled: !isTemplateV2,
-    });
-    const {
-        previewLayouts: templateV2PreviewLayouts,
-        loading: templateV2Loading,
-    } = useTemplateV2Preview(template.id, {
-        enabled: isTemplateV2,
-    });
-    const templateSelectionId = isTemplateV2
-        ? createTemplateV2SelectionId(template.id)
-        : template.id;
-    const isSelected = selectedTemplate === templateSelectionId;
-    const handleSelect = useCallback(() => onSelectTemplate(templateSelectionId), [onSelectTemplate, templateSelectionId]);
+    const isSelected = selectedTemplate === template.id;
+    const handleSelect = useCallback(() => onSelectTemplate(template.id), [onSelectTemplate, template.id]);
     const handleKeyDown = useCallback(
         (event: React.KeyboardEvent<HTMLDivElement>) => {
             if (event.key !== "Enter" && event.key !== " ") {
@@ -71,22 +62,13 @@ export const CustomTemplateCard = memo(function CustomTemplateCard({
                 </span>
             )}
             <TemplatePreviewStage>
-                <LayoutsBadge count={template.layoutCount} />
-                {isTemplateV2 ? (
-                    <TemplateV2CustomTemplatePreview
-                        previewLayouts={templateV2PreviewLayouts}
-                        loading={templateV2Loading}
-                        templateId={template.id}
-                        isOutline={true}
-                    />
-                ) : (
-                    <CustomTemplatePreview
-                        previewLayouts={previewLayouts}
-                        loading={loading}
-                        templateId={template.id}
-                        isOutline={true}
-                    />
-                )}
+                <LayoutsBadge count={template.layout_count} />
+                <CustomTemplatePreview
+                    previewLayouts={template.layouts}
+                    loading={false}
+                    templateId={template.id}
+                    isOutline={true}
+                />
             </TemplatePreviewStage>
             <div className="flex items-center justify-between px-6 py-5 bg-white border-t border-[#EDEEEF] relative z-40">
                 <h3 className="text-sm font-bold text-gray-900 font-syne">

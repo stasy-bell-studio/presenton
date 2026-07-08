@@ -183,8 +183,8 @@ async function streamChatMessage(
             (chatPayload as { tool_calls?: unknown }).tool_calls
           )
             ? ((chatPayload as { tool_calls?: unknown[] }).tool_calls ?? []).filter(
-                (item): item is string => typeof item === "string"
-              )
+              (item): item is string => typeof item === "string"
+            )
             : [],
         };
         finalResponse = typedResponse;
@@ -227,51 +227,51 @@ async function streamChatMessage(
             typeof typedTrace.message === "string" ? typedTrace.message : undefined,
           tools: Array.isArray(typedTrace.tools)
             ? typedTrace.tools.filter(
-                (value): value is string => typeof value === "string"
-              )
+              (value): value is string => typeof value === "string"
+            )
             : undefined,
           slideIndex:
             typeof typedTrace.slide_index === "number"
               ? typedTrace.slide_index
               : typeof typedTrace.slideIndex === "number"
-              ? typedTrace.slideIndex
-              : undefined,
+                ? typedTrace.slideIndex
+                : undefined,
           slideNumber:
             typeof typedTrace.slide_number === "number"
               ? typedTrace.slide_number
               : typeof typedTrace.slideNumber === "number"
-              ? typedTrace.slideNumber
-              : undefined,
+                ? typedTrace.slideNumber
+                : undefined,
           targetSlideIndices: Array.isArray(typedTrace.target_slide_indices)
             ? typedTrace.target_slide_indices.filter(
-                (value): value is number => typeof value === "number"
-              )
+              (value): value is number => typeof value === "number"
+            )
             : Array.isArray(typedTrace.targetSlideIndices)
-            ? typedTrace.targetSlideIndices.filter(
+              ? typedTrace.targetSlideIndices.filter(
                 (value): value is number => typeof value === "number"
               )
-            : undefined,
+              : undefined,
           targetSlideNumbers: Array.isArray(typedTrace.target_slide_numbers)
             ? typedTrace.target_slide_numbers.filter(
-                (value): value is number => typeof value === "number"
-              )
+              (value): value is number => typeof value === "number"
+            )
             : Array.isArray(typedTrace.targetSlideNumbers)
-            ? typedTrace.targetSlideNumbers.filter(
+              ? typedTrace.targetSlideNumbers.filter(
                 (value): value is number => typeof value === "number"
               )
-            : undefined,
+              : undefined,
           componentId:
             typeof typedTrace.component_id === "string"
               ? typedTrace.component_id
               : typeof typedTrace.componentId === "string"
-              ? typedTrace.componentId
-              : undefined,
+                ? typedTrace.componentId
+                : undefined,
           elementPath:
             typeof typedTrace.element_path === "string"
               ? typedTrace.element_path
               : typeof typedTrace.elementPath === "string"
-              ? typedTrace.elementPath
-              : undefined,
+                ? typedTrace.elementPath
+                : undefined,
         });
       }
     }
@@ -309,7 +309,7 @@ export class PresentationChatApi {
     presentationId: string
   ): Promise<ChatConversationSummary[]> {
     const u = new URL(
-      buildAbsoluteApiRequestUrl("/api/v2/chat/conversations")
+      buildAbsoluteApiRequestUrl("/api/v1/chat/conversations")
     );
     u.searchParams.set("presentation_id", presentationId);
     const response = await fetch(u.toString(), {
@@ -326,7 +326,7 @@ export class PresentationChatApi {
     presentationId: string,
     conversationId: string
   ): Promise<ChatHistoryData> {
-    const u = new URL(buildAbsoluteApiRequestUrl("/api/v2/chat/history"));
+    const u = new URL(buildAbsoluteApiRequestUrl("/api/v1/chat/history"));
     u.searchParams.set("presentation_id", presentationId);
     u.searchParams.set("conversation_id", conversationId);
     const response = await fetch(u.toString(), {
@@ -342,7 +342,7 @@ export class PresentationChatApi {
   static async sendMessage(
     payload: ChatMessageRequest
   ): Promise<ChatMessageResponse> {
-    const response = await fetch(getApiUrl("/api/v2/chat/message"), {
+    const response = await fetch(getApiUrl("/api/v1/chat/message"), {
       method: "POST",
       headers: getHeader(),
       body: JSON.stringify(payload),
@@ -361,7 +361,7 @@ export class PresentationChatApi {
     options?: { signal?: AbortSignal }
   ): Promise<ChatMessageResponse> {
     return streamChatMessage(
-      "/api/v2/chat/message/stream",
+      "/api/v1/chat/message/stream",
       payload,
       handlers,
       options

@@ -1,32 +1,31 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { LoadingState } from "../types/index";
-import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
 import { ChevronRight } from "lucide-react";
 
 interface GenerateButtonProps {
   loadingState: LoadingState;
   streamState: { isStreaming: boolean; isLoading: boolean };
-  selectedTemplate: TemplateLayoutsWithSettings | string | null;
+  selectedTemplateId: string | null;
   onSubmit: () => void;
 }
 
 const GenerateButton: React.FC<GenerateButtonProps> = ({
   loadingState,
   streamState,
-  selectedTemplate,
+  selectedTemplateId,
   onSubmit,
 }) => {
   const isDisabled =
     loadingState.isLoading ||
     streamState.isLoading ||
     streamState.isStreaming ||
-    !selectedTemplate;
+    !selectedTemplateId;
 
   const getButtonText = () => {
     if (loadingState.isLoading) return loadingState.message;
     if (streamState.isLoading || streamState.isStreaming) return "Loading...";
-    if (!selectedTemplate) return "Select a Template";
+    if (!selectedTemplateId) return "Select a Template";
     return "Generate Presentation";
   };
 

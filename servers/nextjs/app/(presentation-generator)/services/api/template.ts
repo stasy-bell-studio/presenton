@@ -14,14 +14,14 @@ export interface CloneLayoutPayload {
     layout_name?: string;
 }
 
-export interface TemplateV2ListResponse {
-    items: TemplateV2ListItem[];
+export interface Templatev1ListResponse {
+    items: Templatev1ListItem[];
     total: number;
     page: number;
     page_size: number;
 }
 
-export interface TemplateV2ListItem {
+export interface Templatev1ListItem {
     id: string;
     name: string;
     description?: string | null;
@@ -53,35 +53,35 @@ class TemplateService {
         }
     }
 
-    static async getTemplateV2Summaries(): Promise<TemplateV2ListResponse> {
+    static async getTemplatev1Summaries(): Promise<Templatev1ListResponse> {
         try {
-            const response = await fetch(getApiUrl(`/api/v2/templates?page_size=100`));
-            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates V2 summaries");
+            const response = await fetch(getApiUrl(`/api/v1/templates?page_size=100`));
+            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates v1 summaries");
         } catch (error) {
-            console.error("Failed to get Templates V2 summaries", error);
+            console.error("Failed to get Templates v1 summaries", error);
             throw error;
         }
     }
 
-    static async getTemplateV2Details(templateId: string) {
+    static async getTemplatev1Details(templateId: string) {
         try {
-            const response = await fetch(getApiUrl(`/api/v2/templates/${encodeURIComponent(templateId)}`));
-            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates V2 details");
+            const response = await fetch(getApiUrl(`/api/v1/templates/${encodeURIComponent(templateId)}`));
+            return await ApiResponseHandler.handleResponse(response, "Failed to get Templates v1 details");
         } catch (error) {
-            console.error("Failed to get Templates V2 details", error);
+            console.error("Failed to get Templates v1 details", error);
             throw error;
         }
     }
 
-    static async deleteTemplateV2(templateId: string) {
+    static async deleteTemplatev1(templateId: string) {
         try {
-            const response = await fetch(getApiUrl(`/api/v2/templates/${encodeURIComponent(templateId)}`), {
+            const response = await fetch(getApiUrl(`/api/v1/templates/${encodeURIComponent(templateId)}`), {
                 method: "DELETE",
                 headers: getHeader(),
             });
-            return await ApiResponseHandler.handleResponseWithResult(response, "Failed to delete Templates V2 template");
+            return await ApiResponseHandler.handleResponseWithResult(response, "Failed to delete Templates v1 template");
         } catch (error) {
-            console.error("Failed to delete Templates V2 template", error);
+            console.error("Failed to delete Templates v1 template", error);
             throw error;
         }
     }

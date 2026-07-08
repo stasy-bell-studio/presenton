@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Save, X, ChevronDown, ChevronRight, Type, Hash, List, Box, AlertCircle, Wand2, Loader2, ArrowRightLeft, MousePointer2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ProcessedSlide } from "../types";
-import { CompiledLayout } from "@/app/hooks/compileLayout";
+
 import { notify } from "@/components/ui/sonner";
 import * as parser from "@babel/parser";
 import traverse from "@babel/traverse";

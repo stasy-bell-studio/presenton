@@ -1,11 +1,10 @@
 "use client";
 import React, { useEffect, useMemo, useCallback, memo } from "react";
 
-import { TemplateLayoutsWithSettings } from "@/app/presentation-templates/utils";
-import { templates } from "@/app/presentation-templates";
+
 import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { CustomTemplates, useCustomTemplateSummaries } from "@/app/hooks/useCustomTemplates";
+
 import { CheckCircle2, Loader2 } from "lucide-react";
 
 import CreateCustomTemplate from "../../(dashboard)/templates/components/CreateCustomTemplate";
@@ -79,14 +78,14 @@ const BuiltInTemplateCard = memo(function BuiltInTemplateCard({
 });
 
 interface TemplateSelectionProps {
-  selectedTemplate: (TemplateLayoutsWithSettings | string) | null;
-  onSelectTemplate: (template: TemplateLayoutsWithSettings | string) => void;
+  selectedTemplateId: string | null;
+  onSelectTemplateId: (templateId: string) => void;
   useTemplateV2Templates?: boolean;
 }
 
 const TemplateSelection: React.FC<TemplateSelectionProps> = memo(function TemplateSelection({
-  selectedTemplate,
-  onSelectTemplate,
+  selectedTemplateId,
+  onSelectTemplateId,
   useTemplateV2Templates = false,
 }) {
   useEffect(() => {
