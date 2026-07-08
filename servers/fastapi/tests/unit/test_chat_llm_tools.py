@@ -76,6 +76,12 @@ def test_chat_tool_handler_rejects_web_search():
     assert "webSearch" not in chat_tools._tool_handlers
 
 
+def test_chat_tool_parse_args_repairs_fenced_jsonish_payload():
+    assert ChatTools._parse_args(
+        "```json\n{index: 0, includeFullContent: true}\n```"
+    ) == {"index": 0, "includeFullContent": True}
+
+
 def test_chat_tools_expose_only_v2_tool_names():
     assert [tool.name for tool in ChatTools(Mock()).get_tool_definitions()] == [
         "addOutline",

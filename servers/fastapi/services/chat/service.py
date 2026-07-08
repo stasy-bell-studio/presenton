@@ -92,6 +92,7 @@ class PresentationChatService:
         user_message: str,
         attachments: list[ChatAttachment] | None = None,
     ) -> ChatTurnResult:
+        self._tools.set_turn_context(user_message)
         conversation_id, messages, persisted_user_message = await self._prepare_turn_context(
             user_message,
             attachments or [],
@@ -109,6 +110,7 @@ class PresentationChatService:
         user_message: str,
         attachments: list[ChatAttachment] | None = None,
     ) -> AsyncGenerator[tuple[ChatStreamEventType, ChatStreamEventValue], None]:
+        self._tools.set_turn_context(user_message)
         yield "status", "Reading deck context"
         conversation_id, messages, persisted_user_message = await self._prepare_turn_context(
             user_message,
@@ -818,6 +820,16 @@ class PresentationChatService:
         if not tool_result.get("ok"):
             error = tool_result.get("error")
             if isinstance(error, str) and error.strip():
+                recovery = tool_result.get("recovery")
+                if isinstance(recovery, dict):
+                    guidance = recovery.get("guidance")
+                    if isinstance(guidance, list) and guidance:
+                        first_guidance = str(guidance[0]).strip()
+                        if first_guidance:
+                            return (
+                                f"{tool_name} failed: {error.strip()} "
+                                f"Recovery: {first_guidance}"
+                            )
                 return f"{tool_name} failed: {error.strip()}"
             return f"{tool_name} failed."
 

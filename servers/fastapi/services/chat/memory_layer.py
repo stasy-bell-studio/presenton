@@ -1045,6 +1045,17 @@ class PresentationChatMemoryLayer:
             )
         )
 
+    async def _get_current_theme(self) -> dict[str, Any] | None:
+        presentation = await self._sql_session.get(
+            PresentationModel,
+            self._presentation_id,
+        )
+        return (
+            copy.deepcopy(presentation.theme)
+            if presentation and isinstance(presentation.theme, dict)
+            else None
+        )
+
     @staticmethod
     def _slide_ui_layout(slide: SlideModel) -> dict[str, Any] | None:
         ui = slide.ui
@@ -1133,6 +1144,7 @@ class PresentationChatMemoryLayer:
             _component_id_for_path,
             _content_update_requested_for_type,
             _looks_like_asset_reference,
+            _normalize_chart_element,
             _resolve_element_path,
             _resolve_image_update_payload,
             _update_chart_element,
@@ -1155,6 +1167,7 @@ class PresentationChatMemoryLayer:
         ui = copy.deepcopy(ui)
         element = _resolve_element_path(ui, element_path)
         element_type = str(element.get("type") or "")
+        theme = await self._get_current_theme()
         element_updated = False
         if element_patch is not None:
             if "type" in element_patch and not isinstance(element_patch.get("type"), str):
@@ -1162,6 +1175,8 @@ class PresentationChatMemoryLayer:
             self._merge_ui_patch(element, element_patch)
             self._sync_ui_text_fields(element)
             element_type = str(element.get("type") or element_type)
+            if element_type == "chart":
+                _normalize_chart_element(element, theme)
             element_updated = True
         content_update_requested = _content_update_requested_for_type(
             element_type,
@@ -1190,7 +1205,7 @@ class PresentationChatMemoryLayer:
         elif content_update_requested and element_type == "chart":
             if chart is None:
                 raise ValueError("chart is required for chart elements.")
-            _update_chart_element(element, chart)
+            _update_chart_element(element, chart, theme)
         elif content_update_requested and element_type == "image":
             payload = _resolve_image_update_payload(text, items)
             if payload is None:
@@ -1310,9 +1325,17 @@ class PresentationChatMemoryLayer:
             }
         updated = False
         if replacement_component is not None:
+            from services.chat.slide_ui_helpers import (
+                _normalize_chart_tree,
+                _normalize_image_tree,
+                _validate_chart_insert_tree,
+            )
+
             if not isinstance(replacement_component.get("elements"), list):
                 raise ValueError("replacement component must include elements.")
             replacement = copy.deepcopy(replacement_component)
+            _normalize_image_tree(replacement)
+            _validate_chart_insert_tree(replacement)
             replacement["id"] = component_id
             replacement.setdefault("description", component.get("description"))
             replacement.setdefault("position", component.get("position"))
@@ -1322,6 +1345,7 @@ class PresentationChatMemoryLayer:
             component = replacement
             self._sync_ui_text_fields(component)
             self._normalize_added_visual_block(component)
+            _normalize_chart_tree(component, await self._get_current_theme())
             self._fit_component_to_stage(component)
             updated = True
         if self._update_ui_box(component, position=position, size=size):
@@ -1725,10 +1749,17 @@ class PresentationChatMemoryLayer:
         elements = component.get("elements")
         if not isinstance(elements, list) or not elements:
             raise ValueError("component.elements must be a non-empty list.")
+        from services.chat.slide_ui_helpers import (
+            _normalize_chart_tree,
+            _normalize_image_tree,
+            _validate_chart_insert_tree,
+        )
 
         ui = copy.deepcopy(ui)
         components = ui.get("components")
         new_component = copy.deepcopy(component)
+        _normalize_image_tree(new_component)
+        _validate_chart_insert_tree(new_component)
         existing_ids = {
             str(existing.get("id"))
             for existing in components
@@ -1750,6 +1781,7 @@ class PresentationChatMemoryLayer:
         # Keep assistant-authored text content in the canonical renderable shape.
         self._sync_ui_text_fields(new_component)
         self._normalize_added_visual_block(new_component)
+        _normalize_chart_tree(new_component, await self._get_current_theme())
         self._fit_component_to_stage(new_component)
 
         position = (
@@ -1788,6 +1820,11 @@ class PresentationChatMemoryLayer:
                 "added": False,
                 "message": "This slide has no editable ui layout; use saveSlide instead.",
             }
+        from services.chat.slide_ui_helpers import (
+            _normalize_chart_element,
+            _normalize_image_tree,
+            _validate_chart_insert_tree,
+        )
 
         ui = copy.deepcopy(ui)
         components = ui.get("components")
@@ -1795,6 +1832,8 @@ class PresentationChatMemoryLayer:
             return {"added": False, "message": "Slide has no components list."}
 
         new_element = copy.deepcopy(element)
+        _normalize_image_tree(new_element)
+        _validate_chart_insert_tree(new_element)
         if component_id:
             component_index, component = next(
                 (
@@ -1835,6 +1874,7 @@ class PresentationChatMemoryLayer:
                 "elements": [new_element],
             }
             new_element["position"] = {"x": 0, "y": 0}
+            self._normalize_added_visual_block(component)
             self._fit_component_to_stage(component)
             if isinstance(component.get("size"), dict):
                 new_element["size"] = copy.deepcopy(component["size"])
@@ -1844,6 +1884,8 @@ class PresentationChatMemoryLayer:
             path = f"components[{component_position}].elements[0]"
 
         self._sync_ui_text_fields(new_element)
+        if new_element.get("type") == "chart":
+            _normalize_chart_element(new_element, await self._get_current_theme())
         await self._save_slide_ui(slide, ui)
         return {
             "added": True,
@@ -2314,10 +2356,15 @@ class PresentationChatMemoryLayer:
 
         current_theme_summary: dict[str, Any] | None = None
         if current_theme:
+            current_theme_colors = self._extract_theme_colors(current_theme)
             current_theme_summary = {
                 "id": str(current_theme.get("id") or "").strip(),
                 "name": str(current_theme.get("name") or "").strip(),
                 "description": str(current_theme.get("description") or "").strip(),
+                "colors": current_theme_colors,
+                "chart_colors": self._chart_palette_from_theme_colors(
+                    current_theme_colors,
+                ),
             }
 
         return {
@@ -2504,8 +2551,12 @@ class PresentationChatMemoryLayer:
             return None
 
         ui = copy.deepcopy(source_layout)
-        self._apply_template_v2_content_to_ui(ui, content)
+        theme = presentation.theme if isinstance(presentation.theme, dict) else None
+        self._apply_template_v2_content_to_ui(ui, content, theme=theme)
         self._sync_ui_text_fields(ui)
+        from services.chat.slide_ui_helpers import _normalize_chart_tree
+
+        _normalize_chart_tree(ui, theme)
         return ui
 
     async def _get_template_v2_raw_layout_by_id(
@@ -2552,6 +2603,8 @@ class PresentationChatMemoryLayer:
         cls,
         ui: dict[str, Any],
         content: dict[str, Any],
+        *,
+        theme: dict[str, Any] | None = None,
     ) -> None:
         components = ui.get("components")
         if not isinstance(components, list):
@@ -2589,13 +2642,19 @@ class PresentationChatMemoryLayer:
             if component_content is None:
                 continue
 
-            cls._apply_template_v2_component_content(component, component_content)
+            cls._apply_template_v2_component_content(
+                component,
+                component_content,
+                theme=theme,
+            )
 
     @classmethod
     def _apply_template_v2_component_content(
         cls,
         component: dict[str, Any],
         content: dict[str, Any],
+        *,
+        theme: dict[str, Any] | None = None,
     ) -> None:
         elements = component.get("elements")
         if not isinstance(elements, list):
@@ -2603,33 +2662,49 @@ class PresentationChatMemoryLayer:
 
         for element in elements:
             if isinstance(element, dict):
-                cls._apply_template_v2_element_content(element, content)
+                cls._apply_template_v2_element_content(
+                    element,
+                    content,
+                    theme=theme,
+                )
 
     @classmethod
     def _apply_template_v2_element_content(
         cls,
         element: dict[str, Any],
         content: dict[str, Any],
+        *,
+        theme: dict[str, Any] | None = None,
     ) -> None:
         name = element.get("name")
         if isinstance(name, str) and name in content:
-            cls._set_template_v2_element_value(element, content[name])
+            cls._set_template_v2_element_value(
+                element,
+                content[name],
+                theme=theme,
+            )
 
         child = element.get("child")
         if isinstance(child, dict):
-            cls._apply_template_v2_element_content(child, content)
+            cls._apply_template_v2_element_content(child, content, theme=theme)
 
         children = element.get("children")
         if isinstance(children, list):
             for child_element in children:
                 if isinstance(child_element, dict):
-                    cls._apply_template_v2_element_content(child_element, content)
+                    cls._apply_template_v2_element_content(
+                        child_element,
+                        content,
+                        theme=theme,
+                    )
 
     @classmethod
     def _set_template_v2_element_value(
         cls,
         element: dict[str, Any],
         value: Any,
+        *,
+        theme: dict[str, Any] | None = None,
     ) -> None:
         element_type = element.get("type")
         if element_type == "text" and isinstance(value, str):
@@ -2664,9 +2739,9 @@ class PresentationChatMemoryLayer:
             return
 
         if element_type == "chart" and isinstance(value, dict):
-            for key in ("title", "categories", "series", "data"):
-                if key in value:
-                    element[key] = value[key]
+            from services.chat.slide_ui_helpers import _apply_chart_content_update
+
+            _apply_chart_content_update(element, value, theme)
             return
 
         if element_type == "table" and isinstance(value, list):
@@ -2704,6 +2779,7 @@ class PresentationChatMemoryLayer:
         if not isinstance(value, dict):
             return None
 
+        fallback_url: str | None = None
         for key in (
             "data",
             "url",
@@ -2714,8 +2790,14 @@ class PresentationChatMemoryLayer:
         ):
             asset_url = value.get(key)
             if isinstance(asset_url, str) and asset_url.strip():
-                return normalize_slide_asset_url(asset_url)
-        return None
+                normalized_url = normalize_slide_asset_url(asset_url)
+                if normalized_url.strip().startswith(
+                    ("http://", "https://", "/app_data/", "/static/", "data:", "blob:")
+                ):
+                    return normalized_url
+                if fallback_url is None:
+                    fallback_url = normalized_url
+        return fallback_url
 
     @staticmethod
     def _template_v2_asset_prompt(value: Any, is_icon: bool) -> str | None:
@@ -2928,6 +3010,38 @@ class PresentationChatMemoryLayer:
         if len(normalized) <= limit:
             return normalized
         return f"{normalized[:limit].rstrip()}\n[Document content truncated]"
+
+    @staticmethod
+    def _extract_theme_colors(theme: dict[str, Any]) -> dict[str, Any]:
+        data = theme.get("data")
+        colors = data.get("colors") if isinstance(data, dict) else None
+        if isinstance(colors, dict):
+            return copy.deepcopy(colors)
+        colors = theme.get("colors")
+        return copy.deepcopy(colors) if isinstance(colors, dict) else {}
+
+    @staticmethod
+    def _chart_palette_from_theme_colors(colors: dict[str, Any]) -> list[str]:
+        palette: list[str] = []
+        for index in range(10):
+            value = colors.get(f"graph_{index}")
+            if not isinstance(value, str):
+                continue
+            color = PresentationChatMemoryLayer._normalize_hex_color(value)
+            if color:
+                palette.append(color)
+        if palette:
+            return palette
+        fallback_keys = ("primary", "card", "stroke", "background_text", "primary_text")
+        fallback_palette: list[str] = []
+        for key in fallback_keys:
+            value = colors.get(key)
+            if not isinstance(value, str):
+                continue
+            color = PresentationChatMemoryLayer._normalize_hex_color(value)
+            if color:
+                fallback_palette.append(color)
+        return fallback_palette
 
     async def _get_chat_available_themes(self) -> list[dict[str, Any]]:
         merged_themes: list[dict[str, Any]] = [copy.deepcopy(theme) for theme in CHAT_BUILTIN_THEMES]

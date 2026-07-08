@@ -234,9 +234,9 @@ class SlideElementTableCellInput(OpenAIStrictSchemaModel):
         return self
 
 
-class SlideElementChartSeriesInput(StrictSchemaModel):
-    name: str = Field(min_length=1, max_length=200)
-    values: list[float] = Field(min_length=1, max_length=100)
+class SlideElementChartSeriesInput(OpenAIStrictSchemaModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    values: list[float] = Field(..., min_length=1, max_length=100)
 
     @model_validator(mode="before")
     @classmethod
@@ -250,21 +250,54 @@ class SlideElementChartSeriesInput(StrictSchemaModel):
 
 
 class SlideElementChartInput(OpenAIStrictSchemaModel):
+    chart_type: Literal[
+        "area",
+        "bar",
+        "bubble",
+        "donut",
+        "horizontal_bar",
+        "horizontal_stacked_bar",
+        "line",
+        "pie",
+        "polar_area",
+        "radar",
+        "scatter",
+        "stacked_bar",
+    ] | None = Field(
+        ...,
+        alias="chartType",
+        description=(
+            "Chart type. Supports the same chart types as the editor: bar, "
+            "horizontal_bar, stacked_bar, horizontal_stacked_bar, line, area, "
+            "pie, donut, scatter, bubble, radar, and polar_area."
+        ),
+    )
     title: str | None = Field(..., min_length=0, max_length=500)
     categories: list[str] | None = Field(..., min_length=1, max_length=100)
     series: list[SlideElementChartSeriesInput] | None = Field(
         ..., min_length=1, max_length=20
     )
+    colors: list[str] | None = Field(
+        ...,
+        min_length=1,
+        max_length=12,
+        description=(
+            "Optional chart palette. Use user-specified colors when provided; "
+            "otherwise omit/null so the current theme graph colors are used."
+        ),
+    )
+    axis_color: str | None = Field(..., alias="axisColor", min_length=1, max_length=32)
+    grid_color: str | None = Field(..., alias="gridColor", min_length=1, max_length=32)
+    x_axis: bool | None = Field(..., alias="xAxis")
+    y_axis: bool | None = Field(..., alias="yAxis")
+    x_axis_grid: bool | None = Field(..., alias="xAxisGrid")
+    y_axis_grid: bool | None = Field(..., alias="yAxisGrid")
+    x_axis_title: str | None = Field(..., alias="xAxisTitle", min_length=0, max_length=200)
+    y_axis_title: str | None = Field(..., alias="yAxisTitle", min_length=0, max_length=200)
+    data_labels: bool | None = Field(..., alias="dataLabels")
+    legend: bool | None = Field(...)
 
-    @model_validator(mode="before")
-    @classmethod
-    def drop_chart_type(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        normalized = dict(value)
-        normalized.pop("type", None)
-        normalized.pop("chart_type", None)
-        return normalized
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
 class SlideElementTableValueInput(StrictSchemaModel):
@@ -333,7 +366,10 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     )
     chart: SlideElementChartInput | None = Field(
         ...,
-        description="Chart title/categories/series update.",
+        description=(
+            "Chart update using the new chart model: chartType, title, "
+            "categories, series.values, colors, axes, data labels, and legend."
+        ),
     )
     table: SlideElementTableInput | None = Field(
         ...,
@@ -345,9 +381,10 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
         max_length=120000,
         description=(
             "Optional JSON-serialized element patch for toolbar-style properties "
-            "such as fill, stroke, font, alignment, opacity, chart_type, crop, "
-            "border_radius, padding, shadow, or line dash. Object values are merged "
-            "into the current element."
+            "such as fill, stroke, font, alignment, opacity, crop, "
+            "border_radius, padding, shadow, or line dash. Prefer the chart field "
+            "for chart type, colors, axes, legend, and data labels. "
+            "Object values are merged into the current element."
         ),
     )
     position: SlideElementPositionInput | None = Field(
@@ -367,12 +404,39 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
         if not isinstance(value, dict):
             return value
         normalized = dict(value)
+        chart_keys = (
+            "axisColor",
+            "axis_color",
+            "categories",
+            "chartType",
+            "chart_type",
+            "colors",
+            "dataLabels",
+            "data_labels",
+            "gridColor",
+            "grid_color",
+            "legend",
+            "series",
+            "title",
+            "xAxis",
+            "xAxisGrid",
+            "xAxisTitle",
+            "x_axis",
+            "x_axis_grid",
+            "x_axis_title",
+            "yAxis",
+            "yAxisGrid",
+            "yAxisTitle",
+            "y_axis",
+            "y_axis_grid",
+            "y_axis_title",
+        )
         if "chart" not in normalized and any(
-            key in normalized for key in ("title", "categories", "series")
+            key in normalized for key in chart_keys
         ):
             normalized["chart"] = {
                 key: normalized.pop(key)
-                for key in ("title", "categories", "series")
+                for key in chart_keys
                 if key in normalized
             }
         return normalized
