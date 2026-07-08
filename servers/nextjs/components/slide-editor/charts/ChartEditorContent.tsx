@@ -143,14 +143,14 @@ export function ChartEditorContent({
 
       {dataModalOpen && typeof document !== "undefined"
         ? createPortal(
-            <ChartDataModal
-              chart={chart}
-              chartPath={chartPath ?? "chart"}
-              onChange={onChange}
-              onClose={() => setDataModalOpen(false)}
-            />,
-            document.body,
-          )
+          <ChartDataModal
+            chart={chart}
+            chartPath={chartPath ?? "chart"}
+            onChange={onChange}
+            onClose={() => setDataModalOpen(false)}
+          />,
+          document.body,
+        )
         : null}
     </>
   );
@@ -477,11 +477,10 @@ function ChartSeriesColorControls({
             type="button"
             key={`${target.mode}-${target.index}`}
             aria-label={`Change chart color ${target.index + 1}`}
-            className={`grid h-8 w-8 place-items-center rounded-full border bg-white p-1 transition ${
-              paletteAnchor?.index === target.index
-                ? "border-[#7C51F8] ring-2 ring-[#E9E2FF]"
-                : "border-[#E6E6EA] hover:border-[#B8A3F8]"
-            }`}
+            className={`grid h-8 w-8 place-items-center rounded-full border bg-white p-1 transition ${paletteAnchor?.index === target.index
+              ? "border-[#7C51F8] ring-2 ring-[#E9E2FF]"
+              : "border-[#E6E6EA] hover:border-[#B8A3F8]"
+              }`}
             ref={(node) => {
               if (node) {
                 swatchRefs.current.set(target.index, node);
@@ -510,22 +509,22 @@ function ChartSeriesColorControls({
       </div>
       {openTarget && paletteAnchor && typeof document !== "undefined"
         ? createPortal(
-            <ChartColorPaletteCard
-              colors={targets.map((target) => target.color)}
-              onChange={(color) =>
-                onChange(updateChartColorTarget(chart, openTarget.index, color))
-              }
-              onClose={() => setPaletteAnchor(null)}
-              onSelectIndex={(index) =>
-                setPaletteAnchor((current) =>
-                  current ? { ...current, index } : current,
-                )
-              }
-              selectedIndex={openTarget.index}
-              style={chartPalettePortalStyle(paletteAnchor.rect)}
-            />,
-            document.body,
-          )
+          <ChartColorPaletteCard
+            colors={targets.map((target) => target.color)}
+            onChange={(color) =>
+              onChange(updateChartColorTarget(chart, openTarget.index, color))
+            }
+            onClose={() => setPaletteAnchor(null)}
+            onSelectIndex={(index) =>
+              setPaletteAnchor((current) =>
+                current ? { ...current, index } : current,
+              )
+            }
+            selectedIndex={openTarget.index}
+            style={chartPalettePortalStyle(paletteAnchor.rect)}
+          />,
+          document.body,
+        )
         : null}
     </div>
   );
@@ -657,15 +656,13 @@ function CompactSwitch({
       role="switch"
       aria-checked={checked}
       aria-label={label}
-      className={`relative h-5 w-9 shrink-0 rounded-full transition ${
-        checked ? "bg-[#7C51F8]" : "bg-[#D8D8DE]"
-      }`}
+      className={`relative h-5 w-9 shrink-0 rounded-full transition ${checked ? "bg-[#7C51F8]" : "bg-[#D8D8DE]"
+        }`}
       onClick={() => onChange(!checked)}
     >
       <span
-        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-          checked ? "translate-x-4" : "translate-x-0"
-        }`}
+        className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${checked ? "translate-x-4" : "translate-x-0"
+          }`}
       />
     </button>
   );
@@ -1364,20 +1361,58 @@ function normalizeValues(values: number[], length: number) {
 }
 
 function clearChartData(chart: ChartElement): ChartElement {
-  const categories = ["Item 1"];
-  const series = [{ name: "Series 1", values: [0] }];
-  const color = chart.color ?? DEFAULT_CHART_COLORS[0];
+  const sourceCategories =
+    chart.categories && chart.categories.length > 0
+      ? chart.categories
+      : chart.data.length > 0
+        ? chart.data.map((datum, index) => datum.label || `Item ${index + 1}`)
+        : resolvedChartCategories(chart);
+  const sourceSeries =
+    chart.series && chart.series.length > 0
+      ? chart.series
+      : [
+        {
+          name: chart.title ?? "Series 1",
+          values: chart.data.map((datum) => datum.value),
+        },
+      ];
+  const valueLength = Math.min(
+    24,
+    Math.max(
+      1,
+      sourceCategories.length,
+      chart.data.length,
+      ...sourceSeries.map((item) => item.values.length),
+    ),
+  );
+  const categories = Array.from(
+    { length: valueLength },
+    (_, index) => sourceCategories[index] ?? `Item ${index + 1}`,
+  );
+  const series = sourceSeries.map((item) => ({
+    ...item,
+    values: Array.from({ length: valueLength }, () => 0),
+  }));
+  const fallbackColors =
+    chart.colors && chart.colors.length > 0
+      ? chart.colors
+      : [chart.color ?? DEFAULT_CHART_COLORS[0]];
+  const fallbackData = chartDataFromSeriesWithColors(
+    categories,
+    series,
+    fallbackColors,
+    chartColorTargetMode({ ...chart, categories, series }) === "category",
+  );
+  const data =
+    chart.data.length > 0
+      ? chart.data.map((datum) => ({ ...datum, value: 0 }))
+      : fallbackData;
+
   return {
     ...chart,
     categories,
     series,
-    colors: [color],
-    data: chartDataFromSeriesWithColors(
-      categories,
-      series,
-      [color],
-      true,
-    ),
+    data,
   };
 }
 
