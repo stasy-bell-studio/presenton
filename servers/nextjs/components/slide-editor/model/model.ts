@@ -24,8 +24,8 @@ import {
   setRawTextListContent,
   setRawTextListRunsContent,
   setRawTextRunsContent,
+  setRawTextWrap,
   normalizeRawTextMarkdownElement,
-  textVisualLocalBox,
 } from "@/components/slide-editor/text/template-v2-text";
 import {
   intrinsicFlowSize,
@@ -228,6 +228,44 @@ export function updateElementInUi(
     { ...component, elements },
     selection,
   );
+  return { ...sourceUi, components };
+}
+
+export function syncComponentHeightToElement(
+  sourceUi: RawUi,
+  selection: ElementSelection,
+) {
+  if (
+    selection.componentIndex === ROOT_ELEMENTS_COMPONENT_INDEX ||
+    selection.elementPath.length !== 1
+  ) {
+    return sourceUi;
+  }
+
+  const components = [...readArray(sourceUi.components)];
+  const component = asRecord(components[selection.componentIndex]);
+  const componentElements = component ? readArray(component.elements) : [];
+  const element = component
+    ? asRecord(componentElements[selection.elementPath[0]])
+    : null;
+  if (!component || !element) return sourceUi;
+
+  const componentSize = readSize(component.size, {
+    width: STAGE_WIDTH,
+    height: STAGE_HEIGHT,
+  });
+  const box = elementBox(element);
+  const contentHeight = Math.max(1, box.y + box.height);
+  const height =
+    componentElements.length === 1
+      ? contentHeight
+      : Math.max(componentSize.height, contentHeight);
+  if (Math.abs(height - componentSize.height) < 0.01) return sourceUi;
+
+  components[selection.componentIndex] = {
+    ...component,
+    size: { ...componentSize, height },
+  };
   return { ...sourceUi, components };
 }
 
@@ -712,12 +750,8 @@ export function absoluteInlineEditBox(
     frame ?? renderedLocalBoxForElementSelection(ui, selection);
   if (!element || !localFrame) return absoluteBoxForSelection(ui, selection);
 
-  const visualFrame =
-    readString(element.type) === "text"
-      ? textVisualLocalBox(element, localFrame)
-      : localFrame;
   return (
-    absoluteBoxForElementLocalFrame(ui, selection, visualFrame) ??
+    absoluteBoxForElementLocalFrame(ui, selection, localFrame) ??
     absoluteBoxForSelection(ui, selection)
   );
 }
@@ -1382,17 +1416,15 @@ export function elementWithInlineDraft(
         : draft === rawTextContent(element)
           ? element
           : setRawTextContent(element, draft, style);
-    return preserveInlineEditFrame(next, frame);
+    return preserveInlineEditFrame(setRawTextWrap(next, "word"), frame);
   }
   if (kind === "text-list") {
     const next =
       runs != null
         ? setRawTextListRunsContent(element, runs)
         : setRawTextListContent(element, draft);
-    return preserveInlineEditFrame(
-      style ? applyTextStyle(next, style) : next,
-      frame,
-    );
+    const styled = style ? applyTextStyle(next, style) : next;
+    return preserveInlineEditFrame(setRawTextWrap(styled, "word"), frame);
   }
   return element;
 }

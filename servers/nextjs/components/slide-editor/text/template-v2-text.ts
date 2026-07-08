@@ -305,6 +305,19 @@ export function setRawTextRunsContent(
   };
 }
 
+export function setRawTextWrap(
+  element: TemplateV2RawTextElement,
+  wrap: NonNullable<Font["wrap"]>,
+): TemplateV2RawTextElement {
+  return {
+    ...element,
+    font: {
+      ...(asRecord(element.font) ?? {}),
+      wrap,
+    },
+  };
+}
+
 export function rawInlineTextFontRecord(value: unknown, fallback: unknown) {
   const font = asRecord(value);
   if (!font) return fallback;

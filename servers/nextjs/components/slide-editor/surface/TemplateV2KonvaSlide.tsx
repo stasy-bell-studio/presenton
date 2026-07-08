@@ -48,6 +48,12 @@ import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar
 import { ChartDataEditorPopover } from "@/components/slide-editor/charts/ChartEditorContent";
 import { TableInlineEditor } from "@/components/slide-editor/tables/TableInlineEditor";
 import { TemplateV2InlineEditor } from "@/components/slide-editor/text/TemplateV2InlineEditor";
+import {
+  measureWordWrappedTextRunsHeight,
+  type TemplateV2InlineEditBox,
+  type TemplateV2TextEditStyle,
+  wordWrappedTextRuns,
+} from "@/components/slide-editor/text/template-v2-text-editing";
 
 
 import { updateSlideUi } from "@/store/slices/presentationGeneration";
@@ -114,6 +120,7 @@ import {
   elementWithNormalizedLayoutChildren,
   eventTargetsThisSlide,
   getElementAtSelection,
+  syncComponentHeightToElement,
   isBoxVisualType,
   isEditableTarget,
   isManualPositioned,
@@ -159,6 +166,29 @@ import {
   type TemplateV2InsertElementsDetail,
   type TemplateV2SurfaceSelectedDetail,
 } from "@/components/slide-editor/events/events";
+
+function wordWrappedTextStyle(
+  style: TemplateV2TextEditStyle,
+): TemplateV2TextEditStyle {
+  return { ...style, wrap: "word" };
+}
+
+function autoSizeInlineTextFrame(
+  frame: TemplateV2InlineEditBox | null | undefined,
+  runs: TextRun[],
+  style: TemplateV2TextEditStyle,
+) {
+  if (!frame) return frame;
+  const contentHeight = measureWordWrappedTextRunsHeight(
+    runs,
+    frame.width,
+    style,
+  );
+  return {
+    ...frame,
+    height: Math.max(1, contentHeight),
+  };
+}
 
 const EDITING_SCENE_DEVICE_OVERSAMPLE = 1.5;
 const MIN_EDITING_SCENE_PIXEL_RATIO = 3;
@@ -232,7 +262,6 @@ function TemplateV2KonvaSlideComponent({
     startInlineEdit,
     updateInlineDraft,
     updateInlineEdit,
-    updateInlineRuns,
     updateInlineTextSelectionRange,
   } = useTemplateV2InlineEditing<ElementSelection>({
     keyForSelection,
@@ -1038,23 +1067,26 @@ function TemplateV2KonvaSlideComponent({
         if (normalized.changed) {
           updateElement(elementSelection, () => normalized.element, false);
         }
+        const style = wordWrappedTextStyle(rawTextStyle(normalized.element));
+        const runs = wordWrappedTextRuns(normalized.runs);
         startInlineEdit({
           kind: "text",
           selection: elementSelection,
-          draft: textRunsContent(normalized.runs),
-          runs: normalized.runs,
-          frame,
-          style: rawTextStyle(normalized.element),
+          draft: textRunsContent(runs),
+          runs,
+          frame: autoSizeInlineTextFrame(frame, runs, style),
+          style,
         });
       } else if (type === "text-list") {
-        const runs = rawTextListRunsForEditor(element);
+        const runs = wordWrappedTextRuns(rawTextListRunsForEditor(element));
+        const style = wordWrappedTextStyle(rawTextStyle(element));
         startInlineEdit({
           kind: "text-list",
           selection: elementSelection,
           draft: textRunsContent(runs),
           runs,
-          frame,
-          style: rawTextStyle(element),
+          frame: autoSizeInlineTextFrame(frame, runs, style),
+          style,
         });
       }
     },
@@ -1070,28 +1102,67 @@ function TemplateV2KonvaSlideComponent({
           current.kind === "text" || current.kind === "text-list"
             ? runsOverride ?? current.runs
             : current.runs;
-        updateElement(current.selection, (element) =>
-          elementWithInlineDraft(
-            element,
-            current.kind,
-            runsOverride ? textRunsContent(runsOverride) : current.draft,
-            current.style,
-            current.frame,
-            runs,
+        const style =
+          (current.kind === "text" || current.kind === "text-list") &&
+          current.style
+            ? wordWrappedTextStyle(current.style)
+            : current.style;
+        const frame =
+          (current.kind === "text" || current.kind === "text-list") &&
+          style &&
+          runs
+            ? autoSizeInlineTextFrame(current.frame, runs, style)
+            : current.frame;
+        commitUi(
+          syncComponentHeightToElement(
+            updateElementInUi(
+              currentUiRef.current,
+              current.selection,
+              (element) =>
+                elementWithInlineDraft(
+                  element,
+                  current.kind,
+                  runsOverride
+                    ? textRunsContent(runsOverride)
+                    : current.draft,
+                  style,
+                  frame,
+                  runs,
+                ),
+            ),
+            current.selection,
           ),
         );
       }
       setSelection(current.selection);
       clearInlineEdit();
     },
-    [clearInlineEdit, inlineEdit, updateElement],
+    [clearInlineEdit, commitUi, inlineEdit],
   );
 
   const commitInlineTextRuns = useCallback(
     (elementSelection: ElementSelection, runs: TextRun[]) => {
-      updateInlineRuns(elementSelection, runs);
+      updateInlineEdit(elementSelection, (active) => {
+        if (active.kind !== "text" && active.kind !== "text-list") {
+          return active;
+        }
+        const nextRuns = wordWrappedTextRuns(runs);
+        const style = active.style
+          ? wordWrappedTextStyle(active.style)
+          : undefined;
+        return {
+          ...active,
+          draft: textRunsContent(nextRuns),
+          runs: nextRuns,
+          style,
+          frame:
+            style != null
+              ? autoSizeInlineTextFrame(active.frame, nextRuns, style)
+              : active.frame,
+        };
+      });
     },
-    [updateInlineRuns],
+    [updateInlineEdit],
   );
 
   const applyToolbarElementChange = useCallback(
@@ -1110,20 +1181,25 @@ function TemplateV2KonvaSlideComponent({
           return active;
         }
         if (active.kind === "text") {
+          const runs = wordWrappedTextRuns(rawTextRunsForEditor(next));
+          const style = wordWrappedTextStyle(rawTextStyle(next));
           return {
             ...active,
             draft: rawTextContent(next),
-            runs: rawTextRunsForEditor(next),
-            style: rawTextStyle(next),
+            runs,
+            style,
+            frame: autoSizeInlineTextFrame(active.frame, runs, style),
           };
         }
         if (active.kind === "text-list") {
-          const runs = rawTextListRunsForEditor(next);
+          const runs = wordWrappedTextRuns(rawTextListRunsForEditor(next));
+          const style = wordWrappedTextStyle(rawTextStyle(next));
           return {
             ...active,
             draft: textRunsContent(runs),
             runs,
-            style: rawTextStyle(next),
+            style,
+            frame: autoSizeInlineTextFrame(active.frame, runs, style),
           };
         }
         return { ...active, style: rawTextStyle(next) };

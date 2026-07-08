@@ -193,6 +193,45 @@ function componentBoxFromTransform(
   };
 }
 
+function componentFromNodeTransform(
+  component: RawComponent,
+  node: Konva.Group,
+  anchor: ComponentTransformAnchor | null,
+) {
+  const box = componentBox(component);
+  const scaleX = node.scaleX();
+  const scaleY = node.scaleY();
+  const nextBox = componentBoxFromTransform(box, scaleX, scaleY, anchor);
+  const resizeMode = componentResizeModeForTransform(anchor, scaleX, scaleY);
+  node.scaleX(1);
+  node.scaleY(1);
+  const position = positionFromNodeInParent(node, STAGE_BOX, {
+    ...box,
+    ...nextBox,
+  });
+  const nextComponentBox = {
+    ...position,
+    width: nextBox.width,
+    height: nextBox.height,
+    rotation: node.rotation(),
+  };
+
+  if (resizeMode === "resize-frame") {
+    return resizeComponentFrame(component, nextComponentBox);
+  }
+  if (resizeMode === "resize-element-bounds") {
+    return resizeComponentElementBounds(component, {
+      ...nextComponentBox,
+      scaleX: nextBox.scaleX,
+      scaleY: nextBox.scaleY,
+    });
+  }
+  return resizeComponent(component, {
+    ...nextComponentBox,
+    scaleX: nextBox.scaleX,
+    scaleY: nextBox.scaleY,
+  });
+}
 
 export function RawComponentNode({
   component,
@@ -246,10 +285,16 @@ export function RawComponentNode({
   fontRevision: number;
 }) {
   const groupRef = useRef<Konva.Group | null>(null);
-  const box = componentBox(component);
+  const transformPreviewRef = useRef<RawComponent | null>(null);
+  const [transformPreview, setTransformPreview] =
+    useState<RawComponent | null>(null);
+  const renderedComponent = transformPreview ?? component;
+  const box = componentBox(renderedComponent);
   const selection: ComponentSelection = { kind: "component", componentIndex };
   const key = keyForSelection(selection);
-  const elements = readArray(component.elements).filter(isRecord) as RawElement[];
+  const elements = readArray(renderedComponent.elements).filter(
+    isRecord,
+  ) as RawElement[];
 
   return (
     <Group
@@ -263,7 +308,7 @@ export function RawComponentNode({
       height={box.height}
       offsetX={box.width / 2}
       offsetY={box.height / 2}
-      rotation={readNumber(component.rotation) ?? 0}
+      rotation={readNumber(renderedComponent.rotation) ?? 0}
       clipX={isEditMode ? undefined : 0}
       clipY={isEditMode ? undefined : 0}
       clipWidth={isEditMode ? undefined : box.width}
@@ -304,49 +349,47 @@ export function RawComponentNode({
         if (!node) return;
         onComponentDragEnd(componentIndex, node);
       }}
+      onTransformStart={() => {
+        transformPreviewRef.current = null;
+        setTransformPreview(null);
+      }}
+      onTransform={(event) => {
+        if (!isEditMode) return;
+        event.cancelBubble = true;
+        const node = groupRef.current;
+        if (!node) return;
+        const anchor = componentTransformAnchorForNode(node);
+        if (anchor === "rotater") return;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        if (
+          Math.abs(scaleX - 1) < 0.001 &&
+          Math.abs(scaleY - 1) < 0.001
+        ) {
+          return;
+        }
+        const next = componentFromNodeTransform(
+          transformPreviewRef.current ?? component,
+          node,
+          anchor,
+        );
+        transformPreviewRef.current = next;
+        setTransformPreview(next);
+      }}
       onTransformEnd={(event) => {
         if (!isEditMode) return;
         event.cancelBubble = true;
         const node = groupRef.current;
         if (!node) return;
-        const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
         const anchor = componentTransformAnchorForNode(node);
-        const nextBox = componentBoxFromTransform(box, scaleX, scaleY, anchor);
-        const resizeMode = componentResizeModeForTransform(
+        const next = componentFromNodeTransform(
+          transformPreviewRef.current ?? component,
+          node,
           anchor,
-          scaleX,
-          scaleY,
         );
-        node.scaleX(1);
-        node.scaleY(1);
-        const position = positionFromNodeInParent(node, STAGE_BOX, {
-          ...box,
-          ...nextBox,
-        });
-        onComponentChange(componentIndex, (current) => {
-          const nextComponentBox = {
-            ...position,
-            width: nextBox.width,
-            height: nextBox.height,
-            rotation: node.rotation(),
-          };
-          if (resizeMode === "resize-frame") {
-            return resizeComponentFrame(current, nextComponentBox);
-          }
-          if (resizeMode === "resize-element-bounds") {
-            return resizeComponentElementBounds(current, {
-              ...nextComponentBox,
-              scaleX: nextBox.scaleX,
-              scaleY: nextBox.scaleY,
-            });
-          }
-          return resizeComponent(current, {
-            ...nextComponentBox,
-            scaleX: nextBox.scaleX,
-            scaleY: nextBox.scaleY,
-          });
-        });
+        transformPreviewRef.current = null;
+        setTransformPreview(null);
+        onComponentChange(componentIndex, () => next);
       }}
     >
       {isEditMode ? <SelectionBoundsRect width={box.width} height={box.height} /> : null}

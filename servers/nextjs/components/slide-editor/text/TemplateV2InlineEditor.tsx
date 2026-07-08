@@ -14,6 +14,7 @@ import {
   type TemplateV2InlineEditBox,
   type TemplateV2InlineEditKind,
   type TemplateV2TextEditStyle,
+  wordWrappedTextRuns,
 } from "@/components/slide-editor/text/template-v2-text-editing";
 import { effectiveLineHeight } from "@/components/slide-editor/text/text-line-height";
 import type { TextSelectionRange } from "@/components/slide-editor/text/text-runs";
@@ -62,14 +63,18 @@ export function TemplateV2InlineEditor({
   const font = style ?? DEFAULT_TEXT_EDIT_STYLE;
   const isCode = kind === "svg";
   const isRichText = kind === "text" || kind === "text-list";
-  const fontSize = isCode ? 12 : font.size;
+  const textStyle = useMemo(
+    () => (isRichText ? { ...font, wrap: "word" } : font),
+    [font, isRichText],
+  );
+  const fontSize = isCode ? 12 : textStyle.size;
   const editorLineHeight = effectiveLineHeight({
     text: draft,
     width: box.width,
     fontSize,
-    lineHeight: font.lineHeight,
+    lineHeight: textStyle.lineHeight,
     fallback: 1.15,
-    wrap: font.wrap,
+    wrap: textStyle.wrap,
   });
   const closeAfterBlur = useCallback(() => {
     window.setTimeout(() => {
@@ -104,28 +109,31 @@ export function TemplateV2InlineEditor({
     background: isCode
       ? "rgba(7,20,37,0.96)"
       : "rgba(255,255,255,0.08)",
-    color: isCode ? "#E7EDF8" : withHash(font.color),
-    caretColor: isCode ? "#E7EDF8" : withHash(font.color),
+    color: isCode ? "#E7EDF8" : withHash(textStyle.color),
+    caretColor: isCode ? "#E7EDF8" : withHash(textStyle.color),
     fontFamily: isCode
       ? "Menlo, Consolas, monospace"
-      : cssFontFamilyStack(font.family),
+      : cssFontFamilyStack(textStyle.family),
     fontSize,
-    fontWeight: font.bold ? 700 : 400,
-    fontStyle: font.italic ? "italic" : "normal",
+    fontWeight: textStyle.bold ? 700 : 400,
+    fontStyle: textStyle.italic ? "italic" : "normal",
     lineHeight: editorLineHeight,
-    letterSpacing: font.letterSpacing,
-    textAlign: font.horizontal as CSSProperties["textAlign"],
+    letterSpacing: textStyle.letterSpacing,
+    textAlign: textStyle.horizontal as CSSProperties["textAlign"],
     overflow: isCode ? "auto" : "visible",
   };
-  const baseTextFont = useMemo(() => textEditStyleToFont(font), [font]);
+  const baseTextFont = useMemo(() => textEditStyleToFont(textStyle), [textStyle]);
   const [initialTextEditorRuns] = useState<TextRun[]>(() =>
-    cloneTextRuns(runs ?? [{ text: draft || " ", font: baseTextFont }]),
+    wordWrappedTextRuns(runs ?? [{ text: draft || " ", font: baseTextFont }]),
   );
-  const textEditorRuns = runs ?? initialTextEditorRuns;
+  const textEditorRuns = useMemo(
+    () => wordWrappedTextRuns(runs ?? initialTextEditorRuns),
+    [initialTextEditorRuns, runs],
+  );
   const latestRunsRef = useRef<TextRun[]>(initialTextEditorRuns);
 
   useEffect(() => {
-    latestRunsRef.current = cloneTextRuns(textEditorRuns);
+    latestRunsRef.current = wordWrappedTextRuns(textEditorRuns);
   }, [textEditorRuns]);
 
   const closeTextEditor = useCallback(
@@ -208,13 +216,6 @@ function textEditStyleToFont(font: TemplateV2TextEditStyle): Font {
     wrap: readFontWrap(font.wrap),
     opacity: font.opacity,
   };
-}
-
-function cloneTextRuns(runs: TextRun[]) {
-  return runs.map((run) => ({
-    ...run,
-    font: run.font ? { ...run.font } : undefined,
-  }));
 }
 
 function readFontWrap(value: unknown): Font["wrap"] {

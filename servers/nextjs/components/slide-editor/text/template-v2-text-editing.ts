@@ -1,6 +1,7 @@
 import type { Font, TextRun } from "@/components/slide-editor/types";
 import type { TextSelectionRange } from "@/components/slide-editor/text/text-runs";
 import {
+  fontFromRecord,
   layoutRenderTextRuns,
   lineRenderHeight,
   type RenderTextRun,
@@ -54,4 +55,40 @@ export function measureWrappedRenderTextHeight(
     (sum, line) => sum + lineRenderHeight(line, fallbackLineHeight),
     0,
   );
+}
+
+export function measureWordWrappedTextRunsHeight(
+  runs: TextRun[],
+  width: number,
+  style: TemplateV2TextEditStyle,
+) {
+  const baseFont: RenderTextRun["font"] = { ...style, wrap: "word" };
+  const sourceRuns = runs.length > 0 ? runs : [{ text: " ", font: {} }];
+  const renderRuns = sourceRuns.map((run) => ({
+    text: run.text,
+    font: fontFromRecord(
+      (run.font ?? {}) as Record<string, unknown>,
+      baseFont,
+    ),
+  }));
+  const text = sourceRuns.map((run) => run.text).join("");
+  const emptyHardLines = text.includes("\n")
+    ? text.split("\n").filter((line) => line.length === 0).length
+    : 0;
+  return Math.ceil(
+    measureWrappedRenderTextHeight(
+      renderRuns,
+      Math.max(1, width),
+      "word",
+      baseFont.lineHeight,
+    ) +
+      emptyHardLines * baseFont.size * baseFont.lineHeight,
+  );
+}
+
+export function wordWrappedTextRuns(runs: TextRun[]): TextRun[] {
+  return runs.map((run) => ({
+    ...run,
+    font: { ...run.font, wrap: "word" },
+  }));
 }
