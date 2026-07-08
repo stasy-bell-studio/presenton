@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Chart from "chart.js/auto";
 import type {
   ChartConfiguration,
@@ -9,6 +9,7 @@ import type {
   Plugin,
 } from "chart.js";
 import { Group, Image as KonvaImage, Rect } from "react-konva";
+import { normalizeChartTypeName } from "@/components/slide-editor/charts/chart-data";
 import {
   asRecord,
   clamp,
@@ -90,21 +91,53 @@ export function TemplateV2ChartJsElement({
   const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
   const logicalWidth = Math.max(1, Math.round(width));
   const logicalHeight = Math.max(1, Math.round(height));
+  const pixelRatio =
+    typeof window === "undefined"
+      ? 1
+      : clamp(window.devicePixelRatio || 1, 1, interactive ? 2 : 3);
+  const renderSignature = useMemo(
+    () =>
+      chartRenderSignature(
+        element,
+        logicalWidth,
+        logicalHeight,
+        pixelRatio,
+      ),
+    [element, logicalHeight, logicalWidth, pixelRatio],
+  );
+  const renderInputRef = useRef({
+    element,
+    logicalHeight,
+    logicalWidth,
+    pixelRatio,
+    renderSignature,
+  });
+
+  if (renderInputRef.current.renderSignature !== renderSignature) {
+    renderInputRef.current = {
+      element,
+      logicalHeight,
+      logicalWidth,
+      pixelRatio,
+      renderSignature,
+    };
+  }
 
   useEffect(() => {
     if (typeof document === "undefined") return;
 
+    const renderInput = renderInputRef.current;
     const nextCanvas = document.createElement("canvas");
-    nextCanvas.width = logicalWidth;
-    nextCanvas.height = logicalHeight;
-    nextCanvas.style.width = `${logicalWidth}px`;
-    nextCanvas.style.height = `${logicalHeight}px`;
+    nextCanvas.width = renderInput.logicalWidth;
+    nextCanvas.height = renderInput.logicalHeight;
+    nextCanvas.style.width = `${renderInput.logicalWidth}px`;
+    nextCanvas.style.height = `${renderInput.logicalHeight}px`;
 
-    const pixelRatio =
-      typeof window === "undefined"
-        ? 1
-        : clamp(window.devicePixelRatio || 1, 1, 3);
-    const config = createChartJsConfig(element, logicalHeight, pixelRatio);
+    const config = createChartJsConfig(
+      renderInput.element,
+      renderInput.logicalHeight,
+      renderInput.pixelRatio,
+    );
 
     let chart: Chart | null = null;
     try {
@@ -119,7 +152,7 @@ export function TemplateV2ChartJsElement({
     return () => {
       chart?.destroy();
     };
-  }, [element, logicalHeight, logicalWidth]);
+  }, [renderSignature]);
 
   return (
     <Group listening={interactive}>
@@ -136,6 +169,63 @@ export function TemplateV2ChartJsElement({
       ) : null}
     </Group>
   );
+}
+
+function chartRenderSignature(
+  element: RawElement,
+  width: number,
+  height: number,
+  pixelRatio: number,
+) {
+  return stableChartStringify({
+    axis_color: element.axis_color,
+    axisColor: element.axisColor,
+    categories: element.categories,
+    chart_type: element.chart_type,
+    chartType: element.chartType,
+    color: element.color,
+    colors: element.colors,
+    data: element.data,
+    data_labels: element.data_labels,
+    dataLabels: element.dataLabels,
+    grid_color: element.grid_color,
+    gridColor: element.gridColor,
+    height,
+    legend: element.legend,
+    pixelRatio,
+    series: element.series,
+    showLegend: element.showLegend,
+    text_color: element.text_color,
+    textColor: element.textColor,
+    title: element.title,
+    title_color: element.title_color,
+    titleColor: element.titleColor,
+    width,
+    x_axis: element.x_axis,
+    x_axis_grid: element.x_axis_grid,
+    x_axis_title: element.x_axis_title,
+    xAxis: element.xAxis,
+    xAxisGrid: element.xAxisGrid,
+    xAxisTitle: element.xAxisTitle,
+    y_axis: element.y_axis,
+    y_axis_grid: element.y_axis_grid,
+    y_axis_title: element.y_axis_title,
+    yAxis: element.yAxis,
+    yAxisGrid: element.yAxisGrid,
+    yAxisTitle: element.yAxisTitle,
+  });
+}
+
+function stableChartStringify(value: unknown) {
+  return JSON.stringify(value, (_key, currentValue) => {
+    if (!isRecord(currentValue)) return currentValue;
+    return Object.keys(currentValue)
+      .sort()
+      .reduce<Record<string, unknown>>((result, key) => {
+        result[key] = currentValue[key];
+        return result;
+      }, {});
+  });
 }
 
 function createChartJsConfig(
@@ -621,10 +711,7 @@ function chartScales({
 }
 
 function rawChartJsKind(value: unknown): ChartJsKind {
-  const normalized =
-    typeof value === "string"
-      ? value.trim().toLowerCase().replace(/[\s-]+/g, "_")
-      : "";
+  const normalized = normalizeChartTypeName(value);
 
   switch (normalized) {
     case "area":
@@ -648,10 +735,14 @@ function rawChartJsKind(value: unknown): ChartJsKind {
       return baseKind("radar");
     case "scatter":
       return baseKind("scatter");
+    case "stackedbar":
     case "stacked_bar":
     case "bar_stacked":
     case "stacked":
       return baseKind("bar", { stacked: true });
+    case "horizontalstackbar":
+    case "horizontalstackedbar":
+    case "horizontal_stack_bar":
     case "horizontal_stacked_bar":
       return baseKind("bar", { horizontal: true, stacked: true });
     case "bar":

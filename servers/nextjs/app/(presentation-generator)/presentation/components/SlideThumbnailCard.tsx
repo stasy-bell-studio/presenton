@@ -1,4 +1,4 @@
-import React, { forwardRef } from "react";
+import React, { forwardRef, memo } from "react";
 import type { Slide } from "../../types/slide";
 import { V1ContentRender } from "../../components/V1ContentRender";
 import {
@@ -16,7 +16,7 @@ interface SlideThumbnailCardProps extends React.HTMLAttributes<HTMLDivElement> {
 
 const SCALE = 0.061;
 
-export const SlideThumbnailCard = forwardRef<
+const SlideThumbnailCardComponent = forwardRef<
   HTMLDivElement,
   SlideThumbnailCardProps
 >(
@@ -88,4 +88,18 @@ export const SlideThumbnailCard = forwardRef<
   }
 );
 
-SlideThumbnailCard.displayName = "SlideThumbnailCard";
+SlideThumbnailCardComponent.displayName = "SlideThumbnailCard";
+
+export const SlideThumbnailCard = memo(
+  SlideThumbnailCardComponent,
+  (previous, next) =>
+    previous.slide === next.slide &&
+    previous.index === next.index &&
+    previous.selected === next.selected &&
+    previous.fonts === next.fonts &&
+    previous.presentationVersion === next.presentationVersion &&
+    previous.className === next.className &&
+    previous.style === next.style
+);
+
+SlideThumbnailCard.displayName = "Memo(SlideThumbnailCard)";

@@ -97,15 +97,6 @@ const IDLE_LOADING_STATE: LoadingState = {
   extra_info: "",
 };
 
-const WHEEL_PAGE_THRESHOLD_PX = 48;
-const WHEEL_PAGE_LOCK_MS = 360;
-
-function wheelDeltaToPixels(delta: number, mode: number, pageSize: number) {
-  if (mode === 1) return delta * 16;
-  if (mode === 2) return delta * pageSize;
-  return delta;
-}
-
 const PresentationPage: React.FC<PresentationPageProps> = ({
   presentation_id,
 }) => {
@@ -137,11 +128,6 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   >(() => new Set());
   const [error, setError] = useState(false);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
-  const selectedSlideRef = useRef(0);
-  const wheelDeltaRef = useRef(0);
-  const wheelDirectionRef = useRef(0);
-  const wheelPagingLockedRef = useRef(false);
-  const wheelUnlockTimeoutRef = useRef<number | null>(null);
   const router = useRouter();
   const shouldPreloadTemplateV2Presentation =
     searchParams.get("editor") === "v2";
@@ -234,18 +220,6 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
     setLoadingState(stream ? STREAM_LOADING_STATE : DEFAULT_LOADING_STATE);
   }, [loading, stream]);
-
-  useEffect(() => {
-    selectedSlideRef.current = selectedSlide;
-  }, [selectedSlide]);
-
-  useEffect(() => {
-    return () => {
-      if (wheelUnlockTimeoutRef.current != null) {
-        window.clearTimeout(wheelUnlockTimeoutRef.current);
-      }
-    };
-  }, []);
 
   useEffect(() => {
     if (!isStreaming) return;
@@ -364,127 +338,6 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
 
   const totalSlides = presentationData?.slides?.length ?? 0;
   const highlightedSlideIndex = glowingSlideIndex;
-
-  const handleSlidesWheel = useCallback(
-    (event: React.WheelEvent<HTMLDivElement>) => {
-      if (loading || error || totalSlides <= 1 || event.defaultPrevented) {
-        return;
-      }
-
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        target.closest(
-          "input, textarea, select, [contenteditable='true'], [data-inline-edit-ignore='true']"
-        )
-      ) {
-        return;
-      }
-
-      const pageSize = event.currentTarget.clientHeight || window.innerHeight;
-      const deltaY = wheelDeltaToPixels(event.deltaY, event.deltaMode, pageSize);
-      const deltaX = wheelDeltaToPixels(event.deltaX, event.deltaMode, pageSize);
-      if (Math.abs(deltaY) <= Math.abs(deltaX) || Math.abs(deltaY) < 1) {
-        return;
-      }
-
-      event.preventDefault();
-      if (wheelPagingLockedRef.current) return;
-
-      const direction = deltaY > 0 ? 1 : -1;
-      if (wheelDirectionRef.current !== direction) {
-        wheelDirectionRef.current = direction;
-        wheelDeltaRef.current = 0;
-      }
-
-      wheelDeltaRef.current += deltaY;
-      if (Math.abs(wheelDeltaRef.current) < WHEEL_PAGE_THRESHOLD_PX) {
-        return;
-      }
-
-      wheelDeltaRef.current = 0;
-      const currentSlide = selectedSlideRef.current;
-      const nextSlide = Math.min(
-        Math.max(currentSlide + direction, 0),
-        totalSlides - 1
-      );
-      if (nextSlide === currentSlide) return;
-
-      wheelPagingLockedRef.current = true;
-      selectedSlideRef.current = nextSlide;
-      setSelectedSlide(nextSlide);
-      scrollToSlide(nextSlide, 2, "smooth");
-
-      if (wheelUnlockTimeoutRef.current != null) {
-        window.clearTimeout(wheelUnlockTimeoutRef.current);
-      }
-      wheelUnlockTimeoutRef.current = window.setTimeout(() => {
-        wheelPagingLockedRef.current = false;
-        wheelDeltaRef.current = 0;
-      }, WHEEL_PAGE_LOCK_MS);
-    },
-    [error, loading, scrollToSlide, totalSlides]
-  );
-
-  useEffect(() => {
-    if (loading || error || totalSlides <= 0) return;
-
-    const scrollContainer = slidesScrollContainerRef.current;
-    if (!scrollContainer) return;
-
-    const slideElements = Array.from(
-      scrollContainer.querySelectorAll<HTMLElement>("[data-slide-index]")
-    );
-    if (slideElements.length === 0) return;
-
-    const visibleRatios = new Map<Element, number>();
-
-    const setActiveSlideFromVisibleRatios = () => {
-      let nextSlideIndex: number | null = null;
-      let highestRatio = 0;
-
-      visibleRatios.forEach((ratio, element) => {
-        if (ratio <= highestRatio) return;
-        const rawIndex = (element as HTMLElement).dataset.slideIndex;
-        const parsedIndex = Number(rawIndex);
-        if (!Number.isInteger(parsedIndex)) return;
-        nextSlideIndex = parsedIndex;
-        highestRatio = ratio;
-      });
-
-      const activeSlideIndex = nextSlideIndex;
-      if (activeSlideIndex === null) return;
-
-      setSelectedSlide((current) =>
-        current === activeSlideIndex ? current : activeSlideIndex
-      );
-    };
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            visibleRatios.set(entry.target, entry.intersectionRatio);
-            return;
-          }
-          visibleRatios.delete(entry.target);
-        });
-
-        setActiveSlideFromVisibleRatios();
-      },
-      {
-        root: scrollContainer,
-        threshold: [0.35, 0.5, 0.65, 0.8, 0.95, 1],
-      }
-    );
-
-    slideElements.forEach((element) => observer.observe(element));
-
-    return () => {
-      observer.disconnect();
-      visibleRatios.clear();
-    };
-  }, [error, loading, totalSlides]);
 
   useEffect(() => {
     if (totalSlides <= 0 || selectedSlide <= totalSlides - 1) {
@@ -700,10 +553,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             <div
               ref={slidesScrollContainerRef}
               data-presentation-slides-scroll-container="true"
-              className="font-inter h-full snap-y snap-mandatory overflow-y-auto overscroll-y-contain hide-scrollbar"
-              onWheel={handleSlidesWheel}
+              className="font-inter h-full overflow-y-auto hide-scrollbar scroll-pt-[18px]"
             >
-              <div className="mx-auto flex h-full min-h-full w-full max-w-[1280px] flex-col items-center">
+              <div className="w-full max-w-[1280px] min-h-full mx-auto flex flex-col items-center pb-8">
                 {!presentationData ||
                 loading ||
                 !presentationData?.slides ||

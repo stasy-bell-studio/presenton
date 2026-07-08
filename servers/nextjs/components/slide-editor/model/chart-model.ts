@@ -12,6 +12,12 @@ import {
 } from "@/components/slide-editor/model/core";
 
 export function rawChartToEditorChart(element: RawElement): ChartElement {
+  const legacyData = readArray(element.data)
+    .map((value) => legacyChartDatum(value))
+    .filter(
+      (value): value is { color?: string; label: string; value: number } =>
+        value != null,
+    );
   const categories = readArray(element.categories).map(String);
   const series = readArray(element.series)
     .map((value, index): ChartSeries | null => {
@@ -29,27 +35,51 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
       };
     })
     .filter((value): value is ChartSeries => value != null);
+  const normalizedInputSeries =
+    series.length > 0
+      ? series
+      : legacyData.length > 0
+        ? [
+            {
+              name: readString(element.title) ?? "Series 1",
+              values: legacyData.map((item) => item.value),
+            },
+          ]
+        : [];
+  const inputCategories =
+    categories.length > 0
+      ? categories
+      : legacyData.map((item, index) => item.label || `Item ${index + 1}`);
   const chartType = rawChartType(element.chart_type ?? element.chartType);
   const supportedSeries =
-    chartType === "pie" || chartType === "donut" ? series.slice(0, 1) : series;
+    chartType === "pie" || chartType === "donut"
+      ? normalizedInputSeries.slice(0, 1)
+      : normalizedInputSeries;
   const normalizedSeries =
     supportedSeries.length > 0
       ? supportedSeries
       : [{ name: "Series 1", values: [0] }];
   const categoryLength = Math.max(
-    categories.length,
+    inputCategories.length,
     ...normalizedSeries.map((item) => item.values.length),
   );
   const normalizedCategories =
-    categories.length > 0
+    inputCategories.length > 0
       ? Array.from(
           { length: categoryLength },
-          (_, index) => categories[index] ?? `Item ${index + 1}`,
+          (_, index) => inputCategories[index] ?? `Item ${index + 1}`,
         )
       : Array.from({ length: categoryLength }, (_, index) => `Item ${index + 1}`);
+  const legacyColors = legacyData
+    .map((item) => item.color)
+    .filter((value): value is string => Boolean(value));
   const colors = readArray(element.colors).map(String);
   const chartColors =
-    colors.length > 0 ? colors : [readString(element.color) ?? "7C51F8"];
+    colors.length > 0
+      ? colors
+      : legacyColors.length > 0
+        ? legacyColors
+        : [readString(element.color) ?? "7C51F8"];
   const firstSeries = normalizedSeries[0];
   const data = normalizedCategories.slice(0, 8).map((label, index) => ({
     label,
@@ -77,6 +107,34 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
     y_axis_title: element.y_axis_title ?? element.yAxisTitle,
     data_labels: element.data_labels ?? element.dataLabels,
     legend: element.legend ?? element.showLegend,
+  };
+}
+
+function legacyChartDatum(value: unknown) {
+  const directValue = readNumber(value);
+  if (directValue != null) {
+    return {
+      label: "",
+      value: directValue,
+    };
+  }
+
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as UnknownRecord)
+      : null;
+  if (!record) return null;
+
+  const numericValue =
+    readNumber(record.value) ??
+    readNumber(record.data) ??
+    readNumber(record.y);
+  if (numericValue == null) return null;
+
+  return {
+    color: readString(record.color) ?? undefined,
+    label: readString(record.label) ?? readString(record.name) ?? "",
+    value: numericValue,
   };
 }
 

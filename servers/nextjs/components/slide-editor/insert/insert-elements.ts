@@ -1,4 +1,5 @@
 import type { TemplateV2InsertComponent } from "@/components/slide-editor/events/events";
+import { normalizeChartTypeName } from "@/components/slide-editor/charts/chart-data";
 import type {
   ChartType,
   Fill,
@@ -192,20 +193,27 @@ export function createTextInsertElements(kind?: string): SlideElement[] {
 }
 
 function chartTypeFromPaletteId(id?: string): ChartType | null {
-  switch (id) {
+  const normalized = normalizeChartTypeName(id);
+  switch (normalized) {
     case "area":
     case "bar":
     case "bubble":
     case "donut":
     case "horizontal_bar":
-    case "horizontal_stacked_bar":
     case "line":
     case "pie":
     case "polar_area":
     case "radar":
     case "scatter":
+      return normalized as ChartType;
+    case "stackedbar":
     case "stacked_bar":
-      return id;
+      return "stacked_bar";
+    case "horizontalstackbar":
+    case "horizontalstackedbar":
+    case "horizontal_stack_bar":
+    case "horizontal_stacked_bar":
+      return "horizontal_stacked_bar";
     default:
       return null;
   }
@@ -341,6 +349,36 @@ function makeChartElement(chartType: ChartType): SlideElement {
       data_labels: true,
       categories,
       series: [{ name: "Weekly Report", values }],
+      colors,
+      data: chartData(categories, values, colors),
+    };
+  }
+
+  if (chartType === "stacked_bar" || chartType === "horizontal_stacked_bar") {
+    const label = chartLabel(chartType);
+    const categories = ["Q1", "Q2", "Q3", "Q4"];
+    const values = [38, 54, 47, 68];
+    const secondaryValues = [24, 36, 31, 42];
+    const colors = ["7F22FE", "155DFC"];
+
+    return {
+      type: "chart",
+      position: { ...DEFAULT_CHART_INSERT_POSITION },
+      size: { width: 538, height: 410 },
+      chart_type: chartType,
+      title: label,
+      color: "7F22FE",
+      axis_color: "D0D5DD",
+      grid_color: "D0D5DD",
+      data_labels: true,
+      legend: true,
+      x_axis_grid: true,
+      y_axis_grid: true,
+      categories,
+      series: [
+        { name: "Product", values },
+        { name: "Services", values: secondaryValues },
+      ],
       colors,
       data: chartData(categories, values, colors),
     };

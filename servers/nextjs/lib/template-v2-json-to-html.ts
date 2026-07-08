@@ -304,13 +304,13 @@ function normalizeFontFaceEntry(
     const family = fallbackFamily?.trim();
     return family
       ? [
-          {
-            family,
-            url,
-            weight: inferFontWeight(`${family} ${url}`),
-            style: inferFontStyle(`${family} ${url}`),
-          },
-        ]
+        {
+          family,
+          url,
+          weight: inferFontWeight(`${family} ${url}`),
+          style: inferFontStyle(`${family} ${url}`),
+        },
+      ]
       : [];
   }
 
@@ -360,16 +360,14 @@ function normalizeFontStylesheetUrls(fonts: unknown): string[] {
 
 function renderFontFaceDefinition(definition: FontFaceDefinition): string {
   const aliases = fontFamilyAliases(definition.family, definition.weight);
-  const src = `url("${escapeCssUrl(resolveBackendAssetUrl(definition.url))}")${
-    definition.format ? ` format("${escapeCssUrl(definition.format)}")` : ""
-  }`;
+  const src = `url("${escapeCssUrl(resolveBackendAssetUrl(definition.url))}")${definition.format ? ` format("${escapeCssUrl(definition.format)}")` : ""
+    }`;
   return aliases
     .map(
       (family) =>
         `<style>@font-face{font-family:${escapeCssFont(
           family
-        )};src:${src};font-weight:${definition.weight ?? "400"};font-style:${
-          definition.style ?? "normal"
+        )};src:${src};font-weight:${definition.weight ?? "400"};font-style:${definition.style ?? "normal"
         };font-display:swap}</style>`
     )
     .join("");
@@ -527,9 +525,8 @@ function renderTextList(item: JsonRecord, mode: RenderMode): string {
       return `<li style="${textOverflowStyle()}">${html}</li>`;
     })
     .join("");
-  const listStyle = `margin:0;padding-left:${marker === "none" ? 0 : 24}px;${
-    marker === "none" ? "list-style-type:none;" : ""
-  }`;
+  const listStyle = `margin:0;padding-left:${marker === "none" ? 0 : 24}px;${marker === "none" ? "list-style-type:none;" : ""
+    }`;
 
   return `<div style="${frameStyle(item, mode)}${transformStyle(item)}${fontStyle(
     font
@@ -577,9 +574,8 @@ function renderContainer(item: JsonRecord, mode: RenderMode): string {
   )};justify-content:${horizontalAlign(
     readString(alignment.horizontal)
   )};overflow:visible`;
-  return `<div style="${style}">${
-    child ? renderItem(child, readRecordOrNull(child.position) ? "absolute" : "flow") : ""
-  }</div>`;
+  return `<div style="${style}">${child ? renderItem(child, readRecordOrNull(child.position) ? "absolute" : "flow") : ""
+    }</div>`;
 }
 
 function renderFlex(item: JsonRecord, mode: RenderMode): string {
@@ -613,19 +609,18 @@ function renderGrid(item: JsonRecord, mode: RenderMode): string {
     .join("");
   const style = `${frameStyle(item, mode)}${boxStyle(item)}${paddingStyle(
     readRecord(item.padding)
-  )}display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));${
-    rows ? `grid-template-rows:repeat(${Math.max(1, Math.floor(rows))},minmax(0,1fr));` : ""
-  }align-items:${cssAlignment(
-    readString(item.alignItems ?? item.align_items),
-    "stretch"
-  )};justify-items:${cssAlignment(
-    readString(item.justifyItems ?? item.justify_items),
-    "stretch"
-  )};column-gap:${cssNumber(
-    readNumber(item.columnGap ?? item.column_gap) ?? gap
-  )}px;row-gap:${cssNumber(
-    readNumber(item.rowGap ?? item.row_gap) ?? gap
-  )}px;overflow:visible`;
+  )}display:grid;grid-template-columns:repeat(${columns},minmax(0,1fr));${rows ? `grid-template-rows:repeat(${Math.max(1, Math.floor(rows))},minmax(0,1fr));` : ""
+    }align-items:${cssAlignment(
+      readString(item.alignItems ?? item.align_items),
+      "stretch"
+    )};justify-items:${cssAlignment(
+      readString(item.justifyItems ?? item.justify_items),
+      "stretch"
+    )};column-gap:${cssNumber(
+      readNumber(item.columnGap ?? item.column_gap) ?? gap
+    )}px;row-gap:${cssNumber(
+      readNumber(item.rowGap ?? item.row_gap) ?? gap
+    )}px;overflow:visible`;
   return `<div style="${style}">${children}</div>`;
 }
 
@@ -710,13 +705,13 @@ function renderProgressBarInfographic(item: JsonRecord, mode: RenderMode): strin
   const showLabel = (box.height ?? fallbackSize.height) >= 28;
   const label = showLabel
     ? `<div style="color:#111827;font-size:${cssNumber(
-        Math.max(
-          10,
-          Math.min(16, Math.round((box.height ?? fallbackSize.height) * 0.3))
-        )
-      )}px;font-weight:700;line-height:1;text-align:right">${escapeHtml(
-        metrics.label
-      )}</div>`
+      Math.max(
+        10,
+        Math.min(16, Math.round((box.height ?? fallbackSize.height) * 0.3))
+      )
+    )}px;font-weight:700;line-height:1;text-align:right">${escapeHtml(
+      metrics.label
+    )}</div>`
     : "";
 
   return `<div style="${frameStyle(item, mode, fallbackSize)}${transformStyle(
@@ -741,10 +736,10 @@ function renderGaugeInfographic(item: JsonRecord, mode: RenderMode): string {
   const progressPath =
     metrics.ratio > 0
       ? `<path d="${escapeAttribute(
-          describeGaugeArc(60, 60, 48, metrics.ratio)
-        )}" fill="none" stroke="${escapeAttribute(
-          escapeCssColor(highlightColor)
-        )}" stroke-width="12" stroke-linecap="round"/>`
+        describeGaugeArc(60, 60, 48, metrics.ratio)
+      )}" fill="none" stroke="${escapeAttribute(
+        escapeCssColor(highlightColor)
+      )}" stroke-width="12" stroke-linecap="round"/>`
       : "";
 
   return `<div style="${frameStyle(item, mode, fallbackSize)}${transformStyle(
@@ -1113,6 +1108,16 @@ function normalizeChartColor(value: string | null): string | null {
   return safeChartColor(value, DEFAULT_CHART_COLORS[0]);
 }
 
+function normalizeChartKindValue(value: string | null): string {
+  if (!value) return "";
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_");
+}
+
 function chartKindFromValue(value: string | null): ChartKind {
   const normalized = value?.toLowerCase().replace(/[\s-]+/g, "_") ?? "";
   if (normalized === "bubble") return "bubble";
@@ -1426,9 +1431,9 @@ function withAlpha(color: string, alpha: number): string {
   const raw =
     hex[1].length === 3
       ? hex[1]
-          .split("")
-          .map((char) => char + char)
-          .join("")
+        .split("")
+        .map((char) => char + char)
+        .join("")
       : hex[1];
   const int = Number.parseInt(raw, 16);
   return `rgba(${(int >> 16) & 255}, ${(int >> 8) & 255}, ${int & 255}, ${alpha})`;
@@ -1603,9 +1608,8 @@ function frameStyle(
   fallbackSize?: { width: number; height: number }
 ): string {
   const box = readBox(item, fallbackSize);
-  let style = `box-sizing:border-box;min-height:0;min-width:0;position:${
-    mode === "absolute" ? "absolute" : "relative"
-  };`;
+  let style = `box-sizing:border-box;min-height:0;min-width:0;position:${mode === "absolute" ? "absolute" : "relative"
+    };`;
   if (mode === "absolute") {
     style += `left:${cssNumber(box.x)}px;top:${cssNumber(box.y)}px;`;
   }
@@ -2153,9 +2157,8 @@ function imageCropScale(item: JsonRecord): number {
 function imageCropTransformStyle(item: JsonRecord): string {
   const cropScale = imageCropScale(item);
   if (cropScale <= 1) return "";
-  return `transform:scale(${cssNumber(cropScale)});transform-origin:${
-    imageFocusValue(item) ?? "center"
-  };`;
+  return `transform:scale(${cssNumber(cropScale)});transform-origin:${imageFocusValue(item) ?? "center"
+    };`;
 }
 
 function imageClipPathStyle(item: JsonRecord): string {

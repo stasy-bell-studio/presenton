@@ -224,9 +224,9 @@ function parseColor(color: string | null): [number, number, number, number] | nu
     const raw =
       hex[1].length === 3
         ? hex[1]
-            .split("")
-            .map((ch) => ch + ch)
-            .join("")
+          .split("")
+          .map((ch) => ch + ch)
+          .join("")
         : hex[1];
     const value = Number.parseInt(raw, 16);
     return [(value >> 16) & 255, (value >> 8) & 255, value & 255, 1];
@@ -473,9 +473,8 @@ const presentonDataLabelPlugin: Plugin = {
     const fontSize = labelOptions.fontSize || 11;
     const outsideColor = labelOptions.color || "#475467";
     ctx.save();
-    ctx.font = `600 ${fontSize}px ${
-      labelOptions.fontFamily || "Inter, Arial, sans-serif"
-    }`;
+    ctx.font = `600 ${fontSize}px ${labelOptions.fontFamily || "Inter, Arial, sans-serif"
+      }`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     const occupied: Bounds[] = [];
@@ -583,6 +582,7 @@ export function TemplateV2HtmlSlidePreview({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+
 
   const html = useMemo(() => {
     if (!slide || typeof slide !== "object") return null;
@@ -706,9 +706,9 @@ export function TemplateV2HtmlSlidePreview({
         style={
           fixedSize
             ? {
-                width: TEMPLATE_V2_HTML_WIDTH,
-                height: TEMPLATE_V2_HTML_HEIGHT,
-              }
+              width: TEMPLATE_V2_HTML_WIDTH,
+              height: TEMPLATE_V2_HTML_HEIGHT,
+            }
             : undefined
         }
       >
@@ -724,13 +724,13 @@ export function TemplateV2HtmlSlidePreview({
       style={
         fixedSize
           ? {
-              width: TEMPLATE_V2_HTML_WIDTH,
-              height: TEMPLATE_V2_HTML_HEIGHT,
-            }
+            width: TEMPLATE_V2_HTML_WIDTH,
+            height: TEMPLATE_V2_HTML_HEIGHT,
+          }
           : {
-              height: scale ? previewHeight : undefined,
-              aspectRatio: scale ? undefined : "16 / 9",
-            }
+            height: scale ? previewHeight : undefined,
+            aspectRatio: scale ? undefined : "16 / 9",
+          }
       }
     >
       <div

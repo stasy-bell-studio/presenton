@@ -61,6 +61,7 @@ import {
 import Chat from "./Chat";
 import TemplateService from "../../services/api/template";
 import { TemplateV2KonvaSlide } from "@/components/slide-editor/surface/TemplateV2KonvaSlide";
+import { TemplateV2HtmlSlidePreview } from "../../components/TemplateV2HtmlSlidePreview";
 
 type PresentationActionsProps = React.ComponentProps<typeof Chat> & {
   presentationData?: unknown;
@@ -715,11 +716,18 @@ function BlockThumbnail({ block }: { block: TemplateBlock }) {
           transform: `scale(${scale || 1})`,
         }}
       >
-        <TemplateV2KonvaSlide
+        {/* <TemplateV2KonvaSlide
           layout={layout}
           isEditMode={false}
           slideId={null}
           slideIndex={block.index}
+        /> */}
+        <TemplateV2HtmlSlidePreview
+          slide={{
+            ui: layout,
+          }}
+          fonts={null}
+          className="pointer-events-none rounded-[10px]"
         />
 
       </div>

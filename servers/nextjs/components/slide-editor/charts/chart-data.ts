@@ -318,11 +318,18 @@ export function chartDataToCsv(element: ChartElement) {
   return rows.map((row) => row.map(escapeCsvCell).join(",")).join("\n");
 }
 
+export function normalizeChartTypeName(value: unknown) {
+  if (typeof value !== "string") return "";
+  return value
+    .trim()
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_")
+    .replace(/_+/g, "_");
+}
+
 export function rawChartType(value: unknown): ChartType {
-  const normalized =
-    typeof value === "string"
-      ? value.trim().toLowerCase().replace(/[\s-]+/g, "_")
-      : "";
+  const normalized = normalizeChartTypeName(value);
   switch (normalized) {
     case "area":
       return "area";
@@ -346,9 +353,13 @@ export function rawChartType(value: unknown): ChartType {
     case "scatter":
       return "scatter";
     case "stacked":
+    case "stackedbar":
     case "stacked_bar":
     case "bar_stacked":
       return "stacked_bar";
+    case "horizontalstackbar":
+    case "horizontalstackedbar":
+    case "horizontal_stack_bar":
     case "horizontal_stacked_bar":
       return "horizontal_stacked_bar";
     default:

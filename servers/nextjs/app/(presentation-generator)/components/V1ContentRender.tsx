@@ -138,7 +138,11 @@ function TemplateV2PromptOverlay({
                     type="submit"
                     aria-label="Create slide"
                     disabled={!prompt.trim()}
-                    className="ml-4 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#ECEEF2] text-[#191919] transition hover:bg-[#E1E3E8] disabled:cursor-not-allowed disabled:text-[#9B9BA1] disabled:hover:bg-[#ECEEF2]"
+                    style={{
+                        background:
+                            "linear-gradient(270deg, #D5CAFC 2.4%, #E3D2EB 27.88%, #F4DCD3 69.23%, #FDE4C2 100%)",
+                    }}
+                    className="ml-4 flex h-11 w-11 shrink-0 items-center justify-center rounded-full  text-[#191919] transition hover:bg-[#E1E3E8] disabled:cursor-not-allowed disabled:text-[#9B9BA1] disabled:hover:bg-[#ECEEF2]"
                 >
                     <ArrowUp className="h-5 w-5" strokeWidth={2.1} />
                 </button>
@@ -260,8 +264,8 @@ export const V1ContentRender = ({
                         fonts={fonts}
                     />
                     {isEditMode &&
-                    ((showBlankPromptOverlay && isBlankSlide) ||
-                        (showTemplatePromptOverlay && !isBlankSlide)) ? (
+                        ((showBlankPromptOverlay && isBlankSlide) ||
+                            (showTemplatePromptOverlay && !isBlankSlide)) ? (
                         <TemplateV2PromptOverlay
                             layout={directLayout}
                             slideIndex={safeSlide.index ?? 0}
