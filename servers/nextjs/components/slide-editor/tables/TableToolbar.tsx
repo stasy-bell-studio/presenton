@@ -490,16 +490,16 @@ const tableControlsStyle: CSSProperties = {
   position: "relative",
   display: "inline-flex",
   alignItems: "center",
-  height: 34,
+  height: 28,
   color: "#191919",
   fontFamily:
-    "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "syne, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
 };
 
 const iconButtonStyle: CSSProperties = {
   position: "relative",
-  width: 34,
-  height: 34,
+  width: 28,
+  height: 28,
   border: 0,
   borderRadius: 6,
   background: "transparent",
@@ -523,8 +523,8 @@ const dividerStyle: CSSProperties = {
 };
 
 const colorDotStyle: CSSProperties = {
-  width: 20,
-  height: 20,
+  width: 16,
+  height: 16,
   boxSizing: "border-box",
   borderRadius: 999,
   border: "1px solid rgba(15, 23, 42, 0.26)",
