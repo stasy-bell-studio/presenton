@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Layer, Stage } from "react-konva";
 import {
@@ -628,14 +628,32 @@ function TextField({
   placeholder?: string;
   value: string;
 }) {
+  const [draftValue, setDraftValue] = useState(value);
+
+  useEffect(() => {
+    setDraftValue(value);
+  }, [value]);
+
+  const commitValue = () => {
+    if (draftValue !== value) {
+      onChange(draftValue);
+    }
+  };
+
   return (
     <label className="block text-[12px] font-medium text-[#686873]">
       {label}
       <input
         className="mt-1.5 h-9 w-full rounded-lg border border-[#E6E6EA] bg-white px-3 text-[12px] text-[#191919] outline-none transition placeholder:text-[#A6A6AF] focus:border-[#7C51F8]"
         placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
+        value={draftValue}
+        onBlur={commitValue}
+        onChange={(event) => setDraftValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.currentTarget.blur();
+          }
+        }}
       />
     </label>
   );
@@ -717,51 +735,60 @@ function ChartDataModal({
   onChange: (chart: ChartElement) => void;
   onClose: () => void;
 }) {
-  const categories = safeCategoriesForChart(chart);
-  const series = normalizedSeries(chart, categories.length);
-  const previewChart = useMemo(() => chartPreviewElement(chart), [chart]);
+  const [draftChart, setDraftChart] = useState<ChartElement>(() => chart);
+  const categories = safeCategoriesForChart(draftChart);
+  const series = normalizedSeries(draftChart, categories.length);
+  const previewChart = useMemo(
+    () => chartPreviewElement(draftChart),
+    [draftChart],
+  );
 
   const updateData = (
     nextCategories: string[],
     nextSeries: ChartSeries[],
-    nextColors = chart.colors ?? [],
+    nextColors = draftChart.colors ?? [],
   ) => {
-    const normalizedCategories = nextCategories.slice(0, 24);
-    const normalized = nextSeries
-      .map((item) => ({
-        name: item.name,
-        values: normalizeValues(item.values, normalizedCategories.length),
-      }))
-      .slice(0, chartSupportsMultipleSeries(chart.chart_type) ? 12 : 1);
-    const colorMode = chartColorTargetMode({
-      ...chart,
-      categories: normalizedCategories,
-      series: normalized,
-    });
-    const minimumColorCount = Math.max(
-      1,
-      nextColors.length,
-      chart.colors?.length ?? 0,
-      colorMode === "series" ? normalized.length : 1,
-    );
-    const colors = extendChartColors(
-      nextColors.length > 0 ? nextColors : chart.colors,
-      minimumColorCount,
-      chart.color ?? DEFAULT_CHART_COLORS[0],
-    );
+    setDraftChart((currentChart) => {
+      const normalizedCategories = nextCategories.slice(0, 24);
+      const normalized = nextSeries
+        .map((item) => ({
+          name: item.name,
+          values: normalizeValues(item.values, normalizedCategories.length),
+        }))
+        .slice(
+          0,
+          chartSupportsMultipleSeries(currentChart.chart_type) ? 12 : 1,
+        );
+      const colorMode = chartColorTargetMode({
+        ...currentChart,
+        categories: normalizedCategories,
+        series: normalized,
+      });
+      const minimumColorCount = Math.max(
+        1,
+        nextColors.length,
+        currentChart.colors?.length ?? 0,
+        colorMode === "series" ? normalized.length : 1,
+      );
+      const colors = extendChartColors(
+        nextColors.length > 0 ? nextColors : currentChart.colors,
+        minimumColorCount,
+        currentChart.color ?? DEFAULT_CHART_COLORS[0],
+      );
 
-    onChange({
-      ...chart,
-      categories: normalizedCategories,
-      color: colors[0] ?? chart.color,
-      series: normalized,
-      colors,
-      data: chartDataFromSeriesWithColors(
-        normalizedCategories,
-        normalized,
+      return {
+        ...currentChart,
+        categories: normalizedCategories,
+        color: colors[0] ?? currentChart.color,
+        series: normalized,
         colors,
-        colorMode === "category",
-      ),
+        data: chartDataFromSeriesWithColors(
+          normalizedCategories,
+          normalized,
+          colors,
+          colorMode === "category",
+        ),
+      };
     });
   };
 
@@ -791,7 +818,10 @@ function ChartDataModal({
             <button
               type="button"
               className="h-8 min-w-[76px] rounded-full bg-[linear-gradient(100deg,#FFE6A6_0%,#D8B4FE_100%)] px-5 text-[12px] font-semibold text-[#191919] transition hover:brightness-95"
-              onClick={onClose}
+              onClick={() => {
+                onChange(draftChart);
+                onClose();
+              }}
             >
               Save
             </button>
@@ -804,9 +834,12 @@ function ChartDataModal({
               </label>
               <ChartTypeSelect
                 compact
-                value={chart.chart_type}
+                value={draftChart.chart_type}
                 onChange={(chartType) =>
-                  onChange({ ...chart, chart_type: chartType })
+                  setDraftChart((currentChart) => ({
+                    ...currentChart,
+                    chart_type: chartType,
+                  }))
                 }
               />
               <div
@@ -841,10 +874,10 @@ function ChartDataModal({
               </div>
               <div className="mt-2">
                 <ChartCustomizePanel
-                  chart={chart}
+                  chart={draftChart}
                   compact
                   defaultTextOpen={false}
-                  onChange={onChange}
+                  onChange={setDraftChart}
                 />
               </div>
             </aside>
@@ -852,13 +885,13 @@ function ChartDataModal({
             <main className="min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-8 py-5">
               <EditableDataTable
                 allowMultipleSeries={chartSupportsMultipleSeries(
-                  chart.chart_type,
+                  draftChart.chart_type,
                 )}
                 categories={categories}
                 chartPath={chartPath}
                 series={series}
-                colors={chart.colors ?? []}
-                fallbackColor={chart.color}
+                colors={draftChart.colors ?? []}
+                fallbackColor={draftChart.color}
                 onUpdate={updateData}
               />
             </main>
