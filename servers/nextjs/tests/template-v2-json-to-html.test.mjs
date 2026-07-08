@@ -53,6 +53,18 @@ async function loadRenderer() {
 
 const rendererPromise = loadRenderer();
 
+function chartConfigFromHtml(html) {
+  const match = /data-chart-config="([^"]+)"/.exec(html ?? "");
+  assert.ok(match, "expected rendered HTML to include chart config");
+  const json = match[1]
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#39;", "'")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
+  return JSON.parse(json);
+}
+
 test("renders icon mask asset URLs without breaking the style attribute", async () => {
   const previousWindow = globalThis.window;
   globalThis.window = {
@@ -101,4 +113,155 @@ test("renders icon mask asset URLs without breaking the style attribute", async 
       globalThis.window = previousWindow;
     }
   }
+});
+
+test("renders camelCase image crop scale", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "image",
+        data: "https://example.com/image.png",
+        fit: "cover",
+        cropScale: 2.25,
+        focusX: 35,
+        focusY: 65,
+        position: { x: 0, y: 0 },
+        size: { width: 160, height: 90 },
+      },
+    ],
+  });
+
+  assert.ok(html);
+  assert.match(html, /overflow:hidden/);
+  assert.match(html, /object-fit:cover/);
+  assert.match(html, /object-position:35% 65%/);
+  assert.match(html, /transform:scale\(2\.25\)/);
+});
+
+test("uses point colors for single-series chart data", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bar",
+        data: [
+          { label: "Growth", value: 42, color: "#111111" },
+          { label: "Retention", value: 64, color: "#222222" },
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const config = chartConfigFromHtml(html);
+  const dataset = config.data.datasets[0];
+
+  assert.deepEqual(config.data.labels, ["Growth", "Retention"]);
+  assert.deepEqual(dataset.backgroundColor, ["#111111", "#222222"]);
+  assert.equal(dataset.borderColor, "#111111");
+});
+
+test("uses legacy seriesColors when chart colors are absent", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bar",
+        categories: ["Q1", "Q2"],
+        series: [
+          { name: "Plan", values: [10, 20] },
+          { name: "Actual", values: [12, 24] },
+        ],
+        seriesColors: ["#AA0000", "#00AA00"],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const config = chartConfigFromHtml(html);
+  const [plan, actual] = config.data.datasets;
+
+  assert.equal(plan.backgroundColor, "#AA0000");
+  assert.equal(plan.borderColor, "#AA0000");
+  assert.equal(actual.backgroundColor, "#00AA00");
+  assert.equal(actual.borderColor, "#00AA00");
+});
+
+test("renders table as a fixed grid with readable body text", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "table",
+        columns: [{ text: "Metric" }, { text: "Value" }],
+        rows: [
+          [
+            {
+              text: "Revenue",
+              fill: { color: "#111827" },
+              font: { color: "#111827" },
+            },
+            {
+              text: "$1.2M",
+              fill: { color: "#111827" },
+              font: { color: "#111827" },
+            },
+          ],
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 120 },
+      },
+    ],
+  });
+
+  assert.ok(html);
+  assert.match(html, /display:grid/);
+  assert.match(html, /grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(html, /grid-template-rows:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(html, /background:#111827/);
+  assert.match(html, /<span style="color:#FFFFFF/);
+});
+
+test("renders bubble chart object points and formatted scale metadata", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bubble",
+        categories: ["A", "B"],
+        colors: ["#123456"],
+        series: [
+          {
+            name: "Pipeline",
+            data: [
+              { x: 1, y: 2, r: 6 },
+              { x: 3, y: 4, radius: 8 },
+            ],
+          },
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const config = chartConfigFromHtml(html);
+  const dataset = config.data.datasets[0];
+
+  assert.equal(config.type, "bubble");
+  assert.deepEqual(dataset.data, [
+    { x: 1, y: 2, r: 6 },
+    { x: 3, y: 4, r: 8 },
+  ]);
+  assert.deepEqual(dataset.borderColor, ["#123456", "#123456"]);
+  assert.equal(config.options.scales.x.ticks.presentonFormat, true);
+  assert.equal(config.options.scales.y.ticks.presentonFormat, true);
 });

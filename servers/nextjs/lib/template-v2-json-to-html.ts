@@ -5,19 +5,30 @@ type JsonRecord = Record<string, unknown>;
 type RenderMode = "absolute" | "flow";
 type ChartKind =
   | "bar"
+  | "bubble"
   | "horizontal_bar"
   | "horizontal_stacked_bar"
   | "stacked_bar"
   | "line"
   | "area"
   | "pie"
-  | "donut";
+  | "donut"
+  | "polar_area"
+  | "radar"
+  | "scatter";
 type InfographicKind = "progress_bar" | "gauge";
 
 type JsonToHtmlItem = JsonRecord;
 
+interface ChartPointData {
+  x: number;
+  y: number;
+  r?: number;
+}
+
 interface ChartSeriesData {
   name: string;
+  points: ChartPointData[];
   values: number[];
 }
 
@@ -79,15 +90,17 @@ const DEFAULT_CHART_JS_URL =
   "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js";
 
 const DEFAULT_CHART_COLORS = [
-  "#2563EB",
-  "#DC2626",
-  "#16A34A",
+  "#7F22FE",
+  "#155DFC",
   "#F59E0B",
-  "#7C3AED",
-  "#0891B2",
-  "#DB2777",
-  "#65A30D",
+  "#12B76A",
+  "#EF4444",
+  "#06B6D4",
+  "#8B5CF6",
+  "#64748B",
 ];
+
+const CHART_FONT_FAMILY = "Inter, Arial, sans-serif";
 
 export const TEMPLATE_V2_HTML_WIDTH = 1280;
 export const TEMPLATE_V2_HTML_HEIGHT = 720;
@@ -524,25 +537,34 @@ function renderTextList(item: JsonRecord, mode: RenderMode): string {
 }
 
 function renderTable(item: JsonRecord, mode: RenderMode): string {
-  const columns = readArray(item.columns);
-  const rows = readArray(item.rows);
-  const header = columns.length
-    ? `<thead><tr>${columns
-        .map((cell) => `<th style="${tableCellStyle(cell, true)}">${cellText(cell)}</th>`)
-        .join("")}</tr></thead>`
-    : "";
-  const body = rows
-    .map(
-      (row) =>
-        `<tr>${readArray(row)
-          .map((cell) => `<td style="${tableCellStyle(cell, false)}">${cellText(cell)}</td>`)
-          .join("")}</tr>`
+  const rows = tableRows(item);
+  if (!rows.length) {
+    return `<div style="${frameStyle(
+      item,
+      mode
+    )}${transformStyle(item)}overflow:hidden"></div>`;
+  }
+
+  const rowCount = Math.max(1, rows.length);
+  const colCount = Math.max(1, ...rows.map((row) => row.length));
+  const tableFont = tableBaseFont(item);
+  const cells = rows
+    .flatMap((row, rowIndex) =>
+      Array.from({ length: colCount }, (_, colIndex) => {
+        const cell = row[colIndex] ?? {};
+        const isHeader = rowIndex === 0;
+        return `<div style="${tableCellStyle(
+          cell,
+          isHeader,
+          tableFont
+        )}">${cellText(cell, tableFont, isHeader)}</div>`;
+      })
     )
     .join("");
   return `<div style="${frameStyle(
     item,
     mode
-  )}${transformStyle(item)}overflow:hidden"><table style="border-collapse:collapse;height:100%;table-layout:fixed;width:100%">${header}<tbody>${body}</tbody></table></div>`;
+  )}${transformStyle(item)}display:grid;grid-template-columns:repeat(${colCount},minmax(0,1fr));grid-template-rows:repeat(${rowCount},minmax(0,1fr));overflow:hidden">${cells}</div>`;
 }
 
 function renderContainer(item: JsonRecord, mode: RenderMode): string {
@@ -660,7 +682,7 @@ function renderChart(item: JsonRecord, mode: RenderMode): string {
   const box = readBox(item);
   const width = Math.max(1, box.width ?? 1);
   const height = Math.max(1, box.height ?? 1);
-  const config = chartConfig(item);
+  const config = chartConfig(item, height);
 
   return `<div style="${frameStyle(item, mode)}${transformStyle(
     item
@@ -734,26 +756,33 @@ function renderGaugeInfographic(item: JsonRecord, mode: RenderMode): string {
   )}</text></svg></div>`;
 }
 
-function chartConfig(item: JsonRecord): JsonRecord {
+function chartConfig(item: JsonRecord, height: number): JsonRecord {
   const chartKind = chartKindFromValue(readString(item.chartType ?? item.chart_type));
   const data = normalizeChartData(item, chartKind);
-  const title = readString(item.title)?.trim() ?? "";
-  const font = readRecord(item.font);
-  const labelColor =
-    normalizeChartColor(readString(item.labelColor ?? item.label_color)) ??
-    "#374151";
-  const axisColor =
-    normalizeChartColor(readString(item.axisColor ?? item.axis_color)) ??
-    labelColor;
+  const primaryColor = safeChartColor(readString(item.color), DEFAULT_CHART_COLORS[0]);
+  const colors = data.colors.length > 0 ? data.colors : [primaryColor];
+  const axisColor = safeChartColor(
+    readString(item.axisColor ?? item.axis_color),
+    "#98A2B3"
+  );
+  const gridColor = safeChartColor(
+    readString(item.gridColor ?? item.grid_color),
+    axisColor
+  );
+  const textColor = safeChartColor(
+    readString(item.textColor ?? item.text_color ?? item.labelColor ?? item.label_color),
+    "#475467"
+  );
   const titleColor =
-    normalizeChartColor(readString(item.titleColor ?? item.title_color)) ??
-    "#111827";
-  const gridColor =
-    normalizeChartColor(readString(item.gridColor ?? item.grid_color)) ??
-    "#E5E7EB";
-  const fontFamily = readString(font.family) ?? "Arial, Helvetica, sans-serif";
+    safeChartColor(readString(item.titleColor ?? item.title_color), "#344054");
+  const title = readString(item.title)?.trim() ?? "";
+  const fontSize = clamp(height * 0.033, 9, 18);
+  const titleFontSize = clamp(height * 0.044, 11, 26);
+  const valueFontSize = clamp(height * 0.029, 8, 15);
   const autoShowLegend =
-    chartKind === "pie" || chartKind === "donut" || data.series.length > 1;
+    isPieLikeChart(chartKind) ||
+    data.series.length > 1 ||
+    Boolean(data.series[0]?.name && data.series[0].name !== "Series 1");
   const showLegend = readOptionalBoolean(
     item.legend ?? item.showLegend,
     autoShowLegend
@@ -763,11 +792,11 @@ function chartConfig(item: JsonRecord): JsonRecord {
     false
   );
   const xAxisGrid = readOptionalBoolean(
-    item.x_axis_grid ?? item.xAxisGrid,
+    item.x_axis_grid ?? item.xAxisGrid ?? item.grid,
     true
   );
   const yAxisGrid = readOptionalBoolean(
-    item.y_axis_grid ?? item.yAxisGrid,
+    item.y_axis_grid ?? item.yAxisGrid ?? item.grid,
     true
   );
   const xAxis = readOptionalBoolean(item.x_axis ?? item.xAxis, true);
@@ -776,19 +805,29 @@ function chartConfig(item: JsonRecord): JsonRecord {
     Object.prototype.hasOwnProperty.call(item, "x_axis_title")
       ? item.x_axis_title
       : item.xAxisTitle
-  );
+  )?.trim() ?? "";
   const yAxisTitle = readString(
     Object.prototype.hasOwnProperty.call(item, "y_axis_title")
       ? item.y_axis_title
       : item.yAxisTitle
-  );
+  )?.trim() ?? "";
   const config: JsonRecord = {
     type: chartJsType(chartKind),
     data: {
       labels: data.categories,
-      datasets: chartDatasets(chartKind, data),
+      datasets: chartDatasets(chartKind, { ...data, colors }),
     },
     options: {
+      color: textColor,
+      font: {
+        family: CHART_FONT_FAMILY,
+      },
+      indexAxis: isHorizontalChart(chartKind) ? "y" : "x",
+      layout: {
+        padding: isPieLikeChart(chartKind)
+          ? { top: 16, right: 20, bottom: 12, left: 20 }
+          : { top: 12, right: 22, bottom: 8, left: 12 },
+      },
       responsive: false,
       maintainAspectRatio: false,
       animation: false,
@@ -798,29 +837,35 @@ function chartConfig(item: JsonRecord): JsonRecord {
           display: showLegend,
           position: "bottom",
           labels: {
-            boxWidth: 12,
-            boxHeight: 12,
-            color: axisColor,
-            font: { family: fontFamily, size: 11 },
+            boxWidth: Math.max(8, fontSize * 0.8),
+            boxHeight: Math.max(8, fontSize * 0.8),
+            color: textColor,
+            font: { family: CHART_FONT_FAMILY, size: fontSize, weight: 600 },
+            padding: Math.max(8, fontSize),
+            usePointStyle: true,
           },
         },
         title: {
           display: Boolean(title),
-          text: title ?? "",
+          text: title.split(/\r?\n/).filter(Boolean),
           color: titleColor,
           font: {
-            family: fontFamily,
-            size: Math.max(12, readNumber(font.size) ?? 16),
+            family: CHART_FONT_FAMILY,
+            size: titleFontSize,
             weight: "700",
           },
-          padding: { bottom: 16 },
+          padding: {
+            bottom: Math.max(16, titleFontSize * 0.8),
+            top: 0,
+          },
         },
         tooltip: { enabled: false },
         presentonDataLabels: {
           enabled: dataLabels,
-          color: axisColor,
-          fontFamily,
-          fontSize: Math.max(10, Math.min(14, readNumber(font.size) ?? 11)),
+          color: textColor,
+          fontFamily: CHART_FONT_FAMILY,
+          fontSize: valueFontSize,
+          horizontal: isHorizontalChart(chartKind),
         },
       },
     },
@@ -831,68 +876,18 @@ function chartConfig(item: JsonRecord): JsonRecord {
   } else if (chartKind === "pie") {
     readRecord(config.options).cutout = "0%";
   } else {
-    const stacked =
-      chartKind === "stacked_bar" || chartKind === "horizontal_stacked_bar";
-    const horizontal =
-      chartKind === "horizontal_bar" ||
-      chartKind === "horizontal_stacked_bar";
-    if (horizontal) {
-      readRecord(config.options).indexAxis = "y";
-    }
-    readRecord(config.options).scales = {
-      x: {
-        display: xAxis || yAxisGrid,
-        stacked,
-        beginAtZero: horizontal,
-        border: {
-          display: xAxis,
-          color: axisColor,
-        },
-        grid: {
-          display: yAxisGrid,
-          color: gridColor,
-          drawTicks: xAxis,
-        },
-        title: {
-          display: xAxis && Boolean(xAxisTitle),
-          text: xAxisTitle ?? "",
-          color: axisColor,
-          font: { family: fontFamily, size: 11, weight: "600" },
-        },
-        ticks: {
-          color: axisColor,
-          display: xAxis,
-          font: { family: fontFamily, size: 11 },
-          maxRotation: 0,
-          autoSkip: true,
-        },
-      },
-      y: {
-        display: yAxis || xAxisGrid,
-        beginAtZero: true,
-        stacked,
-        border: {
-          display: yAxis,
-          color: axisColor,
-        },
-        grid: {
-          display: xAxisGrid,
-          color: gridColor,
-          drawTicks: yAxis,
-        },
-        title: {
-          display: yAxis && Boolean(yAxisTitle),
-          text: yAxisTitle ?? "",
-          color: axisColor,
-          font: { family: fontFamily, size: 11, weight: "600" },
-        },
-        ticks: {
-          color: axisColor,
-          display: yAxis,
-          font: { family: fontFamily, size: 11 },
-        },
-      },
-    };
+    readRecord(config.options).scales = chartScales({
+      axisColor,
+      chartKind,
+      fontSize,
+      gridColor,
+      xAxis,
+      xAxisGrid,
+      xAxisTitle,
+      yAxis,
+      yAxisGrid,
+      yAxisTitle,
+    });
   }
 
   return config;
@@ -912,46 +907,83 @@ function chartDatasets(chartKind: ChartKind, data: NormalizedChartData): JsonRec
             DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
         ),
         borderColor: "#FFFFFF",
-        borderWidth: 2,
+        borderWidth: 1,
         hoverOffset: 0,
       },
     ];
   }
 
+  if (chartKind === "polar_area") {
+    const series = data.series.length ? data.series : [emptyChartSeries()];
+    return series.map((seriesItem) => {
+      const colors =
+        data.series.length === 1
+          ? categoryColors(seriesItem, data.colors)
+          : seriesItem.values.map(() => seriesColor(seriesItem, data));
+      return {
+        label: seriesItem.name,
+        data: seriesItem.values,
+        backgroundColor: colors.map((color) => withAlpha(color, 0.78)),
+        borderColor: colors,
+        borderWidth: 1,
+      };
+    });
+  }
+
+  if (chartKind === "scatter" || chartKind === "bubble") {
+    return data.series.map((seriesItem) => {
+      const colors =
+        data.series.length === 1
+          ? categoryColors(seriesItem, data.colors)
+          : [seriesColor(seriesItem, data)];
+      return {
+        label: seriesItem.name,
+        data:
+          chartKind === "bubble"
+            ? seriesItem.points.map((point) => ({ ...point, r: point.r ?? 6 }))
+            : seriesItem.points.map(({ x, y }) => ({ x, y })),
+        backgroundColor: colors.map((color) => withAlpha(color, 0.78)),
+        borderColor: colors,
+        borderWidth: 2,
+        pointRadius: chartKind === "scatter" ? 4 : undefined,
+        pointHoverRadius: 4,
+      };
+    });
+  }
+
   const lineLike = chartKind === "line" || chartKind === "area";
 
   return data.series.map((series, index) => {
-    const color =
-      data.colors[
-        (data.series.length === 1 ? 0 : index) % data.colors.length
-      ] ??
-      DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length];
-    const categoryColors = series.values.map(
-      (_, categoryIndex) =>
-        data.colors[categoryIndex % data.colors.length] ??
-        DEFAULT_CHART_COLORS[categoryIndex % DEFAULT_CHART_COLORS.length]
-    );
+    const color = seriesColor(series, data, index);
+    const perCategoryColors =
+      data.series.length === 1 && data.colors.length
+        ? categoryColors(series, data.colors)
+        : null;
     const dataset: JsonRecord = {
       label: series.name,
       data: series.values,
       backgroundColor:
-        lineLike
-          ? colorWithOpacity(color, 0.16)
-          : data.series.length === 1 && categoryColors.length
-            ? categoryColors
-            : color,
+        chartKind === "area"
+          ? withAlpha(color, 0.24)
+          : lineLike
+            ? color
+            : perCategoryColors ?? color,
       borderColor: color,
       borderWidth: lineLike ? 3 : 0,
+      borderRadius: isBarChart(chartKind) ? 7 : undefined,
+      borderSkipped: isBarChart(chartKind)
+        ? isStackedChart(chartKind)
+          ? "start"
+          : false
+        : undefined,
+      fill: chartKind === "area",
+      maxBarThickness: 62,
+      pointBackgroundColor: perCategoryColors ?? color,
+      pointBorderColor: "#FFFFFF",
+      pointBorderWidth: lineLike ? 1.5 : 0,
+      pointRadius: lineLike ? 3.5 : 0,
+      tension: lineLike ? 0.35 : 0,
     };
-
-    if (lineLike) {
-      dataset.fill = chartKind === "area";
-      dataset.pointBackgroundColor =
-        data.series.length === 1 ? categoryColors : color;
-      dataset.pointRadius = 3;
-      dataset.pointHoverRadius = 3;
-      dataset.tension = 0.35;
-    }
 
     return dataset;
   });
@@ -964,54 +996,83 @@ function normalizeChartData(
   const points = readArray(item.data)
     .map(readRecord)
     .map((point, index) => {
-      const value = readNumber(point.value);
-      if (value == null) return null;
+      const value = chartValue(point);
       return {
         label: readString(point.label) ?? `Value ${index + 1}`,
         value,
+        point: chartPoint(point, index),
+        color: normalizeChartColor(readString(point.color)),
       };
     })
     .filter(
       (
         point
-      ): point is { label: string; value: number } =>
+      ): point is {
+        label: string;
+        value: number;
+        point: ChartPointData;
+        color: string | null;
+      } =>
         Boolean(point)
     );
   const series = readArray(item.series)
     .map(readRecord)
-    .map((series, index) => ({
-      name: readString(series.name) ?? `Series ${index + 1}`,
-      values: readArray(series.values).map(
-        (value) => readNumber(value) ?? 0
-      ),
-    }))
+    .map((series, index) => {
+      const rawValues = readArray(series.values ?? series.data);
+      const values = rawValues.map(chartValue);
+      return {
+        name: readString(series.name) ?? `Series ${index + 1}`,
+        points: rawValues.map((value, valueIndex) =>
+          chartPoint(value, valueIndex)
+        ),
+        values,
+      };
+    })
     .filter((series) => series.values.length);
   if (!series.length && points.length) {
     series.push({
       name: readString(item.title) ?? "Series 1",
+      points: points.map((point) => point.point),
       values: points.map((point) => point.value),
     });
   }
-  if ((chartKind === "pie" || chartKind === "donut") && series.length > 1) {
+  if (!series.length) {
+    series.push(emptyChartSeries());
+  }
+  if (isPieLikeChart(chartKind) && series.length > 1) {
     series.splice(1);
   }
-  const maxLength = Math.max(0, ...series.map((item) => item.values.length));
+  const maxLength = Math.min(
+    24,
+    Math.max(1, ...series.map((item) => item.values.length), points.length)
+  );
   const categoryValues = readArray(item.categories);
   const categories = normalizeCategories(
     categoryValues.length ? categoryValues : points.map((point) => point.label),
     maxLength
   );
   const colors = readColorArray(item.colors);
+  const legacySeriesColors = colors.length
+    ? []
+    : readColorArray(item.seriesColors ?? item.series_colors);
+  const pointColors = points
+    .map((point) => point.color)
+    .filter((color): color is string => Boolean(color));
 
   return {
     categories,
     colors:
       colors.length > 0
         ? colors
-        : [normalizeChartColor(readString(item.color)) ?? DEFAULT_CHART_COLORS[0]],
+        : legacySeriesColors.length > 0
+          ? legacySeriesColors
+          : pointColors.length > 0
+            ? pointColors
+            : [normalizeChartColor(readString(item.color)) ?? DEFAULT_CHART_COLORS[0]],
     series: series.map((item) => ({
       ...item,
       values: padValues(item.values, categories.length),
+      points: padPoints(item.points, categories.length, item.values),
     })),
   };
 }
@@ -1027,6 +1088,18 @@ function padValues(values: number[], length: number): number[] {
   return Array.from({ length }, (_, index) => values[index] ?? 0);
 }
 
+function padPoints(
+  points: ChartPointData[],
+  length: number,
+  fallbackValues: number[]
+): ChartPointData[] {
+  return Array.from({ length }, (_, index) => {
+    const point = points[index];
+    if (point) return point;
+    return { x: index + 1, y: fallbackValues[index] ?? 0 };
+  });
+}
+
 function readColorArray(value: unknown): string[] {
   return readArray(value)
     .map((item) => normalizeChartColor(readString(item)))
@@ -1035,25 +1108,43 @@ function readColorArray(value: unknown): string[] {
 
 function normalizeChartColor(value: string | null): string | null {
   if (!value) return null;
-  return normalizeCssColor(value);
+  return safeChartColor(value, DEFAULT_CHART_COLORS[0]);
 }
 
 function chartKindFromValue(value: string | null): ChartKind {
-  if (value === "horizontal_bar") return "horizontal_bar";
-  if (value === "stacked_bar") return "stacked_bar";
-  if (value === "horizontal_stacked_bar") {
+  const normalized = value?.toLowerCase().replace(/[\s-]+/g, "_") ?? "";
+  if (normalized === "bubble") return "bubble";
+  if (normalized === "horizontal_bar" || normalized === "bar_horizontal") {
+    return "horizontal_bar";
+  }
+  if (
+    normalized === "horizontal_stacked_bar" ||
+    normalized === "stacked_horizontal_bar"
+  ) {
     return "horizontal_stacked_bar";
   }
-  if (value === "line") return "line";
-  if (value === "area") return "area";
-  if (value === "pie") return "pie";
-  if (value === "donut" || value === "doughnut") return "donut";
+  if (
+    normalized === "stacked_bar" ||
+    normalized === "bar_stacked" ||
+    normalized === "stacked" ||
+    normalized === "stacked_column"
+  ) {
+    return "stacked_bar";
+  }
+  if (normalized === "line") return "line";
+  if (normalized === "area") return "area";
+  if (normalized === "pie") return "pie";
+  if (normalized === "donut" || normalized === "doughnut") return "donut";
+  if (normalized === "polar" || normalized === "polar_area") return "polar_area";
+  if (normalized === "radar") return "radar";
+  if (normalized === "scatter") return "scatter";
   return "bar";
 }
 
 function chartJsType(chartKind: ChartKind): string {
   if (chartKind === "donut") return "doughnut";
   if (chartKind === "area") return "line";
+  if (chartKind === "polar_area") return "polarArea";
   if (
     chartKind === "horizontal_bar" ||
     chartKind === "stacked_bar" ||
@@ -1062,6 +1153,283 @@ function chartJsType(chartKind: ChartKind): string {
     return "bar";
   }
   return chartKind;
+}
+
+function isPieLikeChart(chartKind: ChartKind): boolean {
+  return chartKind === "pie" || chartKind === "donut";
+}
+
+function isBarChart(chartKind: ChartKind): boolean {
+  return (
+    chartKind === "bar" ||
+    chartKind === "horizontal_bar" ||
+    chartKind === "stacked_bar" ||
+    chartKind === "horizontal_stacked_bar"
+  );
+}
+
+function isHorizontalChart(chartKind: ChartKind): boolean {
+  return (
+    chartKind === "horizontal_bar" || chartKind === "horizontal_stacked_bar"
+  );
+}
+
+function isStackedChart(chartKind: ChartKind): boolean {
+  return chartKind === "stacked_bar" || chartKind === "horizontal_stacked_bar";
+}
+
+function chartScales({
+  axisColor,
+  chartKind,
+  fontSize,
+  gridColor,
+  xAxis,
+  xAxisGrid,
+  xAxisTitle,
+  yAxis,
+  yAxisGrid,
+  yAxisTitle,
+}: {
+  axisColor: string;
+  chartKind: ChartKind;
+  fontSize: number;
+  gridColor: string;
+  xAxis: boolean;
+  xAxisGrid: boolean;
+  xAxisTitle: string;
+  yAxis: boolean;
+  yAxisGrid: boolean;
+  yAxisTitle: string;
+}): JsonRecord | undefined {
+  if (isPieLikeChart(chartKind) || chartKind === "polar_area") return undefined;
+
+  if (chartKind === "radar") {
+    return {
+      r: {
+        angleLines: {
+          color: withAlpha(gridColor, xAxisGrid ? 0.35 : 0),
+          display: xAxisGrid,
+        },
+        beginAtZero: true,
+        grid: {
+          color: withAlpha(gridColor, yAxisGrid ? 0.35 : 0),
+          display: yAxisGrid,
+        },
+        pointLabels: {
+          color: axisColor,
+          display: xAxis,
+          font: { family: CHART_FONT_FAMILY, size: fontSize, weight: 600 },
+        },
+        ticks: {
+          backdropColor: "transparent",
+          color: axisColor,
+          display: yAxis,
+          font: {
+            family: CHART_FONT_FAMILY,
+            size: Math.max(8, fontSize - 1),
+          },
+          presentonFormat: true,
+        },
+      },
+    };
+  }
+
+  const horizontal = isHorizontalChart(chartKind);
+  const stacked = isStackedChart(chartKind);
+  const showCategoryGrid = horizontal ? xAxisGrid : yAxisGrid;
+  const showLinearGrid = horizontal ? yAxisGrid : xAxisGrid;
+  const showCategoryAxis = horizontal ? yAxis : xAxis;
+  const showLinearAxis = horizontal ? xAxis : yAxis;
+  const categoryAxis = {
+    display: showCategoryAxis || showCategoryGrid,
+    border: { color: axisColor, display: showCategoryAxis },
+    grid: {
+      color: withAlpha(gridColor, showCategoryGrid ? 0.25 : 0),
+      display: showCategoryGrid,
+      drawTicks: showCategoryAxis,
+    },
+    stacked,
+    ticks: {
+      color: axisColor,
+      display: showCategoryAxis,
+      font: { family: CHART_FONT_FAMILY, size: fontSize, weight: 600 },
+      maxRotation: 0,
+      autoSkip: true,
+    },
+    title: {
+      color: axisColor,
+      display: showCategoryAxis && Boolean(horizontal ? yAxisTitle : xAxisTitle),
+      font: { family: CHART_FONT_FAMILY, size: fontSize, weight: 700 },
+      text: horizontal ? yAxisTitle : xAxisTitle,
+    },
+    type: "category",
+  };
+  const linearAxis = {
+    beginAtZero: true,
+    display: showLinearAxis || showLinearGrid,
+    border: { color: axisColor, display: showLinearAxis },
+    grace: "8%",
+    grid: {
+      color: withAlpha(gridColor, showLinearGrid ? 0.35 : 0),
+      display: showLinearGrid,
+      drawTicks: showLinearAxis,
+    },
+    stacked,
+    ticks: {
+      color: axisColor,
+      display: showLinearAxis,
+      font: {
+        family: CHART_FONT_FAMILY,
+        size: Math.max(8, fontSize - 2),
+        weight: 600,
+      },
+      presentonFormat: true,
+    },
+    title: {
+      color: axisColor,
+      display: showLinearAxis && Boolean(horizontal ? xAxisTitle : yAxisTitle),
+      font: { family: CHART_FONT_FAMILY, size: fontSize, weight: 700 },
+      text: horizontal ? xAxisTitle : yAxisTitle,
+    },
+    type: "linear",
+  };
+
+  if (chartKind === "scatter" || chartKind === "bubble") {
+    return {
+      x: {
+        ...linearAxis,
+        display: xAxis || yAxisGrid,
+        border: { ...linearAxis.border, display: xAxis },
+        grid: {
+          color: withAlpha(gridColor, yAxisGrid ? 0.35 : 0),
+          display: yAxisGrid,
+          drawTicks: xAxis,
+        },
+        ticks: { ...linearAxis.ticks, display: xAxis },
+        title: {
+          ...linearAxis.title,
+          display: xAxis && Boolean(xAxisTitle),
+          text: xAxisTitle,
+        },
+      },
+      y: {
+        ...linearAxis,
+        display: yAxis || xAxisGrid,
+        border: { ...linearAxis.border, display: yAxis },
+        grid: {
+          color: withAlpha(gridColor, xAxisGrid ? 0.35 : 0),
+          display: xAxisGrid,
+          drawTicks: yAxis,
+        },
+        ticks: { ...linearAxis.ticks, display: yAxis },
+        title: {
+          ...linearAxis.title,
+          display: yAxis && Boolean(yAxisTitle),
+          text: yAxisTitle,
+        },
+      },
+    };
+  }
+
+  return horizontal ? { x: linearAxis, y: categoryAxis } : { x: categoryAxis, y: linearAxis };
+}
+
+function chartValue(value: unknown): number {
+  const direct = readNumber(value);
+  if (direct != null) return direct;
+
+  const record = readRecord(value);
+  return (
+    readNumber(record.value) ??
+    readNumber(record.y) ??
+    readNumber(record.data) ??
+    0
+  );
+}
+
+function chartPoint(value: unknown, index: number): ChartPointData {
+  const record = readRecord(value);
+  const radius = readNumber(record.r ?? record.radius);
+  return {
+    x: readNumber(record.x) ?? index + 1,
+    y: chartValue(value),
+    ...(radius != null ? { r: radius } : {}),
+  };
+}
+
+function emptyChartSeries(): ChartSeriesData {
+  return {
+    name: "Series 1",
+    points: [{ x: 1, y: 0 }],
+    values: [0],
+  };
+}
+
+function seriesColor(
+  series: ChartSeriesData,
+  data: NormalizedChartData,
+  index = data.series.indexOf(series)
+): string {
+  return (
+    data.colors[index % data.colors.length] ??
+    DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
+  );
+}
+
+function categoryColors(series: ChartSeriesData, colors: string[]): string[] {
+  return series.values.map(
+    (_, index) =>
+      colors[index % colors.length] ??
+      DEFAULT_CHART_COLORS[index % DEFAULT_CHART_COLORS.length]
+  );
+}
+
+function safeChartColor(
+  value: string | null | undefined,
+  fallback = DEFAULT_CHART_COLORS[0]
+): string {
+  const color = withHash(value) ?? fallback;
+  if (
+    /^#[0-9A-Fa-f]{3}$/.test(color) ||
+    /^#[0-9A-Fa-f]{6}$/.test(color) ||
+    /^rgba?\(/i.test(color)
+  ) {
+    return color;
+  }
+  return fallback;
+}
+
+function withHash(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const color = value.trim();
+  if (!color) return null;
+  return color.startsWith("#") || /^rgba?\(/i.test(color) ? color : `#${color}`;
+}
+
+function withAlpha(color: string, alpha: number): string {
+  const normalized = safeChartColor(color);
+  const hex = normalized.match(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/);
+  if (!hex) {
+    const rgb = normalized.match(/^rgba?\(([^)]+)\)$/i);
+    if (rgb) {
+      const channels = rgb[1]
+        .split(",")
+        .slice(0, 3)
+        .map((part) => part.trim());
+      return `rgba(${channels.join(", ")}, ${alpha})`;
+    }
+    return normalized;
+  }
+
+  const raw =
+    hex[1].length === 3
+      ? hex[1]
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : hex[1];
+  const int = Number.parseInt(raw, 16);
+  return `rgba(${(int >> 16) & 255}, ${(int >> 8) & 255}, ${int & 255}, ${alpha})`;
 }
 
 interface InfographicMetrics {
@@ -1172,17 +1540,53 @@ function hasChartItem(item: JsonRecord): boolean {
 }
 
 function renderChartScripts(): string {
-  const chartJsUrl =
-    process.env.NEXT_PUBLIC_CHART_JS_URL ||
-    process.env.CHART_JS_URL ||
-    DEFAULT_CHART_JS_URL;
+  const chartJsUrl = readChartJsUrl();
   return `<script src="${escapeAttribute(chartJsUrl)}"></script><script>${escapeScriptText(
     chartRendererScript()
   )}</script>`;
 }
 
+function readChartJsUrl(): string {
+  const runtime = globalThis as typeof globalThis & {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return (
+    runtime.process?.env?.NEXT_PUBLIC_CHART_JS_URL ||
+    runtime.process?.env?.CHART_JS_URL ||
+    DEFAULT_CHART_JS_URL
+  );
+}
+
 function chartRendererScript(): string {
-  return `(function(){var state=window.__PRESENTON_JSON_CHARTS__={status:"pending"};function finish(status,message){state.status=status;if(message)state.message=message}function formatValue(value){if(!Number.isFinite(value))return "";if(Math.abs(value)%1===0)return String(value);return String(Math.round(value*100)/100)}var dataLabelPlugin={id:"presentonDataLabels",afterDatasetsDraw:function(chart,args,options){if(!options||!options.enabled)return;var ctx=chart.ctx;ctx.save();ctx.fillStyle=options.color||"#374151";ctx.font="600 "+(options.fontSize||11)+"px "+(options.fontFamily||"Arial, Helvetica, sans-serif");ctx.textAlign="center";chart.data.datasets.forEach(function(dataset,datasetIndex){var meta=chart.getDatasetMeta(datasetIndex);if(meta.hidden)return;meta.data.forEach(function(element,index){var raw=Array.isArray(dataset.data)?dataset.data[index]:0;var value=typeof raw==="number"?raw:Number(raw);var label=formatValue(value);if(!label)return;var point=typeof element.tooltipPosition==="function"?element.tooltipPosition():element;var offset=meta.type==="bar"?(value>=0?-6:12):0;ctx.textBaseline=offset<0?"bottom":"top";ctx.fillText(label,point.x,point.y+offset)})});ctx.restore()}};function render(){if(!window.Chart){finish("error","Chart.js failed to load");return}try{var Chart=window.Chart;Chart.register(dataLabelPlugin);document.querySelectorAll("canvas[data-presenton-chart]").forEach(function(canvas){var configText=canvas.getAttribute("data-chart-config");if(!configText)return;var config=JSON.parse(configText);config.options=config.options||{};config.options.animation=false;config.options.responsive=false;config.options.maintainAspectRatio=false;var existing=typeof Chart.getChart==="function"?Chart.getChart(canvas):null;if(existing)existing.destroy();var chart=new Chart(canvas,config);if(typeof chart.update==="function")chart.update("none")});requestAnimationFrame(function(){finish("ready")})}catch(error){finish("error",error&&error.message?error.message:String(error))}}if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",render,{once:true})}else{render()}})();`;
+  return `
+(function(){
+var state=window.__PRESENTON_JSON_CHARTS__={status:"pending"};
+function finish(status,message){state.status=status;if(message)state.message=message}
+function readNumber(value){var parsed=Number(value);return Number.isFinite(parsed)?parsed:null}
+function chartValue(raw){if(typeof raw==="number")return raw;if(raw&&typeof raw==="object"){var value=raw.y!=null?raw.y:raw.value!=null?raw.value:raw.data;var numeric=readNumber(value);return numeric==null?0:numeric}var parsed=readNumber(raw);return parsed==null?0:parsed}
+function formatValue(value){if(!Number.isFinite(value))return "";if(Math.abs(value)>=1000&&typeof Intl!=="undefined"&&Intl.NumberFormat)return Intl.NumberFormat("en",{notation:"compact"}).format(value);return Math.abs(value)%1===0?String(value):String(Math.round(value*10)/10).replace(/\\.0$/,"")}
+function formatAxisTick(value){var numeric=Number(value);return Number.isFinite(numeric)?formatValue(numeric):String(value)}
+function hydrateScales(scales){if(!scales)return;Object.keys(scales).forEach(function(key){var scale=scales[key];if(!scale)return;if(scale.ticks&&scale.ticks.presentonFormat){scale.ticks.callback=formatAxisTick;delete scale.ticks.presentonFormat}if(scale.r&&scale.r.ticks&&scale.r.ticks.presentonFormat){scale.r.ticks.callback=formatAxisTick;delete scale.r.ticks.presentonFormat}})}
+function datasetBackgroundColor(dataset,index){var bg=dataset&&dataset.backgroundColor;var color=Array.isArray(bg)?bg[index]:bg;return typeof color==="string"?color:null}
+function clamp(value,min,max){return Math.min(Math.max(value,min),max)}
+function parseColor(color){if(!color)return null;var hex=String(color).match(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/);if(hex){var raw=hex[1].length===3?hex[1].split("").map(function(ch){return ch+ch}).join(""):hex[1];var value=Number.parseInt(raw,16);return[(value>>16)&255,(value>>8)&255,value&255,1]}var rgb=String(color).match(/^rgba?\\(([^)]+)\\)$/i);if(!rgb)return null;var channels=rgb[1].split(",").map(function(part){return Number(part.trim())});if(channels.length<3||channels.slice(0,3).some(Number.isNaN))return null;return[clamp(channels[0],0,255),clamp(channels[1],0,255),clamp(channels[2],0,255),clamp(Number.isFinite(channels[3])?channels[3]:1,0,1)]}
+function relativeLuminance(channels){var mapped=channels.map(function(channel){var n=channel/255;return n<=0.04045?n/12.92:Math.pow((n+0.055)/1.055,2.4)});return mapped[0]*0.2126+mapped[1]*0.7152+mapped[2]*0.0722}
+function contrastRatio(a,b){var lighter=Math.max(a,b);var darker=Math.min(a,b);return(lighter+0.05)/(darker+0.05)}
+function contrastTextColor(backgroundColor,fallback){var bg=parseColor(backgroundColor);if(!bg)return fallback;var composite=[bg[0],bg[1],bg[2]].map(function(channel){return channel*bg[3]+255*(1-bg[3])});var bgLum=relativeLuminance(composite);var dark=[16,24,40];var light=[255,255,255];var darkContrast=contrastRatio(bgLum,relativeLuminance(dark));var lightContrast=contrastRatio(bgLum,relativeLuminance(light));return lightContrast>=darkContrast?"#FFFFFF":"#101828"}
+function chartElementPoint(element){var x=readNumber(element&&element.x);var y=readNumber(element&&element.y);return x==null||y==null?null:{x:x,y:y}}
+function pointRadius(element){var options=element&&element.options||{};return Math.max(0,readNumber(options.radius)||readNumber(element&&element.radius)||3)}
+function labelBounds(x,y,width,height){var padding=2;return{left:x-width/2-padding,right:x+width/2+padding,top:y-height/2-padding,bottom:y+height/2+padding}}
+function boundsOverlap(a,b){return!(a.right<b.left||a.left>b.right||a.bottom<b.top||a.top>b.bottom)}
+function fitsChartArea(bounds,area){return bounds.left>=area.left&&bounds.right<=area.right&&bounds.top>=area.top&&bounds.bottom<=area.bottom}
+function lineDirection(elements,index,datasetIndex){var current=readNumber(elements[index]&&elements[index].y);var prev=readNumber(elements[index-1]&&elements[index-1].y);var next=readNumber(elements[index+1]&&elements[index+1].y);if(current==null)return datasetIndex%2===0?-1:1;if(prev!=null&&next!=null){if(current<=prev&&current<=next)return-1;if(current>=prev&&current>=next)return 1}if(next!=null&&prev==null)return next<current?1:-1;if(prev!=null&&next==null)return prev<current?1:-1;return datasetIndex%2===0?-1:1}
+function drawBarLabel(args){var ctx=args.ctx;var element=args.element;var x=readNumber(element&&element.x);var y=readNumber(element&&element.y);var base=readNumber(element&&element.base);var width=Math.abs(readNumber(element&&element.width)||0);var height=Math.abs(readNumber(element&&element.height)||0);if(x==null||y==null||base==null)return;var textWidth=ctx.measureText(args.label).width;var padding=5;var fits=args.horizontal?width>=textWidth+padding*2&&height>=args.fontSize*1.35:height>=args.fontSize*1.65&&width>=textWidth+padding*2;if(fits){ctx.fillStyle=contrastTextColor(args.color,args.outsideColor);ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(args.label,args.horizontal?(x+base)/2:x,args.horizontal?y:(y+base)/2);return}ctx.fillStyle=args.outsideColor;if(args.horizontal){var end=args.value<0?Math.min(x,base):Math.max(x,base);ctx.textAlign=args.value<0?"right":"left";ctx.textBaseline="middle";ctx.fillText(args.label,end+(args.value<0?-padding:padding),y);return}var yEnd=args.value<0?Math.max(y,base):Math.min(y,base);ctx.textAlign="center";ctx.textBaseline=args.value<0?"top":"bottom";ctx.fillText(args.label,x,yEnd+(args.value<0?padding:-padding))}
+function drawPointLabel(args){var ctx=args.ctx;var point=chartElementPoint(args.element);if(!point)return;var radius=pointRadius(args.element);var textWidth=ctx.measureText(args.label).width;var textHeight=args.fontSize*1.15;var direction=args.lineLike?lineDirection(args.metaElements,args.index,args.datasetIndex):(args.index+args.datasetIndex)%2===0?-1:1;var vertical=radius+textHeight/2+5;var horizontal=radius+textWidth/2+5;var candidates=[{x:point.x,y:point.y+direction*vertical},{x:point.x,y:point.y-direction*vertical},{x:point.x+horizontal,y:point.y},{x:point.x-horizontal,y:point.y},{x:point.x+horizontal,y:point.y+direction*vertical},{x:point.x-horizontal,y:point.y+direction*vertical},{x:point.x+horizontal,y:point.y-direction*vertical},{x:point.x-horizontal,y:point.y-direction*vertical},{x:point.x,y:point.y+direction*vertical*1.7},{x:point.x,y:point.y-direction*vertical*1.7}];for(var i=0;i<candidates.length;i++){var candidate=candidates[i];var bounds=labelBounds(candidate.x,candidate.y,textWidth,textHeight);if(!fitsChartArea(bounds,args.chartArea))continue;if(args.occupied.some(function(existing){return boundsOverlap(bounds,existing)}))continue;args.occupied.push(bounds);ctx.fillStyle=args.outsideColor;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(args.label,candidate.x,candidate.y);return}}
+function isPointType(type){return type==="line"||type==="scatter"||type==="bubble"||type==="radar"}
+var dataLabelPlugin={id:"presentonDataLabels",afterDatasetsDraw:function(chart,args,options){if(!options||!options.enabled)return;var ctx=chart.ctx;var fontSize=options.fontSize||11;var outsideColor=options.color||"#475467";ctx.save();ctx.font="600 "+fontSize+"px "+(options.fontFamily||"Inter, Arial, sans-serif");ctx.textAlign="center";ctx.textBaseline="middle";var occupied=[];chart.data.datasets.forEach(function(dataset,datasetIndex){var meta=chart.getDatasetMeta(datasetIndex);if(meta.hidden)return;var metaType=String(meta.type||"");meta.data.forEach(function(element,index){var raw=Array.isArray(dataset.data)?dataset.data[index]:0;var value=chartValue(raw);var label=formatValue(value);if(!label)return;if(metaType==="bar"){drawBarLabel({color:datasetBackgroundColor(dataset,index),ctx:ctx,element:element,fontSize:fontSize,horizontal:!!options.horizontal,label:label,outsideColor:outsideColor,value:value});return}if(isPointType(metaType)){drawPointLabel({chartArea:chart.chartArea,ctx:ctx,datasetIndex:datasetIndex,element:element,fontSize:fontSize,index:index,label:label,lineLike:metaType==="line"||metaType==="radar",metaElements:meta.data,occupied:occupied,outsideColor:outsideColor});return}var position=typeof element.tooltipPosition==="function"?element.tooltipPosition(true):null;if(!position)return;ctx.fillStyle=metaType==="pie"||metaType==="doughnut"||metaType==="polarArea"?contrastTextColor(datasetBackgroundColor(dataset,index),outsideColor):outsideColor;ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(label,position.x||0,position.y||0)})});ctx.restore()}};
+function render(){if(!window.Chart){finish("error","Chart.js failed to load");return}try{var Chart=window.Chart;Chart.register(dataLabelPlugin);document.querySelectorAll("canvas[data-presenton-chart]").forEach(function(canvas){var configText=canvas.getAttribute("data-chart-config");if(!configText)return;var config=JSON.parse(configText);config.options=config.options||{};config.options.animation=false;config.options.responsive=false;config.options.maintainAspectRatio=false;hydrateScales(config.options.scales);var existing=typeof Chart.getChart==="function"?Chart.getChart(canvas):null;if(existing)existing.destroy();var chart=new Chart(canvas,config);if(typeof chart.update==="function")chart.update("none")});requestAnimationFrame(function(){finish("ready")})}catch(error){finish("error",error&&error.message?error.message:String(error))}}
+if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",render,{once:true})}else{render()}
+})();
+`;
 }
 
 function frameAndBoxStyle(item: JsonRecord, mode: RenderMode, extra = ""): string {
@@ -1305,33 +1709,53 @@ function fontStyle(fontValue: unknown): string {
   return style;
 }
 
-function tableCellStyle(cellValue: unknown, header: boolean): string {
+function tableRows(item: JsonRecord): unknown[][] {
+  const columns = readArray(item.columns);
+  const bodyRows = readArray(item.rows).map(readArray);
+  return (columns.length ? [columns, ...bodyRows] : bodyRows).filter((row) =>
+    Array.isArray(row)
+  );
+}
+
+function tableBaseFont(item: JsonRecord): JsonRecord {
+  return {
+    family: "Arial",
+    size: 18,
+    color: "#111827",
+    line_height: 1.15,
+    wrap: "word",
+    ...readRecord(item.font),
+  };
+}
+
+function tableCellStyle(
+  cellValue: unknown,
+  header: boolean,
+  tableFont: JsonRecord
+): string {
   const cell = readRecord(cellValue);
-  const textValue = cell.text;
-  const text = readRecord(textValue);
-  const cellFont = Object.keys(text).length
-    ? { ...readRecord(cell.font), ...readRecord(text.font) }
-    : readRecord(cell.font);
+  const cellFont = tableCellFont(cellValue, tableFont);
   const alignment =
     readString(cell.alignment) ??
     readString(readRecord(cell.alignment).horizontal) ??
-    readString(readRecord(text.alignment).horizontal);
+    readString(readRecord(readRecord(cell.text).alignment).horizontal);
   const fill = readRecord(cell.color ?? cell.fill);
   const stroke = readRecord(cell.stroke);
-  let style = `${fontStyle(cellFont)}border:${cssNumber(
+  const fillColor = readString(fill.color);
+  const background = fillColor
+    ? colorWithOpacity(fillColor, readNumber(fill.opacity))
+    : "transparent";
+  let style = `${fontStyle(cellFont)}display:flex;align-items:center;justify-content:${horizontalAlign(
+    alignment
+  )};border:${cssNumber(
     readNumber(stroke.width) ?? 1
   )}px solid ${escapeCssColor(
     colorWithOpacity(readString(stroke.color) ?? "#D1D5DB", readNumber(stroke.opacity))
-  )};overflow:hidden;padding:4px 6px;text-align:${textAlign(
+  )};min-height:0;min-width:0;overflow:hidden;padding:4px 6px;text-align:${textAlign(
     alignment
   )};vertical-align:middle;white-space:pre-wrap;word-break:break-word;`;
   if (header && !readBoolean(cellFont.bold)) style += "font-weight:700;";
-  const fillColor = readString(fill.color);
-  if (fillColor) {
-    style += `background:${escapeCssColor(
-      colorWithOpacity(fillColor, readNumber(fill.opacity))
-    )};`;
-  }
+  style += `background:${escapeCssColor(background)};`;
   return style;
 }
 
@@ -1339,12 +1763,36 @@ function textOverflowStyle(): string {
   return "overflow:visible;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;";
 }
 
-function cellText(cellValue: unknown): string {
+function tableCellFont(cellValue: unknown, tableFont: JsonRecord): JsonRecord {
+  if (typeof cellValue === "string" || typeof cellValue === "number") {
+    return tableFont;
+  }
+
+  const cell = readRecord(cellValue);
+  const firstRun = readRecord(readArray(cell.runs)[0]);
+  const text = readRecord(cell.text);
+  return {
+    ...tableFont,
+    ...readRecord(cell.font),
+    ...(Object.keys(firstRun).length ? readRecord(firstRun.font) : {}),
+    ...(Object.keys(text).length ? readRecord(text.font) : {}),
+  };
+}
+
+function cellText(
+  cellValue: unknown,
+  tableFont: JsonRecord,
+  header: boolean
+): string {
   if (typeof cellValue === "string" || typeof cellValue === "number") {
     return escapeHtml(readStringValue(cellValue));
   }
 
   const cell = readRecord(cellValue);
+  const fill = readRecord(cell.color ?? cell.fill);
+  const fillColor = readString(fill.color)
+    ? colorWithOpacity(readString(fill.color) ?? "", readNumber(fill.opacity))
+    : null;
   const directRuns = readArray(cell.runs).map(readRecord);
   if (directRuns.length) {
     const runs = normalizeRunsForHtml(
@@ -1356,7 +1804,16 @@ function cellText(cellValue: unknown): string {
     );
     return runs
       .map((run) => {
-        const runFont = { ...readRecord(cell.font), ...readRecord(run.font) };
+        const runFont = readableTableFont(
+          {
+            ...tableFont,
+            ...readRecord(cell.font),
+            ...readRecord(run.font),
+            ...(header ? { bold: true } : {}),
+          },
+          fillColor,
+          header
+        );
         return `<span style="${fontStyle(runFont)}">${escapeHtml(
           readStringValue(run.text)
         )}</span>`;
@@ -1365,20 +1822,122 @@ function cellText(cellValue: unknown): string {
   }
 
   const text = cell.text;
-  if (typeof text === "string") return escapeHtml(text);
+  if (typeof text === "string") {
+    return `<span style="${fontStyle(
+      readableTableFont(
+        { ...tableFont, ...readRecord(cell.font), ...(header ? { bold: true } : {}) },
+        fillColor,
+        header
+      )
+    )}">${escapeHtml(text)}</span>`;
+  }
   const textRecord = readRecord(text);
   const textRuns = normalizedRunsForHtml(textRecord, textRecord.font);
   if (textRuns.length) {
     return textRuns
       .map((run) => {
-        const runFont = { ...readRecord(textRecord.font), ...readRecord(run.font) };
+        const runFont = readableTableFont(
+          {
+            ...tableFont,
+            ...readRecord(cell.font),
+            ...readRecord(textRecord.font),
+            ...readRecord(run.font),
+            ...(header ? { bold: true } : {}),
+          },
+          fillColor,
+          header
+        );
         return `<span style="${fontStyle(runFont)}">${escapeHtml(
           readStringValue(run.text)
         )}</span>`;
       })
       .join("");
   }
-  return escapeHtml(readStringValue(textRecord.text));
+  return `<span style="${fontStyle(
+    readableTableFont(
+      { ...tableFont, ...readRecord(cell.font), ...(header ? { bold: true } : {}) },
+      fillColor,
+      header
+    )
+  )}">${escapeHtml(readStringValue(textRecord.text))}</span>`;
+}
+
+function readableTableFont(
+  font: JsonRecord,
+  fillColor: string | null,
+  header: boolean
+): JsonRecord {
+  if (header) return font;
+  return {
+    ...font,
+    color: readableTableTextColor(readString(font.color), fillColor),
+  };
+}
+
+function readableTableTextColor(
+  color: string | null,
+  fill: string | null
+): string {
+  const textColor = normalizeReadableColor(color) ?? "#111827";
+  const textLuminance = colorLuminance(textColor);
+  const fillLuminance = colorLuminance(fill);
+  if (textLuminance == null || fillLuminance == null) return textColor;
+
+  const lighter = Math.max(textLuminance, fillLuminance);
+  const darker = Math.min(textLuminance, fillLuminance);
+  const contrast = (lighter + 0.05) / (darker + 0.05);
+  if (contrast >= 3) return textColor;
+  return fillLuminance > 0.5 ? "#111827" : "#FFFFFF";
+}
+
+function colorLuminance(color: string | null): number | null {
+  const rgb = parseRgbColor(color);
+  if (!rgb) return null;
+  const [r, g, b] = rgb.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.03928
+      ? normalized / 12.92
+      : Math.pow((normalized + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function parseRgbColor(color: string | null): [number, number, number] | null {
+  const value = normalizeReadableColor(color);
+  if (!value) return null;
+
+  const hex = value.startsWith("#") ? value.slice(1) : value;
+  if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+    return [
+      Number.parseInt(hex[0] + hex[0], 16),
+      Number.parseInt(hex[1] + hex[1], 16),
+      Number.parseInt(hex[2] + hex[2], 16),
+    ];
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+    return [
+      Number.parseInt(hex.slice(0, 2), 16),
+      Number.parseInt(hex.slice(2, 4), 16),
+      Number.parseInt(hex.slice(4, 6), 16),
+    ];
+  }
+
+  const rgb = value.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i
+  );
+  if (!rgb) return null;
+  return [
+    clamp(Number(rgb[1]), 0, 255),
+    clamp(Number(rgb[2]), 0, 255),
+    clamp(Number(rgb[3]), 0, 255),
+  ];
+}
+
+function normalizeReadableColor(color: string | null): string | null {
+  if (!color) return null;
+  const value = color.trim();
+  if (!value) return null;
+  return value.startsWith("#") || value.startsWith("rgb") ? value : `#${value}`;
 }
 
 function readRuns(item: JsonRecord): JsonRecord[] {
@@ -1581,8 +2140,8 @@ function imageMaskSize(value: unknown): string {
   return fit === "fill" ? "100% 100%" : fit;
 }
 
-function imageCropScale(item: JsonRecord) {
-  const value = readNumber(item.crop_scale);
+function imageCropScale(item: JsonRecord): number {
+  const value = readNumber(item.crop_scale ?? item.cropScale);
   if (value == null) return 1;
   return clamp(value, 1, 6);
 }
