@@ -15,6 +15,7 @@ export interface PresentationData {
   title: string;
   slides: any;
   theme: Theme | null;
+  version?: string;
   components?: any;
   fonts?: any;
   structure?: any;

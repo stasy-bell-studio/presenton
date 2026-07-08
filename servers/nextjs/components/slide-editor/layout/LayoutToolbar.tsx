@@ -524,14 +524,14 @@ export function TemplateV2LayoutToolbar({
             <ToolbarDivider />
           </>
         ) : null}
-        {hasFlowControls && element && onChange ? (
+        {hasFlowControls && element && onChange && isTemplateV2LayoutElement(element) ? (
           <FlowControls
             element={element}
             onChange={onChange}
             openPanel={openPanel}
             onToggle={togglePanel}
           />
-        ) : hasContainerControls && element && onChange ? (
+        ) : hasContainerControls && element && onChange && isTemplateV2LayoutElement(element) ? (
           <TemplateV2ContainerToolbarControls
             box={box}
             element={element}

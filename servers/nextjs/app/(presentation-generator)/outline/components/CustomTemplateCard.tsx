@@ -6,14 +6,14 @@ import { CheckCircle2 } from "lucide-react";
 import {
     TemplatePreviewStage,
     LayoutsBadge,
-    CustomTemplatePreview,
 } from "../../components/TemplatePreviewComponents";
+import { TemplateThumbnailPreview } from "../../components/TemplateListUi";
 
 interface TemplateListItem {
     id: string;
     name: string;
     layout_count?: number;
-    layouts?: any[];
+    thumbnail?: string | null;
 }
 
 export const CustomTemplateCard = memo(function CustomTemplateCard({
@@ -62,12 +62,10 @@ export const CustomTemplateCard = memo(function CustomTemplateCard({
                 </span>
             )}
             <TemplatePreviewStage>
-                <LayoutsBadge count={template.layout_count} />
-                <CustomTemplatePreview
-                    previewLayouts={template.layouts}
-                    loading={false}
-                    templateId={template.id}
-                    isOutline={true}
+                <LayoutsBadge count={template.layout_count ?? 0} />
+                <TemplateThumbnailPreview
+                    thumbnail={template.thumbnail}
+                    templateName={template.name}
                 />
             </TemplatePreviewStage>
             <div className="flex items-center justify-between px-6 py-5 bg-white border-t border-[#EDEEEF] relative z-40">

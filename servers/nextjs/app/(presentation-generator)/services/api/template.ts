@@ -40,6 +40,11 @@ export interface TemplateDetailsResponse extends TemplateListItem {
     assets?: unknown;
 }
 
+export interface UpdateTemplateMetadataPayload {
+    name: string;
+    description?: string | null;
+}
+
 class TemplateService {
 
     static async getCustomTemplateSummaries() {
@@ -91,6 +96,23 @@ class TemplateService {
             return await ApiResponseHandler.handleResponseWithResult(response, "Failed to delete template");
         } catch (error) {
             console.error("Failed to delete Templates template", error);
+            throw error;
+        }
+    }
+
+    static async updateTemplateMetadata(
+        templateId: string,
+        payload: UpdateTemplateMetadataPayload,
+    ) {
+        try {
+            const response = await fetch(getApiUrl(`/api/v1/ppt/templates/${encodeURIComponent(templateId)}`), {
+                method: "PATCH",
+                headers: getHeader(),
+                body: JSON.stringify(payload),
+            });
+            return await ApiResponseHandler.handleResponse(response, "Failed to update template metadata");
+        } catch (error) {
+            console.error("Failed to update template metadata", error);
             throw error;
         }
     }
