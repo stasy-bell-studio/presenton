@@ -32,10 +32,15 @@ export interface TemplateListItem {
     updated_at?: string;
 }
 
-export type TemplateV2ListResponse = TemplateListResponse;
-export type TemplateV2ListItem = TemplateListItem;
+export interface TemplateDetailsResponse extends TemplateListItem {
+    raw_layouts?: unknown;
+    components?: unknown;
+    merged_components?: unknown;
+    layouts?: unknown;
+    assets?: unknown;
+}
 
-export interface UpdateTemplateV2MetadataPayload {
+export interface UpdateTemplateMetadataPayload {
     name: string;
     description?: string | null;
 }
@@ -72,30 +77,12 @@ class TemplateService {
         }
     }
 
-    static async getTemplateV2Summaries(): Promise<TemplateV2ListResponse> {
-        try {
-            return await this.getTemplateSummaries();
-        } catch (error) {
-            console.error("Failed to get Templates V2 summaries", error);
-            throw error;
-        }
-    }
-
-    static async getTemplateDetails(templateId: string) {
+    static async getTemplateDetails(templateId: string): Promise<TemplateDetailsResponse> {
         try {
             const response = await fetch(getApiUrl(`/api/v1/ppt/templates/${encodeURIComponent(templateId)}`));
             return await ApiResponseHandler.handleResponse(response, "Failed to get template details");
         } catch (error) {
-            console.error("Failed to get template details", error);
-            throw error;
-        }
-    }
-
-    static async getTemplateV2Details(templateId: string) {
-        try {
-            return await this.getTemplateDetails(templateId);
-        } catch (error) {
-            console.error("Failed to get Templates V2 details", error);
+            console.error("Failed to get Templates v1 details", error);
             throw error;
         }
     }
@@ -113,25 +100,19 @@ class TemplateService {
         }
     }
 
-    static async updateTemplateV2Metadata(templateId: string, payload: UpdateTemplateV2MetadataPayload) {
+    static async updateTemplateMetadata(
+        templateId: string,
+        payload: UpdateTemplateMetadataPayload,
+    ) {
         try {
             const response = await fetch(getApiUrl(`/api/v1/ppt/templates/${encodeURIComponent(templateId)}`), {
                 method: "PATCH",
                 headers: getHeader(),
                 body: JSON.stringify(payload),
             });
-            return await ApiResponseHandler.handleResponse(response, "Failed to update Templates V2 metadata");
+            return await ApiResponseHandler.handleResponse(response, "Failed to update template metadata");
         } catch (error) {
-            console.error("Failed to update Templates V2 metadata", error);
-            throw error;
-        }
-    }
-
-    static async deleteTemplateV2(templateId: string) {
-        try {
-            return await this.deleteTemplate(templateId);
-        } catch (error) {
-            console.error("Failed to delete Templates V2 template", error);
+            console.error("Failed to update template metadata", error);
             throw error;
         }
     }

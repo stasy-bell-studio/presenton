@@ -605,7 +605,7 @@ async function loadTemplateBlocksForPresentation(
   const candidateIds = collectCandidateTemplateIds(presentationData);
   for (const templateId of candidateIds) {
     try {
-      const template = (await TemplateService.getTemplateV2Details(
+      const template = (await TemplateService.getTemplateDetails(
         templateId,
       )) as TemplateV2ImportResponse;
       const blocks = templateBlockGroupsFromTemplate(template);
@@ -619,10 +619,10 @@ async function loadTemplateBlocksForPresentation(
   if (layoutIds.length === 0) return [];
 
   try {
-    const summaries = await TemplateService.getTemplateV2Summaries();
+    const summaries = await TemplateService.getTemplateSummaries();
     for (const summary of summaries.items ?? []) {
       try {
-        const template = (await TemplateService.getTemplateV2Details(
+        const template = (await TemplateService.getTemplateDetails(
           summary.id,
         )) as TemplateV2ImportResponse;
         if (!templateMatchesLayoutIds(template, layoutIds)) continue;

@@ -309,7 +309,7 @@ export class PresentationChatApi {
     presentationId: string
   ): Promise<ChatConversationSummary[]> {
     const u = new URL(
-      buildAbsoluteApiRequestUrl("/api/v1/chat/conversations")
+      buildAbsoluteApiRequestUrl("/api/v1/ppt/chat/conversations")
     );
     u.searchParams.set("presentation_id", presentationId);
     const response = await fetch(u.toString(), {
@@ -326,7 +326,7 @@ export class PresentationChatApi {
     presentationId: string,
     conversationId: string
   ): Promise<ChatHistoryData> {
-    const u = new URL(buildAbsoluteApiRequestUrl("/api/v1/chat/history"));
+    const u = new URL(buildAbsoluteApiRequestUrl("/api/v1/ppt/chat/history"));
     u.searchParams.set("presentation_id", presentationId);
     u.searchParams.set("conversation_id", conversationId);
     const response = await fetch(u.toString(), {
@@ -342,7 +342,7 @@ export class PresentationChatApi {
   static async sendMessage(
     payload: ChatMessageRequest
   ): Promise<ChatMessageResponse> {
-    const response = await fetch(getApiUrl("/api/v1/chat/message"), {
+    const response = await fetch(getApiUrl("/api/v1/ppt/chat/message"), {
       method: "POST",
       headers: getHeader(),
       body: JSON.stringify(payload),
@@ -361,7 +361,7 @@ export class PresentationChatApi {
     options?: { signal?: AbortSignal }
   ): Promise<ChatMessageResponse> {
     return streamChatMessage(
-      "/api/v1/chat/message/stream",
+      "/api/v1/ppt/chat/message/stream",
       payload,
       handlers,
       options

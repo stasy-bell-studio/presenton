@@ -13,7 +13,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ChartToolbarControls } from "@/components/slide-editor/charts/ChartToolbar";
 import { Panel } from "@/components/slide-editor/shapes/ShapeToolbar";
+import type {
+  ChartSlideElement,
+  TableSlideElement,
+} from "@/components/slide-editor/state/state";
+import { TableToolbarControls } from "@/components/slide-editor/tables/TableToolbar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -63,6 +69,7 @@ type PanelId =
   | "line-color"
   | "line-style"
   | "line-opacity"
+  | "chart-colors"
   | "component-menu"
   | null;
 
@@ -79,9 +86,11 @@ export type TemplateV2LayoutElement = RawRecord & {
 
 export type TemplateV2ToolbarElement =
   | TemplateV2LayoutElement
-  | TemplateV2LineToolbarElement;
+  | TemplateV2LineToolbarElement
+  | ChartSlideElement
+  | TableSlideElement;
 
-type TemplateV2SelectionComponentActions = {
+export type TemplateV2SelectionComponentActions = {
   canUngroup: boolean;
   componentIndex: number;
   componentCount: number;
@@ -106,6 +115,9 @@ type TemplateV2LayoutToolbarProps = {
   } | null;
   element?: TemplateV2ToolbarElement | null;
   onChange?: (changes: RawRecord) => void;
+  onChartChange?: (element: ChartSlideElement) => void;
+  onTableChange?: (element: TableSlideElement) => void;
+  selectedTableCell?: { rowIndex: number; colIndex: number } | null;
   position?: { left: number; top: number };
   componentActions?: TemplateV2SelectionComponentActions | null;
   ungroupAction?: TemplateV2UngroupAction | null;
@@ -447,6 +459,9 @@ export function TemplateV2LayoutToolbar({
   bounds,
   element,
   onChange,
+  onChartChange,
+  onTableChange,
+  selectedTableCell,
   position,
   componentActions,
   ungroupAction: flowUngroupAction,
@@ -462,15 +477,22 @@ export function TemplateV2LayoutToolbar({
   const hasLineControls = Boolean(
     element && onChange && isTemplateV2LineToolbarElement(element),
   );
-  const hasLayoutControls = hasFlowControls || hasContainerControls || hasLineControls;
+  const hasChartControls = Boolean(
+    element && onChartChange && isTemplateV2ChartToolbarElement(element),
+  );
+  const hasTableControls = Boolean(
+    element && onTableChange && isTemplateV2TableToolbarElement(element),
+  );
+  const hasLayoutControls =
+    hasFlowControls || hasContainerControls || hasLineControls;
+  const hasToolbarControls =
+    hasLayoutControls || hasChartControls || hasTableControls;
   const ungroupAction = componentActions?.canUngroup
     ? componentActions
     : flowUngroupAction?.canUngroup
       ? flowUngroupAction
       : null;
-  if (!componentActions && !hasLayoutControls && !ungroupAction) return null;
-
-
+  if (!componentActions && !hasToolbarControls && !ungroupAction) return null;
 
   const togglePanel = (panel: Exclude<PanelId, null>) => {
     setOpenPanel((current) => (current === panel ? null : panel));
@@ -502,14 +524,14 @@ export function TemplateV2LayoutToolbar({
             <ToolbarDivider />
           </>
         ) : null}
-        {hasFlowControls && element && onChange ? (
+        {hasFlowControls && element && onChange && isTemplateV2LayoutElement(element) ? (
           <FlowControls
             element={element}
             onChange={onChange}
             openPanel={openPanel}
             onToggle={togglePanel}
           />
-        ) : hasContainerControls && element && onChange ? (
+        ) : hasContainerControls && element && onChange && isTemplateV2LayoutElement(element) ? (
           <TemplateV2ContainerToolbarControls
             box={box}
             element={element}
@@ -517,17 +539,48 @@ export function TemplateV2LayoutToolbar({
             openPanel={openPanel}
             onToggle={togglePanel}
           />
-        ) : hasLineControls && element && onChange && isTemplateV2LineToolbarElement(element) ? (
+        ) : hasLineControls &&
+          element &&
+          onChange &&
+          isTemplateV2LineToolbarElement(element) ? (
           <TemplateV2LineToolbarControls
             element={element}
             onChange={onChange}
             openPanel={openPanel}
             onToggle={togglePanel}
           />
+        ) : hasChartControls &&
+          element &&
+          onChartChange &&
+          isTemplateV2ChartToolbarElement(element) ? (
+          <ChartToolbarControls
+            element={element}
+            paletteOpen={openPanel === "chart-colors"}
+            onChange={onChartChange}
+            onPaletteOpenChange={(open) => setPanelOpen("chart-colors", open)}
+          />
+        ) : hasTableControls &&
+          element &&
+          onTableChange &&
+          isTemplateV2TableToolbarElement(element) ? (
+          <TableToolbarControls
+            element={element}
+            index={0}
+            selectedCell={
+              selectedTableCell
+                ? {
+                    elementIndex: 0,
+                    rowIndex: selectedTableCell.rowIndex,
+                    colIndex: selectedTableCell.colIndex,
+                  }
+                : null
+            }
+            onChange={(_index, element) => onTableChange(element)}
+          />
         ) : null}
         {componentActions ? (
           <>
-            {hasLayoutControls ? <ToolbarDivider /> : null}
+            {hasToolbarControls ? <ToolbarDivider /> : null}
             <ComponentMoreMenu
               actions={componentActions}
               openPanel={openPanel}
@@ -544,15 +597,16 @@ export function TemplateV2LayoutToolbar({
     : toolbar;
 }
 
-function normalizedLayoutType(element: TemplateV2LayoutElement) {
+function normalizedLayoutType(element: TemplateV2ToolbarElement) {
   if (element.type === "list-view") return "flex";
   if (element.type === "grid-view") return "grid";
-  return element.type;
+  if (isTemplateV2LayoutElement(element)) return element.type;
+  return null;
 }
 
 
 export function isTemplateV2LayoutElement(
-  element: RawRecord | null | undefined,
+  element: RawRecord | TemplateV2ToolbarElement | null | undefined,
 ): element is TemplateV2LayoutElement {
   return (
     element?.type === "container" ||
@@ -561,13 +615,25 @@ export function isTemplateV2LayoutElement(
 }
 
 export function isTemplateV2FlowLayoutElement(
-  element: RawRecord | null | undefined,
+  element: RawRecord | TemplateV2ToolbarElement | null | undefined,
 ): element is TemplateV2LayoutElement {
   return (
     element?.type === "flex" ||
     element?.type === "grid" ||
     element?.type === "list-view" ||
     element?.type === "grid-view" ||
-    Boolean(element && isFlowLayoutElement(element))
+    Boolean(element && isFlowLayoutElement(element as RawRecord))
   );
+}
+
+export function isTemplateV2ChartToolbarElement(
+  element: RawRecord | TemplateV2ToolbarElement | null | undefined,
+): element is ChartSlideElement {
+  return element?.type === "chart";
+}
+
+export function isTemplateV2TableToolbarElement(
+  element: RawRecord | TemplateV2ToolbarElement | null | undefined,
+): element is TableSlideElement {
+  return element?.type === "table";
 }

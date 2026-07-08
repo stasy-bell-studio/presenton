@@ -9,10 +9,7 @@ import { DesignVariablesToolbar } from "@/components/slide-editor/toolbar/Design
 import { ImageToolbar } from "@/components/slide-editor/images/ImageToolbar";
 import { LineToolbar } from "@/components/slide-editor/shapes/LineToolbar";
 import { ShapeToolbar } from "@/components/slide-editor/shapes/ShapeToolbar";
-import {
-  TableToolbar,
-  type TableSelectionActions,
-} from "@/components/slide-editor/tables/TableToolbar";
+import { TableToolbar } from "@/components/slide-editor/tables/TableToolbar";
 import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
 
 type ElementToolbarProps = {
@@ -27,7 +24,6 @@ type ElementToolbarProps = {
   path: string;
   scale: number;
   selectedTableCell: TableCellSelection | null;
-  tableSelectionActions?: TableSelectionActions | null;
   templateFonts?: TemplateFontOption[];
   textSelectionRange?: TextSelectionRange | null;
   onChange: (index: number, element: SlideElement, path?: string) => void;
@@ -142,7 +138,6 @@ const TOOLBAR_RENDERERS: Partial<
     path,
     scale,
     selectedTableCell,
-    tableSelectionActions,
   }) =>
     element.type === "table" ? (
       <TableToolbar
@@ -158,7 +153,6 @@ const TOOLBAR_RENDERERS: Partial<
             ? selectedTableCell
             : null
         }
-        selectionActions={tableSelectionActions}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

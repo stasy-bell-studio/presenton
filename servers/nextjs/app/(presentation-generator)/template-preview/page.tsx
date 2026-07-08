@@ -13,7 +13,7 @@ const TemplatePreviewPage = () => {
         </div>
       }
     >
-      <GroupLayoutPreview />
+      <GroupLayoutPreview useKonvaTemplateV2Preview />
     </Suspense>
   );
 };

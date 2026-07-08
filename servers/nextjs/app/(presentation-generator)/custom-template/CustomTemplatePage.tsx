@@ -1401,7 +1401,7 @@ const CustomTemplatePage = ({
 
       setIsSavingTemplate(true);
       try {
-        await TemplateService.updateTemplateV2Metadata(state.templateId, {
+        await TemplateService.updateTemplateMetadata(state.templateId, {
           name,
           description: description || null,
         });

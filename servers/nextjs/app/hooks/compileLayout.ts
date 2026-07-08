@@ -190,6 +190,7 @@ function normalizeHardcodedBackendUrlsInCode(layoutCode: string): string {
  * Compiles a layout code string into a usable React component
  */
 export function compileCustomLayout(layoutCode: string): CompiledLayout | null {
+    console.log('compileCustomLayout called');
     try {
         const normalizedLayoutCode = normalizeHardcodedBackendUrlsInCode(layoutCode);
 
@@ -244,7 +245,7 @@ export function compileCustomLayout(layoutCode: string): CompiledLayout | null {
             const d3 = _d3;
             // Expose React hooks
             const { useState, useEffect, useRef, useMemo, useCallback, Fragment } = React;
-
+            
             // Expose Recharts components
             const {
                 ResponsiveContainer, LineChart, Line, BarChart, Bar,
@@ -265,9 +266,9 @@ export function compileCustomLayout(layoutCode: string): CompiledLayout | null {
 
             // Return the exports
             return {
-              __esModule: true,
-                component: typeof dynamicSlideLayout !== 'undefined'
-                    ? dynamicSlideLayout
+              __esModule: true,   
+                component: typeof dynamicSlideLayout !== 'undefined' 
+                    ? dynamicSlideLayout 
                     : (typeof DefaultLayout !== 'undefined' ? DefaultLayout : undefined),
                 layoutId: typeof layoutId !== 'undefined' ? layoutId : 'custom-layout',
                 layoutName: typeof layoutName !== 'undefined' ? layoutName : 'Custom Layout',
@@ -323,3 +324,4 @@ export function compileCustomLayout(layoutCode: string): CompiledLayout | null {
         return createInvalidCompiledLayout(message);
     }
 }
+
