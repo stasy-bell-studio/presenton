@@ -780,6 +780,7 @@ class PresentationChatService:
             "searchSlide": "Searching relevant slides",
             "getSlideAtIndex": "Opening the requested slide",
             "getAvailableLayouts": "Checking available layouts",
+            "getContentSchemaFromLayoutId": "Reading layout content schema",
             "generateAssets": "Generating slide assets",
             "saveSlide": "Saving the slide",
             "updateSlide": "Updating the slide",

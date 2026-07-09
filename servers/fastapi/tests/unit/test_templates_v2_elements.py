@@ -13,6 +13,51 @@ from templates.v2.models.elements import (
 from templates.v2.models.layouts import RawSlideLayout
 
 
+def test_chart_accepts_legacy_boolean_data_labels():
+    chart = Chart.model_validate(
+        {
+            "type": "chart",
+            "decorative": False,
+            "name": "legacy_chart",
+            "chart_type": "bar",
+            "data_labels": True,
+        }
+    )
+    assert chart.data_labels is not None
+    assert chart.data_labels.value == "top"
+
+    hidden = Chart.model_validate(
+        {
+            "type": "chart",
+            "decorative": False,
+            "name": "legacy_chart",
+            "chart_type": "bar",
+            "data_labels": False,
+        }
+    )
+    assert hidden.data_labels is None
+
+    layout = RawSlideLayout.model_validate(
+        {
+            "id": "legacy_chart_data_labels",
+            "description": "Layout with legacy boolean chart data labels.",
+            "elements": [
+                {
+                    "type": "chart",
+                    "decorative": False,
+                    "name": "legacy_chart",
+                    "chart_type": "bar",
+                    "data_labels": True,
+                }
+            ],
+        }
+    )
+    layout_chart = layout.elements[0]
+    assert isinstance(layout_chart, Chart)
+    assert layout_chart.data_labels is not None
+    assert layout_chart.data_labels.value == "top"
+
+
 def test_image_element_accepts_flip_flags():
     image = Image.model_validate(
         {
@@ -282,7 +327,7 @@ def test_raw_layout_accepts_reference_converter_element_models():
                     "y_axis": False,
                     "categories": ["Q1", "Q2"],
                     "series": [{"name": "Revenue", "values": [10.0, 12.0]}],
-                    "data_labels": True,
+                    "data_labels": "top",
                     "x_axis_grid": True,
                     "y_axis_grid": False,
                 },

@@ -1,6 +1,7 @@
 import type {
   ChartElement,
   ChartSeries,
+  DataLabelPosition,
 } from "@/components/slide-editor/types";
 import { rawChartType } from "@/components/slide-editor/charts/chart-data";
 import {
@@ -10,6 +11,8 @@ import {
   type RawElement,
   type UnknownRecord,
 } from "@/components/slide-editor/model/core";
+
+const DATA_LABEL_POSITIONS = new Set(["base", "mid", "top", "outside"]);
 
 export function rawChartToEditorChart(element: RawElement): ChartElement {
   const legacyData = readArray(element.data)
@@ -105,7 +108,9 @@ export function rawChartToEditorChart(element: RawElement): ChartElement {
     y_axis_grid: element.y_axis_grid ?? element.yAxisGrid,
     x_axis_title: element.x_axis_title ?? element.xAxisTitle,
     y_axis_title: element.y_axis_title ?? element.yAxisTitle,
-    data_labels: element.data_labels ?? element.dataLabels,
+    data_labels: readDataLabelPosition(
+      hasOwn(element, "data_labels") ? element.data_labels : element.dataLabels,
+    ),
     legend: element.legend ?? element.showLegend,
   };
 }
@@ -169,7 +174,13 @@ export function editorChartToRawChart(source: RawElement, chart: UnknownRecord) 
     y_axis_title: hasOwn(chart, "y_axis_title")
       ? chart.y_axis_title
       : chart.yAxisTitle ?? source.y_axis_title ?? source.yAxisTitle,
-    data_labels: chart.data_labels ?? chart.dataLabels ?? source.data_labels,
+    data_labels: hasOwn(chart, "data_labels")
+      ? readDataLabelPosition(chart.data_labels)
+      : hasOwn(chart, "dataLabels")
+        ? readDataLabelPosition(chart.dataLabels)
+        : readDataLabelPosition(
+            hasOwn(source, "data_labels") ? source.data_labels : source.dataLabels,
+          ),
     legend:
       chart.legend ??
       chart.showLegend ??
@@ -196,6 +207,15 @@ function withoutRemovedChartFields(element: UnknownRecord) {
   delete sanitized.yAxisGrid;
   delete sanitized.yAxisTitle;
   return sanitized;
+}
+
+function readDataLabelPosition(value: unknown): DataLabelPosition | null {
+  if (value === true) return "top";
+  if (value === false || value == null) return null;
+  const text = readString(value);
+  return text && DATA_LABEL_POSITIONS.has(text)
+    ? (text as DataLabelPosition)
+    : null;
 }
 
 function hasOwn(record: UnknownRecord, key: string) {

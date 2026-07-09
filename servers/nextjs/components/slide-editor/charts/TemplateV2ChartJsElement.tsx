@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Chart from "chart.js/auto";
 import type {
   ChartConfiguration,
@@ -10,6 +10,7 @@ import type {
 } from "chart.js";
 import { Group, Image as KonvaImage, Rect } from "react-konva";
 import { normalizeChartTypeName } from "@/components/slide-editor/charts/chart-data";
+import type { DataLabelPosition } from "@/components/slide-editor/types";
 import {
   asRecord,
   clamp,
@@ -76,6 +77,7 @@ const DEFAULT_CHART_COLORS = [
 ];
 
 const CHART_FONT_FAMILY = "Inter, Arial, sans-serif";
+const DATA_LABEL_POSITIONS = new Set(["base", "mid", "top", "outside"]);
 
 export function TemplateV2ChartJsElement({
   element,
@@ -105,28 +107,20 @@ export function TemplateV2ChartJsElement({
       ),
     [element, logicalHeight, logicalWidth, pixelRatio],
   );
-  const renderInputRef = useRef({
-    element,
-    logicalHeight,
-    logicalWidth,
-    pixelRatio,
-    renderSignature,
-  });
-
-  if (renderInputRef.current.renderSignature !== renderSignature) {
-    renderInputRef.current = {
+  const renderInput = useMemo(
+    () => ({
       element,
       logicalHeight,
       logicalWidth,
       pixelRatio,
       renderSignature,
-    };
-  }
+    }),
+    [element, logicalHeight, logicalWidth, pixelRatio, renderSignature],
+  );
 
   useEffect(() => {
     if (typeof document === "undefined") return;
 
-    const renderInput = renderInputRef.current;
     const nextCanvas = document.createElement("canvas");
     nextCanvas.width = renderInput.logicalWidth;
     nextCanvas.height = renderInput.logicalHeight;
@@ -152,7 +146,7 @@ export function TemplateV2ChartJsElement({
     return () => {
       chart?.destroy();
     };
-  }, [renderSignature]);
+  }, [renderInput]);
 
   return (
     <Group listening={interactive}>
@@ -266,8 +260,10 @@ function createChartJsConfig(
     "#344054",
   );
   const title = readString(element.title)?.trim() ?? "";
-  const showValues =
-    readBoolean(element.data_labels ?? element.dataLabels) ?? false;
+  const dataLabelPosition = readDataLabelPosition(
+    hasOwn(element, "data_labels") ? element.data_labels : element.dataLabels,
+  );
+  const showValues = dataLabelPosition != null;
   const showXAxisGrid =
     readBoolean(element.x_axis_grid ?? element.xAxisGrid) ?? true;
   const showYAxisGrid =
@@ -377,6 +373,7 @@ function createChartJsConfig(
         fontSize: valueFontSize,
         horizontal: kind.horizontal,
         outsideColor: textColor,
+        position: dataLabelPosition ?? "top",
       }),
     ],
   };
@@ -924,16 +921,31 @@ function categoryColors(dataset: RawChartDataset) {
   );
 }
 
+function readDataLabelPosition(value: unknown): DataLabelPosition | null {
+  if (value === true) return "top";
+  if (value === false || value == null) return null;
+  const text = readString(value);
+  return text && DATA_LABEL_POSITIONS.has(text)
+    ? (text as DataLabelPosition)
+    : null;
+}
+
+function hasOwn(record: RawElement, key: string) {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
 function chartValueLabelsPlugin({
   enabled,
   fontSize,
   horizontal,
   outsideColor,
+  position,
 }: {
   enabled: boolean;
   fontSize: number;
   horizontal: boolean;
   outsideColor: string;
+  position: DataLabelPosition;
 }): Plugin {
   return {
     id: "templateV2ChartValueLabels",
@@ -985,6 +997,7 @@ function chartValueLabelsPlugin({
               horizontal,
               label,
               outsideColor,
+              position,
               value: numeric,
             });
             return;
@@ -1004,16 +1017,34 @@ function chartValueLabelsPlugin({
               metaElements: meta.data,
               occupiedLabels,
               outsideColor,
+              position,
               pointObstacles,
             });
             return;
           }
 
-          const position =
+          if (
+            metaType === "pie" ||
+            metaType === "doughnut" ||
+            metaType === "polarArea"
+          ) {
+            drawArcValueLabel({
+              color: datasetBackgroundColor(dataset, index),
+              ctx,
+              element,
+              fontSize,
+              label,
+              outsideColor,
+              position,
+            });
+            return;
+          }
+
+          const fallbackPosition =
             typeof element.tooltipPosition === "function"
               ? element.tooltipPosition(true)
               : null;
-          if (!position) return;
+          if (!fallbackPosition) return;
 
           ctx.fillStyle =
             metaType === "pie" ||
@@ -1024,7 +1055,7 @@ function chartValueLabelsPlugin({
                 outsideColor,
               )
               : outsideColor;
-          ctx.fillText(label, (position.x ?? 0), (position.y ?? 0));
+          ctx.fillText(label, (fallbackPosition.x ?? 0), (fallbackPosition.y ?? 0));
         });
       });
 
@@ -1041,6 +1072,7 @@ function drawBarValueLabel({
   horizontal,
   label,
   outsideColor,
+  position,
   value,
 }: {
   color: string | null;
@@ -1050,6 +1082,7 @@ function drawBarValueLabel({
   horizontal: boolean;
   label: string;
   outsideColor: string;
+  position: DataLabelPosition;
   value: number;
 }) {
   const bar = asRecord(element);
@@ -1065,30 +1098,51 @@ function drawBarValueLabel({
   const fitsInside = horizontal
     ? width >= textWidth + padding * 2 && height >= fontSize * 1.35
     : height >= fontSize * 1.65 && width >= textWidth + padding * 2;
+  const resolvedPosition =
+    position === "outside" || !fitsInside ? "outside" : position;
 
-  if (fitsInside) {
+  if (resolvedPosition !== "outside") {
     ctx.fillStyle = contrastTextColor(color, outsideColor);
+    if (horizontal) {
+      const direction = value < 0 ? -1 : 1;
+      const labelX =
+        resolvedPosition === "base"
+          ? base + direction * (textWidth / 2 + padding)
+          : resolvedPosition === "top"
+            ? x - direction * (textWidth / 2 + padding)
+            : (x + base) / 2;
+      ctx.fillText(label, labelX, y);
+      return;
+    }
+
+    const direction = value < 0 ? 1 : -1;
+    const labelY =
+      resolvedPosition === "base"
+        ? base + direction * (fontSize / 2 + padding)
+        : resolvedPosition === "top"
+          ? y - direction * (fontSize / 2 + padding)
+          : (y + base) / 2;
     ctx.fillText(
       label,
-      horizontal ? (x + base) / 2 : x,
-      horizontal ? y : (y + base) / 2,
+      x,
+      labelY,
     );
     return;
   }
 
   ctx.fillStyle = outsideColor;
   if (horizontal) {
-    const end = value < 0 ? Math.min(x, base) : Math.max(x, base);
+    const direction = value < 0 ? -1 : 1;
     ctx.fillText(
       label,
-      end + (value < 0 ? -(textWidth / 2 + padding) : textWidth / 2 + padding),
+      x + direction * (textWidth / 2 + padding),
       y,
     );
     return;
   }
 
-  const end = value < 0 ? Math.max(y, base) : Math.min(y, base);
-  ctx.fillText(label, x, end + (value < 0 ? fontSize : -fontSize));
+  const direction = value < 0 ? 1 : -1;
+  ctx.fillText(label, x, y + direction * (fontSize / 2 + padding));
 }
 
 function drawPointValueLabel({
@@ -1104,6 +1158,7 @@ function drawPointValueLabel({
   metaElements,
   occupiedLabels,
   outsideColor,
+  position,
   pointObstacles,
 }: {
   chartArea: LabelBounds;
@@ -1118,6 +1173,7 @@ function drawPointValueLabel({
   metaElements: unknown[];
   occupiedLabels: LabelBounds[];
   outsideColor: string;
+  position: DataLabelPosition;
   pointObstacles: LabelBounds[];
 }) {
   const point = asRecord(element);
@@ -1135,6 +1191,40 @@ function drawPointValueLabel({
       : 1;
   const verticalOffset = radius + textHeight / 2 + 5;
   const horizontalOffset = radius + textWidth / 2 + 5;
+
+  if (position !== "outside") {
+    const candidate =
+      position === "base"
+        ? { x, y: y + verticalOffset }
+        : position === "top"
+          ? { x, y: y - verticalOffset }
+          : { x, y };
+    const bounds = valueLabelBounds(
+      candidate.x,
+      candidate.y,
+      textWidth,
+      textHeight,
+    );
+    const intersectsPoint =
+      position !== "mid" &&
+      pointObstacles.some((obstacle) => labelBoundsOverlap(bounds, obstacle));
+    if (
+      labelFitsChartArea(bounds, chartArea) &&
+      occupiedLabels.every(
+        (occupied) => !labelBoundsOverlap(bounds, occupied),
+      ) &&
+      !intersectsPoint &&
+      lineObstacles.every(
+        (segment) => !lineSegmentIntersectsBounds(segment, bounds),
+      )
+    ) {
+      occupiedLabels.push(bounds);
+      ctx.fillStyle = outsideColor;
+      ctx.fillText(label, candidate.x, candidate.y);
+      return;
+    }
+  }
+
   const candidates = [
     { x, y: y + verticalDirection * verticalOffset },
     { x, y: y - verticalDirection * verticalOffset },
@@ -1195,6 +1285,68 @@ function drawPointValueLabel({
   occupiedLabels.push(bounds);
   ctx.fillStyle = outsideColor;
   ctx.fillText(label, resolved.x, resolved.y);
+}
+
+function drawArcValueLabel({
+  color,
+  ctx,
+  element,
+  fontSize,
+  label,
+  outsideColor,
+  position,
+}: {
+  color: string | null;
+  ctx: CanvasRenderingContext2D;
+  element: unknown;
+  fontSize: number;
+  label: string;
+  outsideColor: string;
+  position: DataLabelPosition;
+}) {
+  const arc = asRecord(element);
+  const centerX = readNumber(arc?.x);
+  const centerY = readNumber(arc?.y);
+  const startAngle = readNumber(arc?.startAngle);
+  const endAngle = readNumber(arc?.endAngle);
+  const innerRadius = Math.max(0, readNumber(arc?.innerRadius) ?? 0);
+  const outerRadius = Math.max(innerRadius, readNumber(arc?.outerRadius) ?? 0);
+
+  let point: { x: number; y: number } | null = null;
+  if (
+    centerX != null &&
+    centerY != null &&
+    startAngle != null &&
+    endAngle != null &&
+    outerRadius > 0
+  ) {
+    const angle = (startAngle + endAngle) / 2;
+    const ringWidth = Math.max(1, outerRadius - innerRadius);
+    const textHeight = fontSize * 1.15;
+    const radius =
+      position === "outside"
+        ? outerRadius + textHeight / 2 + 7
+        : position === "top"
+          ? Math.max(innerRadius + textHeight / 2, outerRadius - textHeight / 2 - 5)
+          : position === "base"
+            ? innerRadius > 0
+              ? innerRadius + Math.min(ringWidth * 0.25, textHeight + 5)
+              : outerRadius * 0.35
+            : innerRadius + ringWidth / 2;
+    point = {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+    };
+  } else if (typeof arc?.tooltipPosition === "function") {
+    point = arc.tooltipPosition(true);
+  }
+
+  if (!point) return;
+  ctx.fillStyle =
+    position === "outside"
+      ? outsideColor
+      : contrastTextColor(color, outsideColor);
+  ctx.fillText(label, point.x, point.y);
 }
 
 function isPointChartType(metaType: string | null) {

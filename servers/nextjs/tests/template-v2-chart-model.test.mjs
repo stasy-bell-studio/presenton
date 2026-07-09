@@ -88,6 +88,38 @@ test("normalizes legacy data-only bar charts for editor rendering", async () => 
   assert.deepEqual(chart.colors, ["#3A3A3A", "#3A3A3A", "#3A3A3A"]);
 });
 
+test("normalizes chart data label placement values", async () => {
+  const { rawChartToEditorChart } = await helpersPromise;
+
+  assert.equal(
+    rawChartToEditorChart({
+      type: "chart",
+      chart_type: "bar",
+      data_labels: "outside",
+      data: [{ label: "Q1", value: 10 }],
+    }).data_labels,
+    "outside",
+  );
+  assert.equal(
+    rawChartToEditorChart({
+      type: "chart",
+      chart_type: "bar",
+      data_labels: true,
+      data: [{ label: "Q1", value: 10 }],
+    }).data_labels,
+    "top",
+  );
+  assert.equal(
+    rawChartToEditorChart({
+      type: "chart",
+      chart_type: "bar",
+      data_labels: false,
+      data: [{ label: "Q1", value: 10 }],
+    }).data_labels,
+    null,
+  );
+});
+
 test("editor color helpers tolerate missing generated color values", async () => {
   const { withHash, withoutHash } = await helpersPromise;
 

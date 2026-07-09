@@ -228,9 +228,10 @@ async def test_upload_fonts_and_preview_uses_trimmed_pptx_for_processing(
         logger,
         session_dir,
         upload_fonts=True,
+        google_font_replacements=None,
     ):
         del temp_dir, original_filename, font_files, original_font_names, logger
-        del session_dir, upload_fonts
+        del session_dir, upload_fonts, google_font_replacements
         captured["font_processing_pptx_path"] = pptx_path
         assert_slide_count(pptx_path, 50)
         return set(), {}, {}, [], pptx_path, [], [], {}, [], {}
@@ -327,9 +328,10 @@ async def test_upload_fonts_and_preview_passes_google_fonts_to_html_preview(
         logger,
         session_dir,
         upload_fonts=True,
+        google_font_replacements=None,
     ):
         del temp_dir, original_filename, font_files, original_font_names
-        del logger, session_dir, upload_fonts
+        del logger, session_dir, upload_fonts, google_font_replacements
         return {"Open Sans"}, {}, {}, [], pptx_path, [], [], {}, [], {}
 
     async def fake_check_google_font_availability(font_name, variants=None):
@@ -392,6 +394,103 @@ async def test_upload_fonts_and_preview_passes_google_fonts_to_html_preview(
     assert captured["checked_variants"] == ["bold"]
     assert captured["font_stylesheet_urls"] == [expected_url]
     assert response.fonts == {"Open Sans": expected_url}
+    assert response.slide_image_urls == [str(slide_path)]
+
+
+@pytest.mark.anyio
+async def test_upload_fonts_and_preview_replaces_pptx_fonts_with_selected_google_fonts(
+    monkeypatch,
+    tmp_path,
+):
+    captured = {}
+    slide_path = tmp_path / "slide_1.png"
+    slide_path.write_bytes(b"png")
+    google_url = (
+        "https://fonts.googleapis.com/css2"
+        "?family=Poppins:wght@100..900&display=swap"
+    )
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_font_variants_by_normalized_name",
+        lambda *_args: {"Open Sans": {"bold"}},
+    )
+
+    async def fake_upload_fonts_and_fix_fonts_in_pptx(
+        pptx_path,
+        temp_dir,
+        original_filename,
+        font_files,
+        original_font_names,
+        logger,
+        session_dir,
+        upload_fonts=True,
+        google_font_replacements=None,
+    ):
+        del temp_dir, original_filename, font_files, original_font_names
+        del logger, session_dir, upload_fonts
+        captured["google_font_replacements"] = google_font_replacements
+        return (
+            {"Open Sans"},
+            {},
+            google_font_replacements or {},
+            [],
+            pptx_path,
+            [],
+            [],
+            {},
+            [],
+            {},
+        )
+
+    async def fake_create_slide_previews(
+        modified_pptx_path,
+        temp_dir,
+        font_paths_for_install,
+        font_mapping,
+        explicit_font_aliases,
+        protected_font_names,
+        max_slides,
+        logger,
+        session_dir,
+        font_stylesheet_urls=None,
+    ):
+        del modified_pptx_path, temp_dir, font_paths_for_install, font_mapping
+        del explicit_font_aliases, protected_font_names, max_slides, logger
+        del session_dir
+        captured["font_stylesheet_urls"] = font_stylesheet_urls
+        return [str(slide_path)]
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "upload_fonts_and_fix_fonts_in_pptx",
+        fake_upload_fonts_and_fix_fonts_in_pptx,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "create_slide_previews",
+        fake_create_slide_previews,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_public_urls_for_local_paths",
+        lambda paths: list(paths),
+    )
+
+    response = await fonts_and_slides_preview.upload_fonts_and_preview_handler(
+        pptx_file=DummyUploadFile("deck.pptx", content=_fake_pptx_bytes(1)),
+        font_files=[],
+        original_font_names=[],
+        google_font_original_names=["Open Sans Bold"],
+        google_font_replacement_names=["Poppins"],
+        google_font_urls=[google_url],
+        upload_presentation=False,
+        temp_dir=str(tmp_path),
+    )
+
+    assert captured["google_font_replacements"] == {"Open Sans Bold": "Poppins"}
+    assert captured["font_stylesheet_urls"] == [google_url]
+    assert response.fonts == {"Poppins": google_url}
     assert response.slide_image_urls == [str(slide_path)]
 
 
@@ -1963,6 +2062,70 @@ async def test_saved_font_upload_for_explicit_variant_uses_normalized_family_nam
         "bold": "Arial Bold"
     }
     assert result[1] == {"Arial Bold": "/app_data/fonts/Arial-Bold.ttf"}
+
+
+@pytest.mark.anyio
+async def test_google_font_replacements_are_used_for_pptx_font_mapping(
+    monkeypatch,
+    tmp_path,
+):
+    captured_replacement = {}
+    captured_candidates = []
+
+    async def fake_get_font_uploads_for_names_by_variant(font_names):
+        captured_candidates.extend(font_names)
+        return {}
+
+    def fake_replace_fonts_in_pptx(
+        _pptx_path,
+        font_mapping,
+        _output_path,
+        font_variant_mapping=None,
+    ):
+        captured_replacement["font_mapping"] = font_mapping
+        captured_replacement["font_variant_mapping"] = font_variant_mapping
+
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "extract_raw_fonts_and_embedded_details",
+        lambda *_args: ({"Arial"}, [], []),
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "_font_variants_by_normalized_name",
+        lambda *_args: {"Arial": {"bold"}},
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "get_font_uploads_for_names_by_variant",
+        fake_get_font_uploads_for_names_by_variant,
+    )
+    monkeypatch.setattr(
+        fonts_and_slides_preview,
+        "replace_fonts_in_pptx",
+        fake_replace_fonts_in_pptx,
+    )
+
+    await fonts_and_slides_preview.upload_fonts_and_fix_fonts_in_pptx(
+        pptx_path="deck.pptx",
+        temp_dir=str(tmp_path),
+        original_filename="deck.pptx",
+        font_files=None,
+        original_font_names=None,
+        logger=DummyLogger(),
+        session_dir=str(tmp_path / "session"),
+        upload_fonts=False,
+        google_font_replacements={"Arial Bold": "Poppins"},
+    )
+
+    assert captured_candidates == []
+    assert captured_replacement["font_mapping"] == {"Arial Bold": "Poppins"}
+    assert captured_replacement["font_variant_mapping"]["Arial"] == {
+        "bold": "Poppins"
+    }
+    assert captured_replacement["font_variant_mapping"]["Arial Bold"] == {
+        "bold": "Poppins"
+    }
 
 
 @pytest.mark.anyio

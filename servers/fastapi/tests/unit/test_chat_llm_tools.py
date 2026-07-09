@@ -90,6 +90,7 @@ def test_chat_tools_expose_only_v2_tool_names():
         "addNewSlide",
         "addNewSlideLayout",
         "getAvailableLayouts",
+        "getContentSchemaFromLayoutId",
         "getTemplateSummary",
         "readSourceDocuments",
         "searchSlide",

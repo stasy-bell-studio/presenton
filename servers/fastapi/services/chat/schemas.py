@@ -249,6 +249,9 @@ class SlideElementChartSeriesInput(OpenAIStrictSchemaModel):
         return normalized
 
 
+DataLabelPosition = Literal["base", "mid", "top", "outside"]
+
+
 class SlideElementChartInput(OpenAIStrictSchemaModel):
     chart_type: Literal[
         "area",
@@ -294,7 +297,14 @@ class SlideElementChartInput(OpenAIStrictSchemaModel):
     y_axis_grid: bool | None = Field(..., alias="yAxisGrid")
     x_axis_title: str | None = Field(..., alias="xAxisTitle", min_length=0, max_length=200)
     y_axis_title: str | None = Field(..., alias="yAxisTitle", min_length=0, max_length=200)
-    data_labels: bool | None = Field(..., alias="dataLabels")
+    data_labels: DataLabelPosition | None = Field(
+        ...,
+        alias="dataLabels",
+        description=(
+            "Optional data label placement. Use null to hide labels; otherwise "
+            "use base, mid, top, or outside."
+        ),
+    )
     legend: bool | None = Field(...)
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)

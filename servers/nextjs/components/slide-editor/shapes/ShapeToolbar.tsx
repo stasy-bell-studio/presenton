@@ -12,7 +12,6 @@ import {
   elementBox,
   uniformBorderRadius,
 } from "@/components/slide-editor/model/element-model";
-import { EDITOR_STAGE_HEIGHT, EDITOR_STAGE_WIDTH } from "@/components/slide-editor/types";
 import type { ShapeSlideElement } from "@/components/slide-editor/state/state";
 import { DeferredColorInput } from "@/components/slide-editor/toolbar/DeferredColorInput";
 import {
@@ -21,6 +20,11 @@ import {
   type FloatingToolbarBox,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
+import {
+  ComponentActionsMenu,
+  ComponentUngroupButton,
+  type ComponentActionsMenuActions,
+} from "@/components/slide-editor/selection/ComponentActionsMenu";
 import {
   numericInputMode,
   preventInvalidNumberInput,
@@ -58,12 +62,14 @@ export function ShapeToolbar({
   element,
   index,
   scale,
+  componentActions,
   onChange,
 }: {
   anchorBox?: FloatingToolbarBox | null;
   element: ShapeSlideElement;
   index: number;
   scale: number;
+  componentActions?: ComponentActionsMenuActions | null;
   onChange: (index: number, element: ShapeSlideElement) => void;
 }) {
   const [openPanel, setOpenPanel] = useState<ShapePanel>(null);
@@ -367,6 +373,15 @@ export function ShapeToolbar({
           </Panel>
         ) : null}
       </div>
+
+      {componentActions ? (
+        <>
+          <Divider />
+          <ComponentUngroupButton actions={componentActions} />
+          {componentActions.canUngroup ? <Divider /> : null}
+          <ComponentActionsMenu actions={componentActions} />
+        </>
+      ) : null}
     </FloatingToolbar>
   );
 }

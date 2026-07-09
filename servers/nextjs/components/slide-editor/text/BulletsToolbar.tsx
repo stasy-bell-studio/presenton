@@ -7,12 +7,14 @@ import {
 import type { TextSelectionRange } from "@/components/slide-editor/text/text-runs";
 import type { BulletsSlideElement, TextSlideElement } from "@/components/slide-editor/state/state";
 import { TextToolbar } from "@/components/slide-editor/text/TextToolbar";
+import type { ComponentActionsMenuActions } from "@/components/slide-editor/selection/ComponentActionsMenu";
 
 export function BulletsToolbar({
   element,
   index,
   anchorBox,
   scale,
+  componentActions,
   selectionRange,
   templateFonts,
   onChange,
@@ -26,6 +28,7 @@ export function BulletsToolbar({
     height: number;
   } | null;
   scale: number;
+  componentActions?: ComponentActionsMenuActions | null;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
   onChange: (index: number, element: BulletsSlideElement) => void;
@@ -64,6 +67,7 @@ export function BulletsToolbar({
       index={index}
       anchorBox={anchorBox}
       scale={scale}
+      componentActions={componentActions}
       listMarker={marker}
       selectionRange={selectionRange}
       templateFonts={templateFonts}

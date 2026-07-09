@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Annotated, Literal, Optional, TypeAlias, Union, List
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def _validate_min_max(
@@ -44,12 +44,6 @@ class LayoutAlignment(str, Enum):
     STRETCH = "stretch"
 
 
-class TextWrap(str, Enum):
-    WORD = "word"
-    CHAR = "char"
-    NONE = "none"
-
-
 class Marker(str, Enum):
     BULLET = "bullet"
     NUMBER = "number"
@@ -82,6 +76,13 @@ class ChartType(str, Enum):
     POLAR_AREA = "polar_area"
 
 
+class DataLabelPosition(str, Enum):
+    BASE = "base"
+    MID = "mid"
+    TOP = "top"
+    OUTSIDE = "outside"
+
+
 class Position(BaseModel):
     x: float
     y: float
@@ -112,7 +113,6 @@ class Font(BaseModel):
     italic: Optional[bool] = None
     line_height: Optional[float] = None
     letter_spacing: Optional[float] = None
-    wrap: Optional[TextWrap] = None
     ellipsis: Optional[bool] = None
     opacity: Optional[float] = None
 
@@ -300,7 +300,7 @@ class Chart(BaseModel):
     axis_color: Optional[str] = None
     categories: Optional[list[str]] = None
     series: Optional[list[ChartSeries]] = None
-    data_labels: Optional[bool] = None
+    data_labels: Optional[DataLabelPosition] = None
     legend: Optional[bool] = None
     x_axis_grid: Optional[bool] = None
     y_axis_grid: Optional[bool] = None
@@ -320,6 +320,19 @@ class Chart(BaseModel):
         ):
             self.series = self.series[:1]
         return self
+
+    @field_validator("data_labels", mode="before")
+    @classmethod
+    def _coerce_legacy_data_labels(cls, value: object) -> object:
+        if value is True:
+            return DataLabelPosition.TOP
+        if value is False or value is None:
+            return None
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {position.value for position in DataLabelPosition}:
+                return normalized
+        return value
 
     @model_validator(mode="after")
     def _size_must_be_visible_when_explicit(self) -> "Chart":
@@ -462,6 +475,5 @@ __all__ = [
     "Text",
     "TextList",
     "TextRun",
-    "TextWrap",
     "VerticalAlignment",
 ]

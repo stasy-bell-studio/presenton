@@ -594,7 +594,7 @@ def test_update_slide_element_updates_new_chart_model_fields():
                     {"name": "2024 Gt", "values": [36.4, 2.1, 0.8]},
                     {"name": "2025 Gt", "values": [36.7, 2.3, 0.84]},
                 ],
-                "dataLabels": True,
+                "dataLabels": "top",
                 "legend": True,
                 "xAxisTitle": "Gas",
                 "yAxisTitle": "Emissions (Gt)",
@@ -607,7 +607,7 @@ def test_update_slide_element_updates_new_chart_model_fields():
     assert chart["chart_type"] == "line"
     assert chart["title"] == "GHG Emissions 2024-2025"
     assert chart["series"][0]["values"] == [36.4, 2.1, 0.8]
-    assert chart["data_labels"] is True
+    assert chart["data_labels"] == "top"
     assert chart["legend"] is True
     assert chart["x_axis_title"] == "Gas"
     assert chart["y_axis_title"] == "Emissions (Gt)"

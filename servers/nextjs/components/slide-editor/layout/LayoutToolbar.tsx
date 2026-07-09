@@ -5,12 +5,9 @@ import { createPortal } from "react-dom";
 import {
   ChevronDown,
   ChevronUp,
-  Copy,
-  MoreVertical,
   Plus,
   PlusCircle,
   Trash2,
-  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ChartToolbarControls } from "@/components/slide-editor/charts/ChartToolbar";
@@ -21,22 +18,13 @@ import type {
 } from "@/components/slide-editor/state/state";
 import { TableToolbarControls } from "@/components/slide-editor/tables/TableToolbar";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   addLayoutItemChanges,
   layoutItemStats,
   removeLastLayoutItemChanges,
 } from "@/components/slide-editor/layout/layoutItems";
 import { isFlowLayoutElement } from "@/components/slide-editor/layout/flowLayout";
-import {
-  canApplyComponentLayerAction,
-  type ComponentLayerAction,
-} from "@/components/slide-editor/selection/layering";
+import type { ComponentLayerAction } from "@/components/slide-editor/selection/layering";
+import { ComponentActionsMenu } from "@/components/slide-editor/selection/ComponentActionsMenu";
 import { TemplateV2ContainerToolbarControls } from "@/components/slide-editor/layout/ContainerToolbarControls";
 import {
   isTemplateV2LineToolbarElement,
@@ -124,33 +112,6 @@ type TemplateV2LayoutToolbarProps = {
   componentActions?: TemplateV2SelectionComponentActions | null;
   ungroupAction?: TemplateV2UngroupAction | null;
 };
-
-const COMPONENT_LAYER_ACTIONS: Array<{
-  action: ComponentLayerAction;
-  label: string;
-  shortcut: string;
-}> = [
-    {
-      action: "bring-to-front",
-      label: "Bring to Front",
-      shortcut: "⌥⌘]",
-    },
-    {
-      action: "bring-forward",
-      label: "Bring Forward",
-      shortcut: "⌘]",
-    },
-    {
-      action: "send-backward",
-      label: "Send Backward",
-      shortcut: "⌘[",
-    },
-    {
-      action: "send-to-back",
-      label: "Send Back",
-      shortcut: "⌥⌘[",
-    },
-  ];
 
 function readNumber(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -336,126 +297,6 @@ function ToolbarDivider() {
   return <span aria-hidden className="h-5 w-px bg-[#EDEEEF]" />;
 }
 
-function ComponentMoreMenu({
-  actions,
-  onOpenChange,
-  openPanel,
-}: {
-  actions: TemplateV2SelectionComponentActions;
-  onOpenChange: (open: boolean) => void;
-  openPanel: PanelId;
-}) {
-  const open = openPanel === "component-menu";
-  const run = (callback: () => void) => callback();
-
-  return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          title="More"
-          aria-label="More"
-          className={cn(
-            "grid h-8 w-8 place-items-center rounded-[4px] border-0 bg-transparent font-manrope text-black hover:bg-[#F6F6F9]",
-            open && "bg-[#F6F6F9]",
-          )}
-        >
-          <MoreVertical
-            size={16}
-            className="text-black"
-            strokeWidth={1.33}
-            aria-hidden
-          />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        data-template-v2-floating-toolbar="true"
-        data-inline-edit-ignore="true"
-        align="end"
-        sideOffset={12}
-        collisionPadding={8}
-        onMouseDown={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-        className="z-[10001] box-border w-[206px] rounded-[12px] border border-[#EDEEEF] bg-white py-2 font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] shadow-[0_6px_18px_rgba(16,24,40,0.08)]"
-      >
-        <ToolbarMenuItem
-          strong
-          icon={Copy}
-          label="Duplicate"
-          onClick={() => run(actions.onDuplicate)}
-        />
-        {COMPONENT_LAYER_ACTIONS.map(({ action, label, shortcut }) => {
-          const disabled = !canApplyComponentLayerAction(
-            actions.componentIndex,
-            actions.componentCount,
-            action,
-          );
-          return (
-            <ToolbarMenuItem
-              key={action}
-              disabled={disabled}
-              label={label}
-              shortcut={shortcut}
-              onClick={() => run(() => actions.onLayerAction(action))}
-            />
-          );
-        })}
-        <DropdownMenuSeparator className="my-1 h-px bg-[#E7E8EC]" />
-        <ToolbarMenuItem
-          strong
-          icon={Trash2}
-          label="Delete Component"
-          onClick={() => run(actions.onDelete)}
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function ToolbarMenuItem({
-  disabled,
-  icon: Icon = undefined,
-  label,
-  shortcut,
-  strong,
-  onClick,
-}: {
-  disabled?: boolean;
-  icon?: LucideIcon;
-  label: string;
-  shortcut?: string;
-  strong?: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <DropdownMenuItem
-      disabled={disabled}
-      onSelect={onClick}
-      style={{ cursor: disabled ? "not-allowed" : "pointer" }}
-
-      className={cn(
-        "flex w-full cursor-default items-center gap-2 rounded-none px-4 py-2.5 text-left font-syne text-[14px] font-normal leading-normal tracking-[0.14px] text-[#191919] outline-none hover:bg-[#F6F6F9] focus:bg-[#F6F6F9] focus:text-[#191919]",
-        strong && "text-black",
-        disabled &&
-        "cursor-not-allowed text-[#A0A3AD] hover:bg-transparent focus:bg-transparent data-[disabled]:opacity-100",
-      )}
-    >
-      {Icon ? <Icon size={16} strokeWidth={1.33} aria-hidden /> : null}
-      <span>{label}</span>
-      {shortcut ? (
-        <span
-          className={cn(
-            "ml-auto inline-flex px-1.5 py-1 items-center justify-center rounded-[6px] bg-[#F6F6F9]  font-manrope text-[14px] font-normal leading-none tracking-[0.14px] text-[#808080]",
-            disabled && "bg-[#F7F7FA] text-[#B0B3BB]",
-          )}
-        >
-          {shortcut}
-        </span>
-      ) : null}
-    </DropdownMenuItem>
-  );
-}
-
 export function TemplateV2LayoutToolbar({
   box,
   bounds,
@@ -592,9 +433,9 @@ export function TemplateV2LayoutToolbar({
         {componentActions ? (
           <>
             {hasToolbarControls ? <ToolbarDivider /> : null}
-            <ComponentMoreMenu
+            <ComponentActionsMenu
               actions={componentActions}
-              openPanel={openPanel}
+              open={openPanel === "component-menu"}
               onOpenChange={(open) => setPanelOpen("component-menu", open)}
             />
           </>

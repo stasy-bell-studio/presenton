@@ -3,6 +3,7 @@ import type { SlideElement } from "@/components/slide-editor/types";
 import type { TemplateFontOption } from "@/components/slide-editor/text/google-fonts";
 import type { TextSelectionRange } from "@/components/slide-editor/text/text-runs";
 import type { TableCellSelection } from "@/components/slide-editor/state/state";
+import type { ComponentActionsMenuActions } from "@/components/slide-editor/selection/ComponentActionsMenu";
 import { BulletsToolbar } from "@/components/slide-editor/text/BulletsToolbar";
 import { ChartToolbar } from "@/components/slide-editor/charts/ChartToolbar";
 import { DesignVariablesToolbar } from "@/components/slide-editor/toolbar/DesignVariablesToolbar";
@@ -23,6 +24,7 @@ type ElementToolbarProps = {
   } | null;
   path: string;
   scale: number;
+  componentActions?: ComponentActionsMenuActions | null;
   selectedTableCell: TableCellSelection | null;
   templateFonts?: TemplateFontOption[];
   textSelectionRange?: TextSelectionRange | null;
@@ -43,6 +45,7 @@ const TOOLBAR_RENDERERS: Partial<
     onChange,
     path,
     scale,
+    componentActions,
     templateFonts,
     textSelectionRange,
   }) =>
@@ -52,6 +55,7 @@ const TOOLBAR_RENDERERS: Partial<
         index={index}
         anchorBox={anchorBox}
         scale={scale}
+        componentActions={componentActions}
         selectionRange={textSelectionRange}
         templateFonts={templateFonts}
         onChange={(index, element) => onChange(index, element, path)}
@@ -64,6 +68,7 @@ const TOOLBAR_RENDERERS: Partial<
     onChange,
     path,
     scale,
+    componentActions,
     templateFonts,
     textSelectionRange,
   }) =>
@@ -73,6 +78,7 @@ const TOOLBAR_RENDERERS: Partial<
         index={index}
         anchorBox={anchorBox}
         scale={scale}
+        componentActions={componentActions}
         selectionRange={textSelectionRange}
         templateFonts={templateFonts}
         onChange={(index, element) => onChange(index, element, path)}
@@ -89,33 +95,36 @@ const TOOLBAR_RENDERERS: Partial<
         onUpload={(index) => onEditImage(index, path)}
       />
     ) : null,
-  rectangle: ({ anchorBox, element, index, onChange, path, scale }) =>
+  rectangle: ({ anchorBox, componentActions, element, index, onChange, path, scale }) =>
     element.type === "rectangle" || element.type === "ellipse" ? (
       <ShapeToolbar
         element={element}
         index={index}
         anchorBox={anchorBox}
         scale={scale}
+        componentActions={componentActions}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  ellipse: ({ anchorBox, element, index, onChange, path, scale }) =>
+  ellipse: ({ anchorBox, componentActions, element, index, onChange, path, scale }) =>
     element.type === "rectangle" || element.type === "ellipse" ? (
       <ShapeToolbar
         element={element}
         index={index}
         anchorBox={anchorBox}
         scale={scale}
+        componentActions={componentActions}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,
-  line: ({ anchorBox, element, index, onChange, path, scale }) =>
+  line: ({ anchorBox, componentActions, element, index, onChange, path, scale }) =>
     element.type === "line" ? (
       <LineToolbar
         element={element}
         index={index}
         anchorBox={anchorBox}
         scale={scale}
+        componentActions={componentActions}
         onChange={(index, element) => onChange(index, element, path)}
       />
     ) : null,

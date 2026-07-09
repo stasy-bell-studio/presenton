@@ -5,10 +5,12 @@ import {
 } from "@/components/slide-editor/layout/LayoutToolbar";
 import { findFirstComponentLayoutElement } from "@/components/slide-editor/layout/layoutToolbarTarget";
 import { rawChartToEditorChart } from "@/components/slide-editor/model/chart-model";
+import { rawElementForEditorToolbar } from "@/components/slide-editor/model/model";
 import type {
   ChartSlideElement,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
+import type { SlideElement } from "@/components/slide-editor/types";
 import type {
   TemplateV2ToolbarBox,
   TemplateV2ToolbarElementSelection,
@@ -32,6 +34,12 @@ export type TemplateV2ChartSelectionToolbarTarget = {
 export type TemplateV2TableSelectionToolbarTarget = {
   selection: TemplateV2ToolbarElementSelection;
   element: TableSlideElement;
+  box: TemplateV2ToolbarBox;
+};
+
+export type TemplateV2EditorSelectionToolbarTarget = {
+  selection: TemplateV2ToolbarElementSelection;
+  element: SlideElement;
   box: TemplateV2ToolbarBox;
 };
 
@@ -168,6 +176,33 @@ export function getTemplateV2SelectionTableToolbarTarget({
     : null;
 }
 
+export function getTemplateV2SelectionEditorToolbarTarget({
+  selection,
+  selectedComponent,
+  absoluteBoxForSelection,
+}: SelectionToolbarTargetOptions): TemplateV2EditorSelectionToolbarTarget | null {
+  if (selection?.kind !== "component" || !selectedComponent) return null;
+
+  const elements = readArray(selectedComponent.elements);
+  if (elements.length !== 1) return null;
+
+  const editorElement = asRecord(elements[0]);
+  if (!isTemplateV2EditorToolbarElement(editorElement)) return null;
+
+  const elementSelection: TemplateV2ToolbarElementSelection = {
+    kind: "element",
+    componentIndex: selection.componentIndex,
+    elementPath: [0],
+  };
+  const box = absoluteBoxForSelection(elementSelection);
+  const toolbarElement = box
+    ? rawElementForEditorToolbar(editorElement, box)
+    : null;
+  return box && toolbarElement
+    ? { selection: elementSelection, element: toolbarElement, box }
+    : null;
+}
+
 function readArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
@@ -196,6 +231,18 @@ function isTemplateV2TableElement(
   element: RawRecord | null | undefined,
 ): element is RawRecord {
   return element?.type === "table";
+}
+
+function isTemplateV2EditorToolbarElement(
+  element: RawRecord | null | undefined,
+): element is RawRecord {
+  return (
+    element?.type === "text" ||
+    element?.type === "text-list" ||
+    element?.type === "rectangle" ||
+    element?.type === "ellipse" ||
+    element?.type === "line"
+  );
 }
 
 function chartToolbarElement(

@@ -23,6 +23,7 @@ const TEMPLATE_V2_LAYOUT_BATCH_SIZE = 1;
 
 type CreatedTemplateV2Layout = { index: number; layout: TemplateV2Layout };
 type FailedTemplateV2Layout = { index: number; error: string };
+type GoogleFontReplacement = { fontName: string; fontUrl: string };
 
 const initialState: TemplateCreationState = {
     step: 'file-upload',
@@ -267,12 +268,12 @@ export const useTemplateCreation = ({
     // Step 2: Upload fonts and get slide preview
     const fontUploadAndPreview = useCallback(async (
         pptxFile: File,
-        googleFontUrlsByName: Record<string, string> = {}
+        googleFontReplacementsByOriginalName: Record<string, GoogleFontReplacement> = {}
     ): Promise<FontUploadPreviewResponse | null> => {
         updateState({ isLoading: true, error: null, step: 'font-upload' });
         const startedAt = Date.now();
         const missingFontCount = getUnsupportedFonts().length;
-        const selectedGoogleFontCount = Object.keys(googleFontUrlsByName).length;
+        const selectedGoogleFontCount = Object.keys(googleFontReplacementsByOriginalName).length;
         trackEvent(MixpanelEvent.CustomTemplate_Preview_Started, {
             uploaded_font_count: uploadedFonts.length,
             missing_font_count: missingFontCount,
@@ -288,10 +289,13 @@ export const useTemplateCreation = ({
                 formData.append("font_files", font.file);
                 formData.append("original_font_names", font.fontName);
             });
-            Object.entries(googleFontUrlsByName).forEach(([fontName, fontUrl]) => {
-                formData.append("google_font_names", fontName);
-                formData.append("google_font_urls", fontUrl);
-            });
+            Object.entries(googleFontReplacementsByOriginalName).forEach(
+                ([originalFontName, googleFont]) => {
+                    formData.append("google_font_original_names", originalFontName);
+                    formData.append("google_font_replacement_names", googleFont.fontName);
+                    formData.append("google_font_urls", googleFont.fontUrl);
+                }
+            );
 
             const response = await fetch(
                 getApiUrl(`/api/v1/ppt/template/fonts-upload-and-slides-preview`),

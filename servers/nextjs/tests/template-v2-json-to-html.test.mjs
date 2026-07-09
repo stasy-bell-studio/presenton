@@ -233,6 +233,78 @@ test("uses point colors for single-series chart data", async () => {
   assert.equal(dataset.borderColor, "#111111");
 });
 
+test("serializes chart data label placement", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const html = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bar",
+        data_labels: "outside",
+        data: [
+          { label: "Growth", value: 42 },
+          { label: "Retention", value: 64 },
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const config = chartConfigFromHtml(html);
+  const labels = config.options.plugins.presentonDataLabels;
+
+  assert.equal(labels.enabled, true);
+  assert.equal(labels.position, "outside");
+});
+
+test("serializes legacy boolean chart data labels", async () => {
+  const { templateV2UiToHtmlFragment } = await rendererPromise;
+  const visibleHtml = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bar",
+        data_labels: true,
+        data: [
+          { label: "Growth", value: 42 },
+          { label: "Retention", value: 64 },
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const visibleLabels =
+    chartConfigFromHtml(visibleHtml).options.plugins.presentonDataLabels;
+
+  assert.equal(visibleLabels.enabled, true);
+  assert.equal(visibleLabels.position, "top");
+
+  const hiddenHtml = templateV2UiToHtmlFragment({
+    background: "#FFFFFF",
+    elements: [
+      {
+        type: "chart",
+        chart_type: "bar",
+        data_labels: false,
+        data: [
+          { label: "Growth", value: 42 },
+          { label: "Retention", value: 64 },
+        ],
+        position: { x: 0, y: 0 },
+        size: { width: 320, height: 180 },
+      },
+    ],
+  });
+  const hiddenLabels =
+    chartConfigFromHtml(hiddenHtml).options.plugins.presentonDataLabels;
+
+  assert.equal(hiddenLabels.enabled, false);
+  assert.equal(hiddenLabels.position, "top");
+});
+
 test("serializes one-ended bar radius metadata for vertical bar charts", async () => {
   const { templateV2UiToHtmlFragment } = await rendererPromise;
   const html = templateV2UiToHtmlFragment({

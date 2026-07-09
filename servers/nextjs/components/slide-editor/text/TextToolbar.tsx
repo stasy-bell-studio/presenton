@@ -53,6 +53,11 @@ import {
   FloatingToolbarPanel,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
 import {
+  ComponentActionsMenu,
+  ComponentUngroupButton,
+  type ComponentActionsMenuActions,
+} from "@/components/slide-editor/selection/ComponentActionsMenu";
+import {
   numericInputMode,
   preventInvalidNumberInput,
   sanitizeNumericInput,
@@ -123,6 +128,7 @@ export function TextToolbar({
   index,
   anchorBox,
   scale,
+  componentActions,
   listMarker,
   selectionRange,
   templateFonts = EMPTY_TEMPLATE_FONTS,
@@ -138,6 +144,7 @@ export function TextToolbar({
     height: number;
   } | null;
   scale: number;
+  componentActions?: ComponentActionsMenuActions | null;
   listMarker?: Marker | null;
   selectionRange?: TextSelectionRange | null;
   templateFonts?: TemplateFontOption[];
@@ -619,6 +626,14 @@ export function TextToolbar({
               />
             ) : null}
           </div>
+          {componentActions ? (
+            <>
+              <Divider />
+              <ComponentUngroupButton actions={componentActions} />
+              {componentActions.canUngroup ? <Divider /> : null}
+              <ComponentActionsMenu actions={componentActions} />
+            </>
+          ) : null}
         </div>
       </div>
     </FloatingToolbarBoundsProvider>

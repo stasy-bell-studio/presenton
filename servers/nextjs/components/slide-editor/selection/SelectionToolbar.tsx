@@ -7,6 +7,7 @@ import {
 import type { ComponentLayerAction } from "@/components/slide-editor/selection/layering";
 import type {
   TemplateV2ChartSelectionToolbarTarget,
+  TemplateV2EditorSelectionToolbarTarget,
   TemplateV2SelectionToolbarTarget,
   TemplateV2TableSelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -20,6 +21,9 @@ import type {
   TableCellSelection,
   TableSlideElement,
 } from "@/components/slide-editor/state/state";
+import type { TemplateFontOption } from "@/components/slide-editor/text/google-fonts";
+import { ElementToolbar } from "@/components/slide-editor/toolbar/ElementToolbar";
+import type { SlideElement } from "@/components/slide-editor/types";
 
 type TemplateV2SelectionToolbarProps = {
   anchorBox: TemplateV2ToolbarBox | null;
@@ -27,6 +31,7 @@ type TemplateV2SelectionToolbarProps = {
   canUngroupLayoutTarget: boolean;
   chartTarget: TemplateV2ChartSelectionToolbarTarget | null;
   componentCount: number;
+  editorTarget: TemplateV2EditorSelectionToolbarTarget | null;
   isEditMode: boolean;
   layoutTarget: TemplateV2SelectionToolbarTarget | null;
   position: { left: number; top: number } | null;
@@ -35,9 +40,11 @@ type TemplateV2SelectionToolbarProps = {
   selectionKey: string;
   tableTarget: TemplateV2TableSelectionToolbarTarget | null;
   targetComponentActions: TemplateV2SelectionComponentActions | null;
+  templateFonts?: TemplateFontOption[];
   toolbarBounds: TemplateV2ToolbarViewportBounds | null;
   onChartChange: (element: ChartSlideElement) => void;
   onChartEdit: () => void;
+  onEditorChange: (element: SlideElement) => void;
   onDeleteSelection: () => void;
   onDuplicateSelection: () => void;
   onLayoutChange: (changes: Record<string, unknown>) => void;
@@ -53,6 +60,7 @@ export function TemplateV2SelectionToolbar({
   canUngroupLayoutTarget,
   chartTarget,
   componentCount,
+  editorTarget,
   isEditMode,
   layoutTarget,
   position,
@@ -61,9 +69,11 @@ export function TemplateV2SelectionToolbar({
   selectionKey,
   tableTarget,
   targetComponentActions,
+  templateFonts,
   toolbarBounds,
   onChartChange,
   onChartEdit,
+  onEditorChange,
   onDeleteSelection,
   onDuplicateSelection,
   onLayoutChange,
@@ -83,8 +93,25 @@ export function TemplateV2SelectionToolbar({
           onDuplicate: onDuplicateSelection,
           onLayerAction,
           onUngroup: onUngroupComponent,
-        }
+      }
       : targetComponentActions;
+
+  if (editorTarget && componentActions) {
+    return (
+      <ElementToolbar
+        element={editorTarget.element}
+        index={editorTarget.selection.componentIndex}
+        anchorBox={anchorBox}
+        path={selectionKey}
+        scale={1}
+        componentActions={componentActions}
+        selectedTableCell={null}
+        templateFonts={templateFonts}
+        onChange={(_index, element) => onEditorChange(element)}
+        onEditImage={() => undefined}
+      />
+    );
+  }
 
   return (
     <TemplateV2LayoutToolbar

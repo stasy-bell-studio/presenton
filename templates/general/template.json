@@ -2771,7 +2771,7 @@
                                     ]
                                 }
                             ],
-                            "data_labels": false,
+                            "data_labels": null,
                             "legend": false,
                             "x_axis_grid": true,
                             "y_axis_grid": true,
@@ -10373,7 +10373,7 @@
                                     ]
                                 }
                             ],
-                            "data_labels": false,
+                            "data_labels": null,
                             "legend": false,
                             "x_axis_grid": true,
                             "y_axis_grid": true,

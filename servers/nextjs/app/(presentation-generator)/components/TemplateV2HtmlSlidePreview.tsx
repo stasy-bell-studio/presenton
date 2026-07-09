@@ -16,7 +16,10 @@ type PresentonDataLabelOptions = {
   fontFamily?: string;
   fontSize?: number;
   horizontal?: boolean;
+  position?: DataLabelPosition;
 };
+
+type DataLabelPosition = "base" | "mid" | "top" | "outside";
 
 type PresentonChartGlobalState = {
   status: "pending" | "ready" | "error";
@@ -347,6 +350,7 @@ function drawBarLabel({
   horizontal,
   label,
   outsideColor,
+  position,
   value,
 }: {
   color: string | null;
@@ -356,6 +360,7 @@ function drawBarLabel({
   horizontal: boolean;
   label: string;
   outsideColor: string;
+  position: DataLabelPosition;
   value: number;
 }) {
   const elementRecord = readRecord(element);
@@ -371,28 +376,43 @@ function drawBarLabel({
   const fits = horizontal
     ? width >= textWidth + padding * 2 && height >= fontSize * 1.35
     : height >= fontSize * 1.65 && width >= textWidth + padding * 2;
+  const resolvedPosition =
+    position === "outside" || !fits ? "outside" : position;
 
-  if (fits) {
+  if (resolvedPosition !== "outside") {
     ctx.fillStyle = contrastTextColor(color, outsideColor);
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, horizontal ? (x + base) / 2 : x, horizontal ? y : (y + base) / 2);
+    if (horizontal) {
+      const direction = value < 0 ? -1 : 1;
+      const labelX =
+        resolvedPosition === "base"
+          ? base + direction * (textWidth / 2 + padding)
+          : resolvedPosition === "top"
+            ? x - direction * (textWidth / 2 + padding)
+            : (x + base) / 2;
+      ctx.fillText(label, labelX, y);
+      return;
+    }
+
+    const direction = value < 0 ? 1 : -1;
+    const labelY =
+      resolvedPosition === "base"
+        ? base + direction * (fontSize / 2 + padding)
+        : resolvedPosition === "top"
+          ? y - direction * (fontSize / 2 + padding)
+          : (y + base) / 2;
+    ctx.fillText(label, x, labelY);
     return;
   }
 
   ctx.fillStyle = outsideColor;
   if (horizontal) {
-    const end = value < 0 ? Math.min(x, base) : Math.max(x, base);
-    ctx.textAlign = value < 0 ? "right" : "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, end + (value < 0 ? -padding : padding), y);
+    const direction = value < 0 ? -1 : 1;
+    ctx.fillText(label, x + direction * (textWidth / 2 + padding), y);
     return;
   }
 
-  const yEnd = value < 0 ? Math.max(y, base) : Math.min(y, base);
-  ctx.textAlign = "center";
-  ctx.textBaseline = value < 0 ? "top" : "bottom";
-  ctx.fillText(label, x, yEnd + (value < 0 ? padding : -padding));
+  const direction = value < 0 ? 1 : -1;
+  ctx.fillText(label, x, y + direction * (fontSize / 2 + padding));
 }
 
 function drawPointLabel({
@@ -407,6 +427,7 @@ function drawPointLabel({
   metaElements,
   occupied,
   outsideColor,
+  position,
 }: {
   chartArea: Bounds;
   ctx: CanvasRenderingContext2D;
@@ -419,6 +440,7 @@ function drawPointLabel({
   metaElements: unknown[];
   occupied: Bounds[];
   outsideColor: string;
+  position: DataLabelPosition;
 }) {
   const point = chartElementPoint(element);
   if (!point) return;
@@ -433,6 +455,28 @@ function drawPointLabel({
       : 1;
   const vertical = radius + textHeight / 2 + 5;
   const horizontal = radius + textWidth / 2 + 5;
+
+  if (position !== "outside") {
+    const placed =
+      position === "base"
+        ? { x: point.x, y: point.y + vertical }
+        : position === "top"
+          ? { x: point.x, y: point.y - vertical }
+          : { x: point.x, y: point.y };
+    const placedBounds = labelBounds(placed.x, placed.y, textWidth, textHeight);
+    if (
+      fitsChartArea(placedBounds, chartArea) &&
+      occupied.every((existing) => !boundsOverlap(placedBounds, existing))
+    ) {
+      occupied.push(placedBounds);
+      ctx.fillStyle = outsideColor;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(label, placed.x, placed.y);
+      return;
+    }
+  }
+
   const candidates = [
     { x: point.x, y: point.y + direction * vertical },
     { x: point.x, y: point.y - direction * vertical },
@@ -459,8 +503,90 @@ function drawPointLabel({
   }
 }
 
+function drawArcLabel({
+  color,
+  ctx,
+  element,
+  fontSize,
+  label,
+  outsideColor,
+  position,
+}: {
+  color: string | null;
+  ctx: CanvasRenderingContext2D;
+  element: unknown;
+  fontSize: number;
+  label: string;
+  outsideColor: string;
+  position: DataLabelPosition;
+}) {
+  const record = readRecord(element);
+  const centerX = readNumber(record.x);
+  const centerY = readNumber(record.y);
+  const startAngle = readNumber(record.startAngle);
+  const endAngle = readNumber(record.endAngle);
+  const innerRadius = Math.max(0, readNumber(record.innerRadius) ?? 0);
+  const outerRadius = Math.max(innerRadius, readNumber(record.outerRadius) ?? 0);
+  let point: Point | null = null;
+
+  if (
+    centerX != null &&
+    centerY != null &&
+    startAngle != null &&
+    endAngle != null &&
+    outerRadius > 0
+  ) {
+    const angle = (startAngle + endAngle) / 2;
+    const ringWidth = Math.max(1, outerRadius - innerRadius);
+    const textHeight = fontSize * 1.15;
+    const radius =
+      position === "outside"
+        ? outerRadius + textHeight / 2 + 7
+        : position === "top"
+          ? Math.max(innerRadius + textHeight / 2, outerRadius - textHeight / 2 - 5)
+          : position === "base"
+            ? innerRadius > 0
+              ? innerRadius + Math.min(ringWidth * 0.25, textHeight + 5)
+              : outerRadius * 0.35
+            : innerRadius + ringWidth / 2;
+    point = {
+      x: centerX + Math.cos(angle) * radius,
+      y: centerY + Math.sin(angle) * radius,
+    };
+  } else {
+    const tooltipElement = element as {
+      tooltipPosition?: (useFinalPosition?: boolean) => Point;
+    };
+    if (typeof tooltipElement.tooltipPosition === "function") {
+      point = tooltipElement.tooltipPosition(true);
+    }
+  }
+
+  if (!point) return;
+  ctx.fillStyle =
+    position === "outside"
+      ? outsideColor
+      : contrastTextColor(color, outsideColor);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, point.x || 0, point.y || 0);
+}
+
 function isPointType(type: string): boolean {
   return type === "line" || type === "scatter" || type === "bubble" || type === "radar";
+}
+
+function isArcType(type: string): boolean {
+  return type === "pie" || type === "doughnut" || type === "polarArea";
+}
+
+function readDataLabelPosition(value: unknown): DataLabelPosition {
+  return value === "base" ||
+    value === "mid" ||
+    value === "outside" ||
+    value === "top"
+    ? value
+    : "top";
 }
 
 const presentonDataLabelPlugin: Plugin = {
@@ -472,6 +598,7 @@ const presentonDataLabelPlugin: Plugin = {
     const ctx = chart.ctx;
     const fontSize = labelOptions.fontSize || 11;
     const outsideColor = labelOptions.color || "#475467";
+    const position = readDataLabelPosition(labelOptions.position);
     ctx.save();
     ctx.font = `600 ${fontSize}px ${labelOptions.fontFamily || "Inter, Arial, sans-serif"
       }`;
@@ -499,6 +626,7 @@ const presentonDataLabelPlugin: Plugin = {
             horizontal: Boolean(labelOptions.horizontal),
             label,
             outsideColor,
+            position,
             value,
           });
           return;
@@ -517,6 +645,20 @@ const presentonDataLabelPlugin: Plugin = {
             metaElements: meta.data,
             occupied,
             outsideColor,
+            position,
+          });
+          return;
+        }
+
+        if (isArcType(metaType)) {
+          drawArcLabel({
+            color: datasetBackgroundColor(dataset, index),
+            ctx,
+            element,
+            fontSize,
+            label,
+            outsideColor,
+            position,
           });
           return;
         }
@@ -524,18 +666,15 @@ const presentonDataLabelPlugin: Plugin = {
         const tooltipElement = element as {
           tooltipPosition?: (useFinalPosition?: boolean) => Point;
         };
-        const position =
+        const fallbackPosition =
           typeof tooltipElement.tooltipPosition === "function"
             ? tooltipElement.tooltipPosition(true)
             : null;
-        if (!position) return;
-        ctx.fillStyle =
-          metaType === "pie" || metaType === "doughnut" || metaType === "polarArea"
-            ? contrastTextColor(datasetBackgroundColor(dataset, index), outsideColor)
-            : outsideColor;
+        if (!fallbackPosition) return;
+        ctx.fillStyle = outsideColor;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(label, position.x || 0, position.y || 0);
+        ctx.fillText(label, fallbackPosition.x || 0, fallbackPosition.y || 0);
       });
     });
 

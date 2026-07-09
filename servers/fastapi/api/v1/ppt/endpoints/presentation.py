@@ -1181,6 +1181,18 @@ def _read_template_v2_primitive_table_text(value: Any) -> Optional[str]:
     return None
 
 
+def _read_template_v2_data_labels(value: Any) -> Optional[str]:
+    if value is True:
+        return "top"
+    if value is False or value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"base", "mid", "top", "outside"}:
+            return normalized
+    return None
+
+
 def _apply_template_v2_chart_content(
     element: dict[str, Any],
     value: Any,
@@ -1238,11 +1250,12 @@ def _apply_template_v2_chart_content(
         ("x_axis_grid", "x_axis_grid"),
         ("yAxisGrid", "y_axis_grid"),
         ("y_axis_grid", "y_axis_grid"),
-        ("dataLabels", "data_labels"),
-        ("data_labels", "data_labels"),
     ):
         if isinstance(value.get(source_key), bool):
             updated[target_key] = value[source_key]
+    for source_key in ("dataLabels", "data_labels"):
+        if source_key in value:
+            updated["data_labels"] = _read_template_v2_data_labels(value.get(source_key))
     return updated
 
 

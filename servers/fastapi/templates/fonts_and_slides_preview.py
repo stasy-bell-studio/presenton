@@ -73,6 +73,60 @@ class FontsUploadAndSlidesPreviewResponse(BaseModel):
     fonts: dict
 
 
+def _selected_google_font_maps(
+    google_font_original_names: Optional[List[str]],
+    google_font_replacement_names: Optional[List[str]],
+    google_font_names: Optional[List[str]],
+    google_font_urls: Optional[List[str]],
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    replacement_names = google_font_replacement_names or google_font_names
+    num_original_names = len(google_font_original_names or [])
+    num_replacement_names = len(replacement_names or [])
+    num_urls = len(google_font_urls or [])
+
+    if (num_replacement_names and not num_urls) or (
+        num_urls and not num_replacement_names
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="Both Google font replacement names and URLs must be provided together",
+        )
+    if num_replacement_names != num_urls:
+        raise HTTPException(
+            status_code=400,
+            detail="Number of Google font replacement names must match number of Google font URLs",
+        )
+    if num_original_names and num_original_names != num_replacement_names:
+        raise HTTPException(
+            status_code=400,
+            detail="Number of Google font original names must match number of Google font replacements",
+        )
+
+    selected_fonts: Dict[str, str] = {}
+    replacements: Dict[str, str] = {}
+    if google_font_original_names:
+        for original_name, replacement_name, url in zip(
+            google_font_original_names,
+            replacement_names or [],
+            google_font_urls or [],
+        ):
+            original_name = original_name.strip()
+            replacement_name = replacement_name.strip()
+            url = url.strip()
+            if not original_name or not replacement_name or not url:
+                continue
+            selected_fonts[replacement_name] = url
+            replacements[original_name] = replacement_name
+        return selected_fonts, replacements
+
+    for replacement_name, url in zip(replacement_names or [], google_font_urls or []):
+        replacement_name = replacement_name.strip()
+        url = url.strip()
+        if replacement_name and url:
+            selected_fonts[replacement_name] = url
+    return selected_fonts, replacements
+
+
 class _PreviewLogger:
     def info(self, message: str):
         print(f"[fonts-preview] {message}")
@@ -982,6 +1036,8 @@ async def upload_fonts_and_preview_handler(
     pptx_file: UploadFile,
     font_files: Optional[List[UploadFile]] = None,
     original_font_names: Optional[List[str]] = None,
+    google_font_original_names: Optional[List[str]] = None,
+    google_font_replacement_names: Optional[List[str]] = None,
     google_font_names: Optional[List[str]] = None,
     google_font_urls: Optional[List[str]] = None,
     max_slides: Optional[int] = None,
@@ -1003,8 +1059,6 @@ async def upload_fonts_and_preview_handler(
     """
     num_font_files = len(font_files or [])
     num_original_names = len(original_font_names or [])
-    num_google_font_names = len(google_font_names or [])
-    num_google_font_urls = len(google_font_urls or [])
     # If one is provided without the other
     if (num_font_files and not num_original_names) or (
         num_original_names and not num_font_files
@@ -1018,23 +1072,12 @@ async def upload_fonts_and_preview_handler(
             status_code=400,
             detail="Number of font files must match number of original font names",
         )
-    if (num_google_font_names and not num_google_font_urls) or (
-        num_google_font_urls and not num_google_font_names
-    ):
-        raise HTTPException(
-            status_code=400,
-            detail="Both google_font_names and google_font_urls must be provided together",
-        )
-    if num_google_font_names != num_google_font_urls:
-        raise HTTPException(
-            status_code=400,
-            detail="Number of Google font names must match number of Google font URLs",
-        )
-    selected_google_fonts = {
-        name.strip(): url.strip()
-        for name, url in zip(google_font_names or [], google_font_urls or [])
-        if name.strip() and url.strip()
-    }
+    selected_google_fonts, google_font_replacements = _selected_google_font_maps(
+        google_font_original_names,
+        google_font_replacement_names,
+        google_font_names,
+        google_font_urls,
+    )
 
     # Validate PPTX file
     filename = getattr(pptx_file, "filename", "") or ""
@@ -1089,17 +1132,22 @@ async def upload_fonts_and_preview_handler(
             original_filename=filename,
             font_files=font_files,
             original_font_names=original_font_names,
+            google_font_replacements=google_font_replacements,
             logger=logger,
             session_dir=session_dir,
             upload_fonts=upload_fonts,
         )
+        replaced_font_names = [
+            *(original_font_names or []),
+            *google_font_replacements.keys(),
+        ]
         fonts = await _build_upload_preview_font_urls(
             raw_fonts=raw_fonts,
             found_embedded_fonts_with_url=found_embedded_fonts_with_url,
             font_mapping=font_mapping,
             custom_font_files=custom_font_files,
             font_upload_pairs=font_upload_pairs,
-            original_font_names=original_font_names,
+            original_font_names=replaced_font_names,
             font_variant_mapping=font_variant_mapping,
             variants_by_normalized_name=variants_by_normalized_name,
             logger=logger,
@@ -1150,6 +1198,41 @@ async def upload_fonts_and_preview_handler(
         )
 
 
+def _add_google_font_replacements_to_mapping(
+    google_font_replacements: Optional[Dict[str, str]],
+    font_mapping: Dict[str, str],
+    font_variant_mapping: Dict[str, Dict[str, str]],
+    logger,
+) -> None:
+    if not google_font_replacements:
+        return
+
+    for original_name, replacement_name in google_font_replacements.items():
+        original_name = (original_name or "").strip()
+        replacement_name = (replacement_name or "").strip()
+        if not original_name or not replacement_name:
+            continue
+        if original_name in font_mapping:
+            logger.info(
+                f"Skipping Google font mapping for {original_name}; custom font mapping already exists"
+            )
+            continue
+
+        font_mapping[original_name] = replacement_name
+        if _font_name_has_explicit_variant(original_name):
+            requested_variant = _font_style_variant(original_name, None, [])
+            font_variant_mapping.setdefault(original_name, {})[
+                requested_variant
+            ] = replacement_name
+            original_family_name = normalize_font_family_name(original_name)
+            if original_family_name:
+                font_variant_mapping.setdefault(original_family_name, {})[
+                    requested_variant
+                ] = replacement_name
+
+        logger.info(f"Google font mapping: {original_name} -> {replacement_name}")
+
+
 async def upload_fonts_and_fix_fonts_in_pptx(
     pptx_path: str,
     temp_dir: str,
@@ -1159,6 +1242,7 @@ async def upload_fonts_and_fix_fonts_in_pptx(
     logger,
     session_dir: str,
     upload_fonts: bool = True,
+    google_font_replacements: Optional[Dict[str, str]] = None,
 ) -> Tuple[
     Set[str],
     Dict[str, str],
@@ -1204,6 +1288,12 @@ async def upload_fonts_and_fix_fonts_in_pptx(
         font_files, original_font_names, temp_dir, logger
     )
     logger.info("Saved uploaded fonts to temp")
+    _add_google_font_replacements_to_mapping(
+        google_font_replacements,
+        font_mapping,
+        font_variant_mapping,
+        logger,
+    )
 
     embedded_font_aliases: Dict[str, str] = {}
     protected_embedded_font_names = list(found_embedded_fonts_with_path.keys())
@@ -1216,9 +1306,13 @@ async def upload_fonts_and_fix_fonts_in_pptx(
     variants_by_normalized_name = await asyncio.to_thread(
         _font_variants_by_normalized_name, pptx_path
     )
-    original_font_name_set = {name for name in (original_font_names or []) if name}
+    explicit_source_font_names = [
+        *(original_font_names or []),
+        *(google_font_replacements or {}).keys(),
+    ]
+    original_font_name_set = {name for name in explicit_source_font_names if name}
     explicitly_replaced = {
-        normalize_font_family_name(name) for name in (original_font_names or [])
+        normalize_font_family_name(name) for name in explicit_source_font_names
     }
     embedded_replaced = set(found_embedded_fonts_with_path.keys())
     normalized_embedded_replaced = {

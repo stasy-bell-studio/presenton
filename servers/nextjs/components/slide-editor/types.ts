@@ -131,6 +131,8 @@ export type ChartSeries = {
   values: number[];
 };
 
+export type DataLabelPosition = "base" | "mid" | "top" | "outside";
+
 export type TextRun = {
   text: string;
   font?: Font | null;
@@ -283,7 +285,7 @@ export type ChartElement = ElementBase & {
   y_axis_title?: string | null;
   categories?: string[] | null;
   series?: ChartSeries[] | null;
-  data_labels?: boolean | null;
+  data_labels?: DataLabelPosition | null;
   legend?: boolean | null;
   source?: string | null;
 };

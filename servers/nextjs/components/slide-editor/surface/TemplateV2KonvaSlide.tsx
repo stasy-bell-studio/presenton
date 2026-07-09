@@ -83,6 +83,7 @@ import {
 } from "@/components/slide-editor/selection/toolbarPosition";
 import {
   getTemplateV2SelectionChartToolbarTarget,
+  getTemplateV2SelectionEditorToolbarTarget,
   getTemplateV2SelectionTableToolbarTarget,
   getTemplateV2SelectionToolbarTarget,
 } from "@/components/slide-editor/selection/toolbarTarget";
@@ -390,6 +391,29 @@ function TemplateV2KonvaSlideComponent({
       selectedComponent,
       selectedElement,
       selection,
+      uiDraft,
+    ],
+  );
+  const editorToolbarTarget = useMemo(
+    () =>
+      layoutToolbarTarget || chartToolbarTarget || tableToolbarTarget
+        ? null
+        : getTemplateV2SelectionEditorToolbarTarget({
+            selection,
+            selectedBox,
+            selectedComponent,
+            selectedElement,
+            absoluteBoxForSelection: (targetSelection) =>
+              absoluteBoxForSelection(uiDraft, targetSelection),
+          }),
+    [
+      chartToolbarTarget,
+      layoutToolbarTarget,
+      selectedBox,
+      selectedComponent,
+      selectedElement,
+      selection,
+      tableToolbarTarget,
       uiDraft,
     ],
   );
@@ -1373,6 +1397,30 @@ function TemplateV2KonvaSlideComponent({
     [editorAnalyticsProps, tableToolbarTarget, updateElement],
   );
 
+  const applyEditorToolbarTargetElementChange = useCallback(
+    (editorElement: SlideElement) => {
+      if (!editorToolbarTarget) return;
+      const current = getElementAtSelection(
+        currentUiRef.current,
+        editorToolbarTarget.selection,
+      );
+      const box = absoluteBoxForSelection(
+        currentUiRef.current,
+        editorToolbarTarget.selection,
+      );
+      if (!current || !box) return;
+      const next = mergeEditorToolbarElement(current, editorElement, box);
+      updateElement(editorToolbarTarget.selection, () => next);
+      trackEvent(MixpanelEvent.Editor_Element_Style_Changed, {
+        ...editorAnalyticsProps({
+          element_type: readString(current.type) || editorElement.type,
+          change_source: "component_element_toolbar",
+        }),
+      });
+    },
+    [editorAnalyticsProps, editorToolbarTarget, updateElement],
+  );
+
   const ungroupComponentAtIndex = useCallback((componentIndex: number) => {
     if (componentIndex < 0) return;
     const component = asRecord(
@@ -1881,6 +1929,7 @@ function TemplateV2KonvaSlideComponent({
         canUngroupLayoutTarget={canUngroupLayoutTargetComponent}
         chartTarget={chartToolbarTarget}
         componentCount={components.length}
+        editorTarget={editorToolbarTarget}
         isEditMode={isEditMode}
         layoutTarget={layoutToolbarTarget}
         position={selectionToolbarPosition}
@@ -1889,6 +1938,7 @@ function TemplateV2KonvaSlideComponent({
         selectionKey={keyForSelection(selection)}
         tableTarget={tableToolbarTarget}
         targetComponentActions={targetComponentActions}
+        templateFonts={templateFonts}
         toolbarBounds={selectionToolbarBounds}
         onChartChange={applyChartToolbarElementChange}
         onChartEdit={() => {
@@ -1898,6 +1948,7 @@ function TemplateV2KonvaSlideComponent({
         }}
         onDeleteSelection={deleteSelection}
         onDuplicateSelection={duplicateSelection}
+        onEditorChange={applyEditorToolbarTargetElementChange}
         onLayoutChange={applyLayoutElementChange}
         onLayerAction={reorderSelectedComponentLayer}
         onTableChange={applyTableToolbarElementChange}

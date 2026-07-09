@@ -38,6 +38,7 @@ import {
   type ChartElement,
   type ChartSeries,
   type ChartType,
+  type DataLabelPosition,
 } from "@/components/slide-editor/types";
 import { ChartColorPaletteCard } from "@/components/slide-editor/charts/ChartColorPalette";
 import { TemplateV2ChartJsElement } from "@/components/slide-editor/charts/TemplateV2ChartJsElement";
@@ -55,6 +56,15 @@ const CHART_TYPES: Array<{ label: string; value: ChartType }> = [
   { label: "Bubble Chart", value: "bubble" },
   { label: "Radar Chart", value: "radar" },
   { label: "Polar Area", value: "polar_area" },
+];
+const DATA_LABEL_TABS: Array<{
+  label: string;
+  value: DataLabelPosition;
+}> = [
+  { label: "Base", value: "base" },
+  { label: "Middle", value: "mid" },
+  { label: "Top", value: "top" },
+  { label: "Outside", value: "outside" },
 ];
 const DATA_MODAL_CHART_PREVIEW_WIDTH = 215;
 const DATA_MODAL_CHART_PREVIEW_HEIGHT = 180;
@@ -183,6 +193,74 @@ function ChartTypeSelect({
   );
 }
 
+function DataLabelsControl({
+  value,
+  onChange,
+}: {
+  value: DataLabelPosition | null;
+  onChange: (value: DataLabelPosition | null) => void;
+}) {
+  const enabled = value != null;
+  const [lastPosition, setLastPosition] = useState<DataLabelPosition>(
+    value ?? "top",
+  );
+  const activePosition = value ?? lastPosition;
+
+  useEffect(() => {
+    if (value) {
+      setLastPosition(value);
+    }
+  }, [value]);
+
+  const setEnabled = (checked: boolean) => {
+    onChange(checked ? activePosition : null);
+  };
+
+  const selectPosition = (position: DataLabelPosition) => {
+    setLastPosition(position);
+    onChange(position);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex min-h-6 items-center justify-between gap-3 text-[12px] font-medium text-[#191919]">
+        <span>Data labels</span>
+        <CompactSwitch
+          checked={enabled}
+          label="Data labels"
+          onChange={setEnabled}
+        />
+      </div>
+      <div
+        role="tablist"
+        aria-label="Data label position"
+        className={`grid grid-cols-4 rounded-lg bg-[#F3F4F7] p-1 transition ${enabled ? "" : "opacity-55"}`}
+      >
+        {DATA_LABEL_TABS.map((item) => {
+          const active = activePosition === item.value;
+
+          return (
+            <button
+              key={item.value}
+              type="button"
+              role="tab"
+              aria-selected={active && enabled}
+              disabled={!enabled}
+              className={`h-8 rounded-md px-1 text-[11px] font-semibold transition ${active && enabled
+                ? "bg-white text-[#191919] shadow-sm"
+                : "text-[#686873] hover:text-[#191919]"
+                } disabled:cursor-not-allowed disabled:hover:text-[#686873]`}
+              onClick={() => selectPosition(item.value)}
+            >
+              {item.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function ChartDataPanel({
   chart,
   onOpenDataModal,
@@ -289,10 +367,11 @@ function ChartCustomizePanel({
           value={chart.title ?? ""}
           onChange={(title) => onChange({ ...chart, title: title || null })}
         />
-        <ToggleRow
-          checked={chart.data_labels ?? false}
-          label="Show values"
-          onChange={(checked) => onChange({ ...chart, data_labels: checked })}
+        <DataLabelsControl
+          value={chart.data_labels ?? null}
+          onChange={(dataLabels) =>
+            onChange({ ...chart, data_labels: dataLabels })
+          }
         />
       </AccordionSection>
 

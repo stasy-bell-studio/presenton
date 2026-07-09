@@ -60,6 +60,7 @@ BLANK_TEMPLATE_V2_LAYOUT: dict[str, Any] = {
         }
     ],
 }
+TEMPLATE_V2_GENERATED_ELEMENT_TYPES = {"text", "image", "text-list", "table", "chart"}
 # Keep URL runtime fields during validation because many slide schemas require them.
 # Speaker note is handled separately and should not affect JSON-schema checks.
 RUNTIME_CONTENT_FIELDS = {"__speaker_note__"}
@@ -2778,27 +2779,85 @@ class PresentationChatMemoryLayer:
         *,
         theme: dict[str, Any] | None = None,
     ) -> None:
+        element_type = element.get("type")
         name = element.get("name")
-        if isinstance(name, str) and name in content:
+        has_value = False
+        value = None
+        if isinstance(name, str):
+            has_value, value = cls._template_v2_content_value(content, name)
+
+        if (
+            has_value
+            and element.get("decorative") is False
+            and element_type in TEMPLATE_V2_GENERATED_ELEMENT_TYPES
+        ):
             cls._set_template_v2_element_value(
                 element,
-                content[name],
+                value,
                 theme=theme,
             )
+            return
+
+        nested_content = value if isinstance(value, dict) else content
 
         child = element.get("child")
         if isinstance(child, dict):
-            cls._apply_template_v2_element_content(child, content, theme=theme)
+            cls._apply_template_v2_element_content(
+                child,
+                nested_content,
+                theme=theme,
+            )
 
         children = element.get("children")
         if isinstance(children, list):
+            if isinstance(value, list) and children:
+                next_children: list[Any] = []
+                for index, item in enumerate(value):
+                    source_child = copy.deepcopy(children[min(index, len(children) - 1)])
+                    if isinstance(source_child, dict):
+                        cls._apply_template_v2_element_content(
+                            source_child,
+                            item if isinstance(item, dict) else {},
+                            theme=theme,
+                        )
+                    next_children.append(source_child)
+                element["children"] = next_children
+                return
+
             for child_element in children:
                 if isinstance(child_element, dict):
                     cls._apply_template_v2_element_content(
                         child_element,
-                        content,
+                        nested_content,
                         theme=theme,
                     )
+
+    @staticmethod
+    def _template_v2_content_value(
+        content: dict[str, Any],
+        name: str,
+    ) -> tuple[bool, Any]:
+        for candidate in PresentationChatMemoryLayer._template_v2_content_name_candidates(
+            name
+        ):
+            if candidate in content:
+                return True, content[candidate]
+        return False, None
+
+    @staticmethod
+    def _template_v2_content_name_candidates(name: str) -> list[str]:
+        without_numeric_token = re.sub(r"_\d+(?=_|$)", "", name)
+        without_prefix = (
+            without_numeric_token.split("_", 1)[1]
+            if "_" in without_numeric_token
+            else without_numeric_token
+        )
+
+        candidates: list[str] = []
+        for candidate in (name, without_numeric_token, without_prefix):
+            if candidate and candidate not in candidates:
+                candidates.append(candidate)
+        return candidates
 
     @classmethod
     def _set_template_v2_element_value(
@@ -2809,9 +2868,12 @@ class PresentationChatMemoryLayer:
         theme: dict[str, Any] | None = None,
     ) -> None:
         element_type = element.get("type")
-        if element_type == "text" and isinstance(value, str):
-            cls._set_template_v2_runs_text(element, value)
-            element["text"] = value
+        if element_type == "text":
+            text = cls._template_v2_text_value(value)
+            if text is None or text == "":
+                return
+            cls._set_template_v2_runs_text(element, text)
+            element["text"] = text
             return
 
         if element_type == "text-list" and isinstance(value, list):
@@ -2821,7 +2883,7 @@ class PresentationChatMemoryLayer:
             element["items"] = [
                 cls._replacement_runs_from_existing(
                     source_items[index] if index < len(source_items) else None,
-                    str(item),
+                    cls._template_v2_text_value(item) or "",
                     element.get("font"),
                 )
                 for index, item in enumerate(value)
@@ -2846,8 +2908,11 @@ class PresentationChatMemoryLayer:
             _apply_chart_content_update(element, value, theme)
             return
 
-        if element_type == "table" and isinstance(value, list):
-            cls._set_template_v2_table_rows(element, value)
+        if element_type == "table":
+            if isinstance(value, dict):
+                cls._set_template_v2_table_content(element, value)
+            elif isinstance(value, list):
+                cls._set_template_v2_table_rows(element, value)
 
     @classmethod
     def _set_template_v2_runs_text(cls, element: dict[str, Any], text: str) -> None:
@@ -2856,6 +2921,20 @@ class PresentationChatMemoryLayer:
             text,
             element.get("font"),
         )
+
+    @staticmethod
+    def _template_v2_text_value(value: Any) -> str | None:
+        if isinstance(value, str):
+            return value
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return str(value)
+        if isinstance(value, dict):
+            text = value.get("text")
+            if isinstance(text, str):
+                return text
+            if isinstance(text, (int, float)) and not isinstance(text, bool):
+                return str(text)
+        return None
 
     @staticmethod
     def _replacement_runs_from_existing(
@@ -2918,6 +2997,58 @@ class PresentationChatMemoryLayer:
         return None
 
     @classmethod
+    def _set_template_v2_table_content(
+        cls,
+        element: dict[str, Any],
+        value: dict[str, Any],
+    ) -> None:
+        columns = value.get("columns")
+        if isinstance(columns, list):
+            existing_columns = (
+                element.get("columns")
+                if isinstance(element.get("columns"), list)
+                else []
+            )
+            element["columns"] = cls._template_v2_table_cells_from_values(
+                existing_columns,
+                columns,
+                element.get("font"),
+            )
+
+        rows = value.get("rows")
+        if isinstance(rows, list):
+            cls._set_template_v2_table_rows(element, rows)
+
+    @classmethod
+    def _template_v2_table_cells_from_values(
+        cls,
+        existing_cells: list[Any],
+        values: list[Any],
+        fallback_font: Any,
+    ) -> list[dict[str, Any]]:
+        fallback_cell = existing_cells[-1] if existing_cells else None
+        cells: list[dict[str, Any]] = []
+        for index, value in enumerate(values):
+            existing_cell = (
+                existing_cells[index]
+                if index < len(existing_cells)
+                else fallback_cell
+            )
+            existing_runs = (
+                existing_cell.get("runs")
+                if isinstance(existing_cell, dict)
+                else None
+            )
+            cell = copy.deepcopy(existing_cell) if isinstance(existing_cell, dict) else {}
+            cell["runs"] = cls._replacement_runs_from_existing(
+                existing_runs,
+                cls._table_cell_text_value(value),
+                cell.get("font") or fallback_font,
+            )
+            cells.append(cell)
+        return cells
+
+    @classmethod
     def _set_template_v2_table_rows(
         cls,
         element: dict[str, Any],
@@ -2937,19 +3068,11 @@ class PresentationChatMemoryLayer:
                 else []
             )
             next_rows.append(
-                [
-                    {
-                        "runs": cls._replacement_runs_from_existing(
-                            existing_row[column_index].get("runs")
-                            if column_index < len(existing_row)
-                            and isinstance(existing_row[column_index], dict)
-                            else None,
-                            str(cell),
-                            element.get("font"),
-                        )
-                    }
-                    for column_index, cell in enumerate(row)
-                ]
+                cls._template_v2_table_cells_from_values(
+                    existing_row,
+                    row,
+                    element.get("font"),
+                )
             )
         element["rows"] = next_rows
 

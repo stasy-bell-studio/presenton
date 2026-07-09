@@ -640,6 +640,14 @@ function AnalyzePanel({
                         </select>
                         <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
                       </div>
+                      {selectedFallback ? (
+                        <p
+                          className="mt-1.5 truncate text-[10px] text-[#777985] 2xl:text-[11px]"
+                          title={`${fontName} -> ${selectedFallback.family} (${selectedFallback.cssUrl})`}
+                        >
+                          Replaces with {selectedFallback.family}
+                        </p>
+                      ) : null}
                     </div>
                   );
                 })}
@@ -1281,15 +1289,36 @@ const CustomTemplatePage = ({
     [missingFonts, uploadedFontNames],
   );
   const hasPendingMissingFonts = pendingMissingFonts.length > 0;
-  const selectedFallbackFontUrls = useMemo<Record<string, string>>(
+  const selectedGoogleFontReplacements = useMemo<
+    Record<string, { fontName: string; fontUrl: string }>
+  >(
     () =>
       Object.fromEntries(
         pendingMissingFonts.flatMap((font) => {
           const selectedFont = selectedFallbackFonts[font.name];
-          return selectedFont?.cssUrl ? [[font.name, selectedFont.cssUrl]] : [];
+          if (!selectedFont?.family || !selectedFont.cssUrl) return [];
+          return [
+            [
+              font.name,
+              {
+                fontName: selectedFont.family,
+                fontUrl: selectedFont.cssUrl,
+              },
+            ] as const,
+          ];
         }),
       ),
     [pendingMissingFonts, selectedFallbackFonts],
+  );
+  const selectedGoogleFontAssets = useMemo<Record<string, string>>(
+    () =>
+      Object.fromEntries(
+        Object.values(selectedGoogleFontReplacements).map((font) => [
+          font.fontName,
+          font.fontUrl,
+        ]),
+      ),
+    [selectedGoogleFontReplacements],
   );
   const handleFallbackFontChange = useCallback(
     (fontName: string, option: GoogleFontOption) => {
@@ -1410,10 +1439,13 @@ const CustomTemplatePage = ({
     if (hasPendingMissingFonts) {
       notify.warning(
         "Missing fonts",
-        "Continuing without uploaded fonts. They will not be applied to your template.",
+        "Continuing without uploaded font files. Selected Google replacements will be applied.",
       );
     }
-    const data = await fontUploadAndPreview(selectedFile, selectedFallbackFontUrls);
+    const data = await fontUploadAndPreview(
+      selectedFile,
+      selectedGoogleFontReplacements,
+    );
     if (data) {
       loadFontAssets(normalizeBackendAssetUrls(data.fonts));
       trackEvent(MixpanelEvent.Templates_Build_Template_Clicked, {
@@ -1425,7 +1457,7 @@ const CustomTemplatePage = ({
     fontUploadAndPreview,
     hasPendingMissingFonts,
     loadFontAssets,
-    selectedFallbackFontUrls,
+    selectedGoogleFontReplacements,
     selectedFile,
   ]);
 
@@ -1447,7 +1479,7 @@ const CustomTemplatePage = ({
           slide_image_urls: state.previewData.slide_image_urls,
           fonts: {
             ...state.previewData.fonts,
-            ...selectedFallbackFontUrls,
+            ...selectedGoogleFontAssets,
           },
           name,
           description: description || null,
@@ -1467,7 +1499,7 @@ const CustomTemplatePage = ({
         setIsSubmittingTemplate(false);
       }
     },
-    [router, selectedFallbackFontUrls, state.previewData],
+    [router, selectedGoogleFontAssets, state.previewData],
   );
 
   const handleSaveTemplate = useCallback(

@@ -18,6 +18,7 @@ from services.chat.schemas import (
     DeleteSlideInput,
     DeleteOutlineInput,
     GenerateAssetsInput,
+    GetContentSchemaFromLayoutIdInput,
     GetSlideAtIndexInput,
     NoArgsInput,
     ReadSourceDocumentsInput,
@@ -91,6 +92,7 @@ class ChatTools:
             "searchSlide": self._search_slides,
             "getSlideAtIndex": self._get_slide_at_index,
             "getAvailableLayouts": self._get_available_layouts,
+            "getContentSchemaFromLayoutId": self._get_content_schema_from_layout_id,
             "generateAssets": self._generate_assets,
             "saveSlide": self._save_slide,
             "updateSlide": self._update_slide,
@@ -121,7 +123,7 @@ class ChatTools:
                     f"{MAX_OUTLINE_CONTENT_WORDS} words in this outline item."
                 ),
                 schema=AddOutlineInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="updateOutline",
@@ -131,7 +133,7 @@ class ChatTools:
                     f"Keep this outline item within {MAX_OUTLINE_CONTENT_WORDS} words."
                 ),
                 schema=UpdateOutlineInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="deleteOutline",
@@ -140,7 +142,7 @@ class ChatTools:
                     "presentation.outlines only and does not require a layout."
                 ),
                 schema=DeleteOutlineInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="addNewSlide",
@@ -149,7 +151,7 @@ class ChatTools:
                     "or append when index is null."
                 ),
                 schema=AddNewSlideInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="addNewSlideLayout",
@@ -158,13 +160,23 @@ class ChatTools:
                     "first, then pass content as a JSON-serialized object matching the layout."
                 ),
                 schema=AddNewSlideLayoutInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="getAvailableLayouts",
                 description="List available slide layout ids, names, and summaries.",
                 schema=NoArgsInput,
-                strict=True,
+                strict=False,
+            ),
+            Tool(
+                name="getContentSchemaFromLayoutId",
+                description=(
+                    "Return the exact JSON content schema for one layout id. "
+                    "Use this before addNewSlideLayout or updateSlide when composing "
+                    "a full slide content payload."
+                ),
+                schema=GetContentSchemaFromLayoutIdInput,
+                strict=False,
             ),
             Tool(
                 name="getTemplateSummary",
@@ -173,7 +185,7 @@ class ChatTools:
                     "layouts, current slides, and theme. Use before choosing where/how to edit."
                 ),
                 schema=NoArgsInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="readSourceDocuments",
@@ -185,7 +197,7 @@ class ChatTools:
                     "data, or creating slide content from uploaded documents."
                 ),
                 schema=ReadSourceDocumentsInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="searchSlide",
@@ -193,7 +205,7 @@ class ChatTools:
                     "Search current slides for text/topics and return slide indices and snippets."
                 ),
                 schema=SearchSlidesInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="getSlideAtIndex",
@@ -203,7 +215,7 @@ class ChatTools:
                     "If user says slide N, use zero-based index N-1."
                 ),
                 schema=GetSlideAtIndexInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="saveSlide",
@@ -212,19 +224,19 @@ class ChatTools:
                     "visible element/component edits should use element/component tools."
                 ),
                 schema=SaveSlideInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="updateSlide",
                 description="Replace an existing slide's layout/content by zero-based index.",
                 schema=UpdateSlideInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="deleteSlide",
                 description="Delete an existing slide by zero-based index and reindex the rest.",
                 schema=DeleteSlideInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="addElement",
@@ -236,7 +248,7 @@ class ChatTools:
                     "a URL returned by generateAssets."
                 ),
                 schema=AddElementInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="updateElement",
@@ -246,16 +258,16 @@ class ChatTools:
                     "position, size, and toolbar-style font, color, fill, stroke, "
                     "alignment, opacity, and element property patches. For "
                     "charts, use the chart field for chartType, categories, "
-                    "series.values, colors, axes, dataLabels, and legend."
+                    "series.values, colors, axes, dataLabels placement, and legend."
                 ),
                 schema=UpdateSlideElementInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="deleteElement",
                 description="Delete one rendered UI element by elementPath.",
                 schema=DeleteSlideElementInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="addComponent",
@@ -267,7 +279,7 @@ class ChatTools:
                     "set to a URL returned by generateAssets."
                 ),
                 schema=AddSlideComponentInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="createComponent",
@@ -278,7 +290,7 @@ class ChatTools:
                     "Image elements must include data set to a URL returned by generateAssets."
                 ),
                 schema=AddSlideComponentInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="updateComponent",
@@ -287,7 +299,7 @@ class ChatTools:
                     "UI components by componentId."
                 ),
                 schema=UpdateComponentInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="deleteComponent",
@@ -296,13 +308,13 @@ class ChatTools:
                     "or callout) from a rendered slide by componentId."
                 ),
                 schema=DeleteSlideComponentInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="getPresentationTheme",
                 description="Read the current presentation theme and available themes.",
                 schema=NoArgsInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="setPresentationTheme",
@@ -310,13 +322,13 @@ class ChatTools:
                     "Change the deck theme by theme name/id/query or customTheme payload."
                 ),
                 schema=SetPresentationThemeInput,
-                strict=True,
+                strict=False,
             ),
             Tool(
                 name="generateAssets",
                 description="Generate one or more image/icon assets for slide edits.",
                 schema=GenerateAssetsInput,
-                strict=True,
+                strict=False,
             ),
         ]
 

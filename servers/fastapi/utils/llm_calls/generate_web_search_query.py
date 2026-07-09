@@ -45,7 +45,7 @@ async def generate_web_search_query(
     response_format = JSONSchemaResponse(
         name="web_search_query",
         json_schema=SEARCH_QUERY_RESPONSE_SCHEMA,
-        strict=True,
+        strict=False,
     )
     response = await generate_structured_with_schema_retries(
         client,
@@ -62,7 +62,7 @@ async def generate_web_search_query(
         ],
         response_format=response_format,
         json_schema=SEARCH_QUERY_RESPONSE_SCHEMA,
-        strict=True,
+        strict=False,
         validate_schema=True,
     )
     query = response.get("query")

@@ -12,6 +12,11 @@ import {
   FloatingToolbar,
   type FloatingToolbarBox,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
+import {
+  ComponentActionsMenu,
+  ComponentUngroupButton,
+  type ComponentActionsMenuActions,
+} from "@/components/slide-editor/selection/ComponentActionsMenu";
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
 import { withHash } from "@/components/slide-editor/utils/color";
 import {
@@ -57,12 +62,14 @@ export function LineToolbar({
   element,
   index,
   scale,
+  componentActions,
   onChange,
 }: {
   anchorBox?: FloatingToolbarBox | null;
   element: LineSlideElement;
   index: number;
   scale: number;
+  componentActions?: ComponentActionsMenuActions | null;
   onChange: (index: number, element: LineSlideElement) => void;
 }) {
   const [openPanel, setOpenPanel] = useState<LinePanel>(null);
@@ -365,6 +372,15 @@ export function LineToolbar({
           </Panel>
         ) : null}
       </div>
+
+      {componentActions ? (
+        <>
+          <Divider />
+          <ComponentUngroupButton actions={componentActions} />
+          {componentActions.canUngroup ? <Divider /> : null}
+          <ComponentActionsMenu actions={componentActions} />
+        </>
+      ) : null}
     </FloatingToolbar>
   );
 }

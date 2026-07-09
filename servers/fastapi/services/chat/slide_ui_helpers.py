@@ -33,6 +33,7 @@ SUPPORTED_CHART_TYPES = {
     "scatter",
     "stacked_bar",
 }
+DATA_LABEL_POSITIONS = {"base", "mid", "top", "outside"}
 DEFAULT_CHART_COLORS = [
     "#7F22FE",
     "#155DFC",
@@ -177,8 +178,7 @@ def _normalize_chart_element(
         element["y_axis_grid"] = True
     if "legend" not in element:
         element["legend"] = chart_type in {"pie", "donut"} or len(series) > 1
-    if "data_labels" not in element:
-        element["data_labels"] = False
+    element["data_labels"] = _normalize_chart_data_labels(element.get("data_labels"))
 
 
 def _apply_chart_content_update(
@@ -212,6 +212,18 @@ def _apply_chart_content_update(
             element[target_key] = chart[source_key]
 
     _normalize_chart_element(element, theme)
+
+
+def _normalize_chart_data_labels(value: Any) -> str | None:
+    if value is True:
+        return "top"
+    if value is False or value is None:
+        return None
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in DATA_LABEL_POSITIONS:
+            return normalized
+    return None
 
 
 def _validate_visual_insert_tree(node: Any) -> None:

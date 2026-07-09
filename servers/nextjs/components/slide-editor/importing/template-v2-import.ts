@@ -7,6 +7,7 @@ import {
   type Alignment,
   type BorderRadius,
   type ChartSeries,
+  type DataLabelPosition,
   type Deck,
   type DesignVariable,
   type Fill,
@@ -80,6 +81,8 @@ const LAYOUT_ALIGNMENT_VALUES = new Set([
   "center",
   "stretch",
 ]);
+const DATA_LABEL_POSITIONS = new Set(["base", "mid", "top", "outside"]);
+
 export function adaptTemplateV2ResponseToDeck(
   template: TemplateV2ImportResponse,
 ): Deck {
@@ -878,7 +881,12 @@ function adaptChart(raw: UnknownRecord): SlideElement {
     colors,
     supportedSeries.length <= 1,
   ).slice(0, 8);
-  const dataLabels = readBoolean(raw, "data_labels");
+  const dataLabels = readDataLabelPosition(
+    raw,
+    Object.prototype.hasOwnProperty.call(raw, "data_labels")
+      ? "data_labels"
+      : "dataLabels",
+  );
 
   return {
     ...baseElement(raw),
@@ -1502,6 +1510,19 @@ function readRawNumber(value: unknown): number | null {
 function readBoolean(record: UnknownRecord, key: string) {
   const value = readValue(record, key);
   return typeof value === "boolean" ? value : null;
+}
+
+function readDataLabelPosition(
+  record: UnknownRecord,
+  key: string,
+): DataLabelPosition | null {
+  const value = readValue(record, key);
+  if (value === true) return "top";
+  if (value === false || value == null) return null;
+  const text = readString(value);
+  return text && DATA_LABEL_POSITIONS.has(text)
+    ? (text as DataLabelPosition)
+    : null;
 }
 
 function readDecorative(record: UnknownRecord): boolean | null {

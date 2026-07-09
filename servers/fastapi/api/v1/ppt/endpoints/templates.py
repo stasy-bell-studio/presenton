@@ -682,6 +682,8 @@ async def upload_template_fonts_and_slides_preview(
         default=None, description="Font files to upload"
     ),
     original_font_names: Optional[list[str]] = Form(default=None),
+    google_font_original_names: Optional[list[str]] = Form(default=None),
+    google_font_replacement_names: Optional[list[str]] = Form(default=None),
     google_font_names: Optional[list[str]] = Form(default=None),
     google_font_urls: Optional[list[str]] = Form(default=None),
 ):
@@ -689,6 +691,8 @@ async def upload_template_fonts_and_slides_preview(
         pptx_file=pptx_file,
         font_files=font_files,
         original_font_names=original_font_names,
+        google_font_original_names=google_font_original_names,
+        google_font_replacement_names=google_font_replacement_names,
         google_font_names=google_font_names,
         google_font_urls=google_font_urls,
     )
