@@ -26,6 +26,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/store/store";
 import { notify } from "@/components/ui/sonner";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
 import { usePresentationUndoRedo } from "../hooks/PresentationUndoRedo";
 import ToolTip from "@/components/ToolTip";
 import {
@@ -156,6 +157,9 @@ const PresentationHeader = ({
     presentationData.slides &&
     !firstSlideLayout.includes("custom")
   );
+  const isTemplateV2Presentation =
+    hasTemplateV2Slides(presentationData?.slides) ||
+    hasTemplateV2Layouts(presentationData?.layout);
 
   useEffect(() => {
     if (!shouldShowThemeSelector || themes.length > 0) {
@@ -252,6 +256,10 @@ const PresentationHeader = ({
     if (isStreaming) return;
 
     let exportToastId: string | number | undefined;
+    const startedAt = Date.now();
+    const exportRuntime = window.electron?.exportPresentation
+      ? "electron"
+      : "browser_api";
     try {
       trackEvent(MixpanelEvent.Presentation_Export_Started, {
         pathname,
@@ -301,8 +309,27 @@ const PresentationHeader = ({
         "Your PPTX file has been downloaded.",
         { id: exportToastId }
       );
+      trackEvent(MixpanelEvent.Presentation_Export_Completed, {
+        pathname,
+        presentation_id,
+        format: "pptx",
+        slide_count: presentationData?.slides?.length || 0,
+        duration_ms: Date.now() - startedAt,
+        export_runtime: exportRuntime,
+        is_template_v2: isTemplateV2Presentation,
+      });
     } catch (error) {
       console.error("Export failed:", error);
+      trackEvent(MixpanelEvent.Presentation_Export_Failed, {
+        pathname,
+        presentation_id,
+        format: "pptx",
+        slide_count: presentationData?.slides?.length || 0,
+        duration_ms: Date.now() - startedAt,
+        export_runtime: exportRuntime,
+        is_template_v2: isTemplateV2Presentation,
+        error_message: sanitizeAnalyticsError(error, "PPTX export failed"),
+      });
       notify.error(
         "Export failed",
         "We are having trouble exporting your presentation. Please try again.",
@@ -317,6 +344,10 @@ const PresentationHeader = ({
     if (isStreaming) return;
 
     let exportToastId: string | number | undefined;
+    const startedAt = Date.now();
+    const exportRuntime = window.electron?.exportPresentation
+      ? "electron"
+      : "browser_api";
     try {
       trackEvent(MixpanelEvent.Presentation_Export_Started, {
         pathname,
@@ -362,8 +393,27 @@ const PresentationHeader = ({
         "Your PDF file has been downloaded.",
         { id: exportToastId }
       );
+      trackEvent(MixpanelEvent.Presentation_Export_Completed, {
+        pathname,
+        presentation_id,
+        format: "pdf",
+        slide_count: presentationData?.slides?.length || 0,
+        duration_ms: Date.now() - startedAt,
+        export_runtime: exportRuntime,
+        is_template_v2: isTemplateV2Presentation,
+      });
     } catch (err) {
       console.error(err);
+      trackEvent(MixpanelEvent.Presentation_Export_Failed, {
+        pathname,
+        presentation_id,
+        format: "pdf",
+        slide_count: presentationData?.slides?.length || 0,
+        duration_ms: Date.now() - startedAt,
+        export_runtime: exportRuntime,
+        is_template_v2: isTemplateV2Presentation,
+        error_message: sanitizeAnalyticsError(err, "PDF export failed"),
+      });
       notify.error(
         "Export failed",
         "We are having trouble exporting your presentation. Please try again.",

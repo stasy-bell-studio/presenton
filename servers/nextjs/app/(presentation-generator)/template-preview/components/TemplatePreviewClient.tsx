@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import "../../utils/prism-languages";
 
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
 import TemplateService from "../../services/api/template";
 import Header from "../../(dashboard)/dashboard/components/Header";
 import { notify } from "@/components/ui/sonner";
@@ -208,6 +209,7 @@ const GroupLayoutPreview = ({
 
   const templateId =
     searchParams.get("templateV2Id") || searchParams.get("id") || "";
+  const previewAnalyticsKeyRef = useRef<string | null>(null);
 
   const { template, layouts, fonts, loading, error } =
     useTemplateDetails(templateId);
@@ -253,6 +255,47 @@ const GroupLayoutPreview = ({
       );
     }
   };
+
+  useEffect(() => {
+    if (loading) return;
+    const keyBase = templateId || "missing-template-id";
+    if (!templateId) {
+      const key = `${keyBase}:missing-id`;
+      if (previewAnalyticsKeyRef.current === key) return;
+      previewAnalyticsKeyRef.current = key;
+      trackEvent(MixpanelEvent.TemplatePreview_Not_Found, {
+        template_id: null,
+      });
+      return;
+    }
+    if (error) {
+      const key = `${keyBase}:error:${error}`;
+      if (previewAnalyticsKeyRef.current === key) return;
+      previewAnalyticsKeyRef.current = key;
+      trackEvent(MixpanelEvent.TemplatePreview_Failed, {
+        template_id: templateId,
+        error_message: sanitizeAnalyticsError(error, "Template preview failed"),
+      });
+      return;
+    }
+    if (!template) {
+      const key = `${keyBase}:not-found`;
+      if (previewAnalyticsKeyRef.current === key) return;
+      previewAnalyticsKeyRef.current = key;
+      trackEvent(MixpanelEvent.TemplatePreview_Not_Found, {
+        template_id: templateId,
+      });
+      return;
+    }
+    const key = `${keyBase}:loaded:${layouts.length}`;
+    if (previewAnalyticsKeyRef.current === key) return;
+    previewAnalyticsKeyRef.current = key;
+    trackEvent(MixpanelEvent.TemplatePreview_Loaded, {
+      template_id: templateId,
+      template_version: "v2",
+      layout_count: layouts.length,
+    });
+  }, [error, layouts.length, loading, template, templateId]);
 
   if (!templateId) {
     return (

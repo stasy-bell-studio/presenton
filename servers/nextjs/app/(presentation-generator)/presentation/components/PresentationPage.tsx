@@ -60,6 +60,32 @@ function hasTemplateV2Slides(slides: unknown): boolean {
   );
 }
 
+function collectTemplateV2Ids(value: unknown): string[] {
+  const ids = new Set<string>();
+  const visit = (item: unknown, depth = 0) => {
+    if (depth > 4 || !item) return;
+    if (Array.isArray(item)) {
+      item.forEach((entry) => visit(entry, depth + 1));
+      return;
+    }
+    if (typeof item !== "object") return;
+    const record = item as Record<string, unknown>;
+    ["layout_group", "layout", "template_id", "templateV2Id", "template_v2_id", "id"].forEach(
+      (key) => {
+        const value = record[key];
+        if (typeof value === "string" && value.startsWith("template-v2")) {
+          ids.add(value);
+        }
+      }
+    );
+    visit(record.layout, depth + 1);
+    visit(record.layouts, depth + 1);
+    visit(record.slides, depth + 1);
+  };
+  visit(value);
+  return Array.from(ids);
+}
+
 interface LoadingState {
   isLoading: boolean;
   message: string;
@@ -128,6 +154,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   >(() => new Set());
   const [error, setError] = useState(false);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const templateV2EditorLoadedKeyRef = useRef<string | null>(null);
   const router = useRouter();
   const shouldPreloadTemplateV2Presentation =
     searchParams.get("editor") === "v2";
@@ -247,6 +274,30 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
       presentation_mode: isPresentMode ? "present" : "edit",
     });
   }, [pathname, presentation_id, stream, isPresentMode]);
+
+  useEffect(() => {
+    if (!presentationData || !isTemplateV2Presentation || loading || error) {
+      return;
+    }
+    if (templateV2EditorLoadedKeyRef.current === presentation_id) {
+      return;
+    }
+    templateV2EditorLoadedKeyRef.current = presentation_id;
+    trackEvent(MixpanelEvent.TemplateV2_Editor_Loaded, {
+      presentation_id,
+      slide_count: slidesLength,
+      stream_mode: !!stream,
+      template_id_candidates: collectTemplateV2Ids(presentationData),
+    });
+  }, [
+    error,
+    isTemplateV2Presentation,
+    loading,
+    presentationData,
+    presentation_id,
+    slidesLength,
+    stream,
+  ]);
 
   /** Editor tree unmounts in present mode; remount loses inline theme CSS — re-apply from Redux. */
   useLayoutEffect(() => {

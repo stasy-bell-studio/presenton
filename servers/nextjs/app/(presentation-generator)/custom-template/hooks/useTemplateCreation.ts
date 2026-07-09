@@ -14,6 +14,7 @@ import {
 } from "../types";
 import { getApiUrl } from "@/utils/api";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { bucketFileSize, sanitizeAnalyticsError } from "@/utils/analytics";
 import { validateLayoutCodeForClient } from "../utils/layoutCodeValidation";
 
 /** Must match `VISION_LAYOUT_ERROR_MARKER` in FastAPI `utils/template_vision_errors.py`. */
@@ -171,11 +172,24 @@ export const useTemplateCreation = ({
                 step: 'font-check',
                 isLoading: false
             });
+            trackEvent(MixpanelEvent.CustomTemplate_Font_Check_Completed, {
+                file_size_bucket: bucketFileSize(pptxFile.size),
+                file_extension: fileExtension,
+                available_font_count: data.available_fonts?.length ?? 0,
+                unavailable_font_count: data.unavailable_fonts?.length ?? 0,
+            });
 
             return data;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Font check failed";
             updateState({ error: errorMessage, isLoading: false });
+            trackEvent(MixpanelEvent.CustomTemplate_Font_Check_Failed, {
+                file_size_bucket: bucketFileSize(pptxFile.size),
+                file_extension: pptxFile.name.includes(".")
+                    ? pptxFile.name.slice(pptxFile.name.lastIndexOf(".")).toLowerCase()
+                    : "",
+                error_message: sanitizeAnalyticsError(error, "Font check failed"),
+            });
             notify.error("Font check failed", errorMessage);
             return null;
         }
@@ -255,6 +269,12 @@ export const useTemplateCreation = ({
         pptxFile: File
     ): Promise<FontUploadPreviewResponse | null> => {
         updateState({ isLoading: true, error: null, step: 'font-upload' });
+        const startedAt = Date.now();
+        const missingFontCount = getUnsupportedFonts().length;
+        trackEvent(MixpanelEvent.CustomTemplate_Preview_Started, {
+            uploaded_font_count: uploadedFonts.length,
+            missing_font_count: missingFontCount,
+        });
 
         try {
             const formData = new FormData();
@@ -285,16 +305,29 @@ export const useTemplateCreation = ({
                 step: 'slides-preview',
                 isLoading: false
             });
+            trackEvent(MixpanelEvent.CustomTemplate_Preview_Completed, {
+                slide_count: data.slide_image_urls?.length ?? 0,
+                uploaded_font_count: uploadedFonts.length,
+                duration_ms: Date.now() - startedAt,
+            });
 
             notify.success("Document prepared", "Template generation is starting now.");
             return data;
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Document preparation failed";
             updateState({ error: errorMessage, isLoading: false });
+            trackEvent(MixpanelEvent.CustomTemplate_Preview_Failed, {
+                uploaded_font_count: uploadedFonts.length,
+                duration_ms: Date.now() - startedAt,
+                error_message: sanitizeAnalyticsError(
+                    error,
+                    "Document preparation failed"
+                ),
+            });
             notify.error("Document preparation failed", errorMessage);
             return null;
         }
-    }, [uploadedFonts, updateState]);
+    }, [getUnsupportedFonts, uploadedFonts, updateState]);
 
     const saveTemplateV2Layouts = useCallback(async (
         templateId: string,
@@ -442,6 +475,7 @@ export const useTemplateCreation = ({
             totalSlides: initialSlides.length,
             currentSlideIndex: 0,
         });
+        const generationStartedAt = Date.now();
 
         try {
             trackEvent(MixpanelEvent.CustomTemplate_Creation_Started, {
@@ -481,6 +515,7 @@ export const useTemplateCreation = ({
             });
 
             let generatedSlides = initialSlides;
+            const slideStartedAtByIndex = new Map<number, number>();
             const commitSlides = (nextSlides: ProcessedSlide[]) => {
                 generatedSlides = nextSlides;
                 setSlides(nextSlides);
@@ -492,6 +527,15 @@ export const useTemplateCreation = ({
             };
 
             for (const indices of templateV2LayoutBatches(initialSlides.length)) {
+                indices.forEach((index) => {
+                    slideStartedAtByIndex.set(index, Date.now());
+                    trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Started, {
+                        template_id: templateId,
+                        template_version: "v2",
+                        slide_index: index,
+                        auto_retry: false,
+                    });
+                });
                 updateState({ currentSlideIndex: indices[0] ?? 0 });
                 updateGeneratedSlides((currentSlides) =>
                     currentSlides.map((slide, index) =>
@@ -509,6 +553,15 @@ export const useTemplateCreation = ({
                 const { layouts: createdLayouts, failures } =
                     await createAndSaveTemplateV2Layouts(templateId, indices, {
                         onLayoutCreated: (createdLayout) => {
+                            trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Completed, {
+                                template_id: templateId,
+                                template_version: "v2",
+                                slide_index: createdLayout.index,
+                                duration_ms:
+                                    Date.now() -
+                                    (slideStartedAtByIndex.get(createdLayout.index) ??
+                                        Date.now()),
+                            });
                             updateGeneratedSlides((currentSlides) =>
                                 currentSlides.map((slide, index) =>
                                     index === createdLayout.index
@@ -529,6 +582,20 @@ export const useTemplateCreation = ({
                 const failureByIndex = new Map(
                     failures.map((item) => [item.index, item.error])
                 );
+                failures.forEach((failure) => {
+                    trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Failed, {
+                        template_id: templateId,
+                        template_version: "v2",
+                        slide_index: failure.index,
+                        duration_ms:
+                            Date.now() -
+                            (slideStartedAtByIndex.get(failure.index) ?? Date.now()),
+                        error_message: sanitizeAnalyticsError(
+                            failure.error,
+                            "Template layout generation failed"
+                        ),
+                    });
+                });
                 updateGeneratedSlides((currentSlides) =>
                     currentSlides.map((slide, index) => {
                         if (!indices.includes(index)) return slide;
@@ -568,11 +635,23 @@ export const useTemplateCreation = ({
             if (processedCount > 0) {
                 try {
                     await generateTemplateV2Blocks(templateId);
+                    trackEvent(MixpanelEvent.CustomTemplate_Blocks_Generation_Completed, {
+                        template_id: templateId,
+                        template_version: "v2",
+                    });
                 } catch (error) {
                     blocksError = errorMessageFromUnknown(
                         error,
                         "Failed to generate template blocks"
                     );
+                    trackEvent(MixpanelEvent.CustomTemplate_Blocks_Generation_Failed, {
+                        template_id: templateId,
+                        template_version: "v2",
+                        error_message: sanitizeAnalyticsError(
+                            error,
+                            "Failed to generate template blocks"
+                        ),
+                    });
                     updateState({ error: blocksError });
                 }
             }
@@ -610,6 +689,17 @@ export const useTemplateCreation = ({
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Template generation failed";
             updateState({ error: errorMessage, isLoading: false });
+            trackEvent(MixpanelEvent.CustomTemplate_Creation_Failed, {
+                template_id: state.templateId,
+                template_version: "v2",
+                step: "template-creation",
+                slide_index: options.retrySlideIndex ?? null,
+                duration_ms: Date.now() - generationStartedAt,
+                error_message: sanitizeAnalyticsError(
+                    error,
+                    "Template generation failed"
+                ),
+            });
             setSlides((current) =>
                 (current.length ? current : initialSlides).map((slide) => ({
                     ...slide,
@@ -621,7 +711,12 @@ export const useTemplateCreation = ({
             notify.error("Generation failed", errorMessage);
             return null;
         }
-    }, [createAndSaveTemplateV2Layouts, generateTemplateV2Blocks, updateState]);
+    }, [
+        createAndSaveTemplateV2Layouts,
+        generateTemplateV2Blocks,
+        state.templateId,
+        updateState,
+    ]);
 
     // Step 4: Create slide layout for a specific slide (with auto-advance for initial processing)
     const createSlideLayout = useCallback(async (
@@ -636,6 +731,13 @@ export const useTemplateCreation = ({
         ));
 
         updateState({ currentSlideIndex: slideIndex });
+        const slideStartedAt = Date.now();
+        trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Started, {
+            template_id: templateId,
+            template_version: "v1",
+            slide_index: slideIndex,
+            auto_retry: _isAutoRetry,
+        });
 
         try {
             const startResponse = await fetch(
@@ -752,6 +854,12 @@ export const useTemplateCreation = ({
 
                 return newSlides;
             });
+            trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Completed, {
+                template_id: templateId,
+                template_version: "v1",
+                slide_index: slideIndex,
+                duration_ms: Date.now() - slideStartedAt,
+            });
 
             return layoutResult;
         } catch (error) {
@@ -763,6 +871,16 @@ export const useTemplateCreation = ({
             if (!_isAutoRetry && !isVisionModelError) {
                 return createSlideLayout(templateId, slideIndex, autoAdvance, true);
             }
+            trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Failed, {
+                template_id: templateId,
+                template_version: "v1",
+                slide_index: slideIndex,
+                duration_ms: Date.now() - slideStartedAt,
+                error_message: sanitizeAnalyticsError(
+                    error,
+                    "Layout creation failed"
+                ),
+            });
 
             // Mark slide with error
             setSlides(prev => {
@@ -829,6 +947,7 @@ export const useTemplateCreation = ({
         }
 
         updateState({ isLoading: true, error: null, step: 'template-creation' });
+        const initStartedAt = Date.now();
 
         try {
             const response = await fetch(getApiUrl(`/api/v1/ppt/template/create/init`), {
@@ -882,6 +1001,14 @@ export const useTemplateCreation = ({
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : "Initialization failed";
             updateState({ error: errorMessage, isLoading: false });
+            trackEvent(MixpanelEvent.CustomTemplate_Creation_Failed, {
+                template_id: state.templateId,
+                template_version: "v1",
+                step: "template_init",
+                slide_index: null,
+                duration_ms: Date.now() - initStartedAt,
+                error_message: sanitizeAnalyticsError(error, "Initialization failed"),
+            });
             notify.error("Initialization failed", errorMessage);
             // reset the state
             reset();
@@ -892,6 +1019,7 @@ export const useTemplateCreation = ({
         generateTemplateV2,
         reset,
         state.previewData,
+        state.templateId,
         updateState,
         useTemplateV2Generation,
     ]);
@@ -927,6 +1055,13 @@ export const useTemplateCreation = ({
         );
 
         void (async () => {
+            const startedAt = Date.now();
+            trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Started, {
+                template_id: templateId,
+                template_version: "v2",
+                slide_index: slideIndex,
+                auto_retry: true,
+            });
             try {
                 const { layouts: createdLayouts, failures } = await createAndSaveTemplateV2Layouts(
                     templateId,
@@ -947,6 +1082,12 @@ export const useTemplateCreation = ({
                             : slide
                     )
                 );
+                trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Completed, {
+                    template_id: templateId,
+                    template_version: "v2",
+                    slide_index: slideIndex,
+                    duration_ms: Date.now() - startedAt,
+                });
                 notify.success(
                     "Slide regenerated",
                     `Slide ${slideIndex + 1} was regenerated successfully.`
@@ -967,6 +1108,16 @@ export const useTemplateCreation = ({
                             : slide
                     )
                 );
+                trackEvent(MixpanelEvent.CustomTemplate_Slide_Generation_Failed, {
+                    template_id: templateId,
+                    template_version: "v2",
+                    slide_index: slideIndex,
+                    duration_ms: Date.now() - startedAt,
+                    error_message: sanitizeAnalyticsError(
+                        error,
+                        "Template layout generation failed"
+                    ),
+                });
                 notify.error(`Slide ${slideIndex + 1} failed`, errorMessage);
             }
         })();

@@ -1,4 +1,5 @@
 import { getApiUrl } from "@/utils/api";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 import { syncStoreAfterCodexSignOut } from "@/utils/storeHelpers";
 
 export const CHATGPT_AUTH_REQUIRED_EVENT = "presenton:chatgpt-auth-required";
@@ -86,6 +87,10 @@ export function requestChatGptReauth(
   detail: ChatGptAuthRequiredEventDetail = {}
 ): void {
   if (typeof window === "undefined") return;
+
+  trackEvent(MixpanelEvent.Codex_Reauth_Required, {
+    source: detail.source || "unknown",
+  });
 
   window.dispatchEvent(
     new CustomEvent<ChatGptAuthRequiredEventDetail>(

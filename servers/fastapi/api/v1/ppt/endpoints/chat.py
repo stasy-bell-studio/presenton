@@ -72,6 +72,20 @@ async def get_chat_history(
     )
 
 
+@CHAT_ROUTER.delete("/conversation", status_code=204)
+async def delete_chat_conversation(
+    presentation_id: uuid.UUID = Query(..., description="Presentation id"),
+    conversation_id: uuid.UUID = Query(..., description="Conversation thread id"),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    await sql_chat_history.delete_conversation(
+        sql_session,
+        presentation_id=presentation_id,
+        conversation_id=conversation_id,
+    )
+    await sql_session.commit()
+
+
 @CHAT_ROUTER.post("/message", response_model=ChatMessageResponse)
 async def chat_message(
     payload: ChatMessageRequest,

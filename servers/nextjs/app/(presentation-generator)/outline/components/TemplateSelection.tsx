@@ -8,14 +8,20 @@ import {
   TemplateListEmptyState,
   TemplateListSection,
 } from "../../components/TemplateListUi";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 interface TemplateSelectionProps {
+  presentationId: string | null;
   selectedTemplateId: string | null;
   onSelectTemplateId: (templateId: string) => void;
 }
 
 const TemplateSelection: React.FC<TemplateSelectionProps> = memo(
-  function TemplateSelection({ selectedTemplateId, onSelectTemplateId }) {
+  function TemplateSelection({
+    presentationId,
+    selectedTemplateId,
+    onSelectTemplateId,
+  }) {
     const { defaultTemplates, customTemplates, loading } = useTemplateSummaries();
 
     useEffect(() => {
@@ -44,7 +50,14 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = memo(
                 key={template.id}
                 template={template}
                 isSelected={selectedTemplateId === template.id}
-                onClick={() => onSelectTemplateId(template.id)}
+                onClick={() => {
+                  trackEvent(MixpanelEvent.TemplateV2_Template_Selected, {
+                    presentation_id: presentationId,
+                    template_id: template.id,
+                    template_source: "custom",
+                  });
+                  onSelectTemplateId(template.id);
+                }}
               />
             ))}
           </div>
@@ -60,7 +73,14 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = memo(
                   key={template.id}
                   template={template}
                   isSelected={selectedTemplateId === template.id}
-                  onClick={() => onSelectTemplateId(template.id)}
+                  onClick={() => {
+                    trackEvent(MixpanelEvent.TemplateV2_Template_Selected, {
+                      presentation_id: presentationId,
+                      template_id: template.id,
+                      template_source: "default",
+                    });
+                    onSelectTemplateId(template.id);
+                  }}
                 />
               ))}
             </div>

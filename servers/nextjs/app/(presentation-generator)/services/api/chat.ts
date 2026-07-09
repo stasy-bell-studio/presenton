@@ -352,6 +352,26 @@ export class PresentationChatApi {
     );
   }
 
+  static async deleteConversation(
+    presentationId: string,
+    conversationId: string
+  ): Promise<void> {
+    const u = new URL(
+      buildAbsoluteApiRequestUrl("/api/v1/ppt/chat/conversation")
+    );
+    u.searchParams.set("presentation_id", presentationId);
+    u.searchParams.set("conversation_id", conversationId);
+    const response = await fetch(u.toString(), {
+      method: "DELETE",
+      headers: getHeader(),
+      cache: "no-cache",
+    });
+    await ApiResponseHandler.handleResponse(
+      response,
+      "Failed to delete chat conversation"
+    );
+  }
+
   static async sendMessage(
     payload: ChatMessageRequest
   ): Promise<ChatMessageResponse> {
