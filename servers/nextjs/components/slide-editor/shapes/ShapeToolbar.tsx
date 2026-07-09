@@ -170,13 +170,13 @@ export function ShapeToolbar({
               color={stroke.color}
               onCommit={(color) => update({ stroke: { ...stroke, color } })}
             />
-            <NumberField
+            <SliderField
               label="Border width"
               value={stroke.width ?? 0}
               min={0}
-              max={8}
-              step={0.25}
-              suffix="pt"
+              max={16}
+              step={0.5}
+              formatValue={(value) => `${formatNumber(value)}pt`}
               onCommit={(width) => update({ stroke: { ...stroke, width } })}
             />
             <SliderField
@@ -203,7 +203,7 @@ export function ShapeToolbar({
           {isRectangle ? <Square size={16} aria-hidden="true" /> : <Circle size={16} aria-hidden="true" />}
         </ToolbarButton>
         {openPanel === "type" ? (
-          <Panel className="w-[260px] space-y-3 p-3">
+          <Panel className="w-[180px] p-3">
             <div className="space-y-1.5">
               {SHAPE_TYPES.map((option) => {
                 const Icon = option.icon;
@@ -224,45 +224,6 @@ export function ShapeToolbar({
                   </button>
                 );
               })}
-            </div>
-            <div className="h-px bg-[#EDEEEF]" />
-            <div className="grid grid-cols-2 gap-2">
-              <NumberField
-                label="X"
-                value={box.x}
-                step={0.01}
-                onCommit={(x) =>
-                  update({ position: { x, y: element.position?.y ?? box.y } })
-                }
-              />
-              <NumberField
-                label="Y"
-                value={box.y}
-                step={0.01}
-                onCommit={(y) =>
-                  update({ position: { x: element.position?.x ?? box.x, y } })
-                }
-              />
-              <NumberField
-                label="W"
-                value={box.w}
-                min={0.01}
-                max={EDITOR_STAGE_WIDTH}
-                step={0.01}
-                onCommit={(width) =>
-                  update({ size: { width, height: element.size?.height ?? box.h } })
-                }
-              />
-              <NumberField
-                label="H"
-                value={box.h}
-                min={0.01}
-                max={EDITOR_STAGE_HEIGHT}
-                step={0.01}
-                onCommit={(height) =>
-                  update({ size: { width: element.size?.width ?? box.w, height } })
-                }
-              />
             </div>
           </Panel>
         ) : null}
@@ -307,16 +268,15 @@ export function ShapeToolbar({
         </ToolbarButton>
         {openPanel === "shadow" ? (
           <Panel className="left-auto right-0 w-[244px] translate-x-0 space-y-3 p-3">
-            <button
-              type="button"
-              aria-pressed={shadowEnabled}
-              onClick={() =>
-                update({ shadow: shadowEnabled ? undefined : shadow })
-              }
-              className="flex w-full items-center justify-between rounded-md border border-[#EDEEEF] px-3 py-2 text-xs font-medium text-[#191919]"
-            >
-              Drop shadow
-              <span
+            <label className="flex items-center justify-between text-xs font-medium text-[#191919]">
+              <span>Drop shadow</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={shadowEnabled}
+                onClick={() =>
+                  update({ shadow: shadowEnabled ? undefined : shadow })
+                }
                 className={cn(
                   "relative h-5 w-9 rounded-full transition-colors",
                   shadowEnabled ? "bg-[#7C51F8]" : "bg-[#D1D5DB]",
@@ -324,14 +284,15 @@ export function ShapeToolbar({
               >
                 <span
                   className={cn(
-                    "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform",
+                    "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform",
                     shadowEnabled ? "translate-x-[18px]" : "translate-x-0.5",
                   )}
                 />
-              </span>
-            </button>
+              </button>
+            </label>
             {shadowEnabled ? (
               <>
+                <div className="h-px bg-[#EDEEEF]" />
                 <ColorField
                   label="Shadow color"
                   color={shadow.color ?? "#000000"}
@@ -358,7 +319,7 @@ export function ShapeToolbar({
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <NumberField
-                    label="X"
+                    label="Offset X"
                     value={shadow.offset_x ?? DEFAULT_SHAPE_SHADOW.offset_x}
                     min={-2}
                     max={2}
@@ -368,7 +329,7 @@ export function ShapeToolbar({
                     }
                   />
                   <NumberField
-                    label="Y"
+                    label="Offset Y"
                     value={shadow.offset_y ?? DEFAULT_SHAPE_SHADOW.offset_y}
                     min={-2}
                     max={2}

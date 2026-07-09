@@ -252,7 +252,7 @@ export function initMixpanel(): void {
 
 function initializeMixpanelNow(): void {
   if (window.__mixpanel_initialized) return;
-  mixpanel.init(MIXPANEL_TOKEN as string, { track_pageview: false, api_host: 'https://api-eu.mixpanel.com', });
+  mixpanel.init(MIXPANEL_TOKEN as string, { track_pageview: false, api_host: 'https://api-eu.mixpanel.com', record_sessions_percent: 100, });
   const appVersion = window.env?.APP_VERSION;
   if (appVersion) {
     mixpanel.register({ app_version: appVersion });
