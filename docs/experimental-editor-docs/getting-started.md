@@ -11,8 +11,8 @@ The `Select a PPTX file` action on:
 /custom-template
 ```
 
-uses the original Template Studio UX whether `USE_SLIDE_EDITOR_IMPORT` is
-enabled or disabled.
+uses the original Template Studio UX. The slide-editor import backend is always
+used.
 
 The flow is:
 
@@ -23,15 +23,9 @@ The flow is:
 5. Continue to generate the old `Slide Preview` screen.
 6. Click `Generate Template` to create the reusable template.
 
-When `USE_SLIDE_EDITOR_IMPORT` is not enabled, Template Studio keeps the
-original behavior completely: Generate uses the old v1 template init endpoint,
-reconstructs slides through the old per-slide layout jobs, and shows the old
-save-template action after generation.
-
-When `USE_SLIDE_EDITOR_IMPORT=true`, Template Studio still uses the same old
-UX: inline font management, slide preview, progress, and generated preview
-cards. Only the Generate backend changes. It sends the preview data to the
-Templates V2 API:
+Template Studio still uses the same old UX: inline font management, slide
+preview, progress, and generated preview cards. Only the Generate backend
+changes. It sends the preview data to the Templates V2 API:
 
 ```txt
 POST /api/v2/templates
@@ -47,7 +41,7 @@ deck, stage anything in IndexedDB, or redirect to `/slide-editor`.
 
 ## Verify The Flow
 
-1. Start the app without `USE_SLIDE_EDITOR_IMPORT=true`.
+1. Start the app normally.
 2. Open `/custom-template`.
 3. Click `Select a PPTX file`.
 4. Choose a `.pptx` file under 100 MB.
@@ -56,9 +50,5 @@ deck, stage anything in IndexedDB, or redirect to `/slide-editor`.
 7. Confirm the inline font management step appears.
 8. Continue to preview.
 9. Click `Generate Template`.
-10. Confirm the old v1 per-slide generation flow runs.
-11. Confirm the URL remains `/custom-template`.
-
-Then restart with `USE_SLIDE_EDITOR_IMPORT=true` and repeat the same UI flow.
-The page should still stay on `/custom-template`, but Generate should create
-the template with `POST /api/v2/templates`.
+10. Confirm the page stays on `/custom-template`.
+11. Confirm Generate creates the template with `POST /api/v2/templates`.

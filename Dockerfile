@@ -33,10 +33,7 @@ FROM node:20-bookworm-slim AS nextjs-builder
 
 WORKDIR /app/servers/nextjs
 
-ARG NEXT_PUBLIC_USE_SLIDE_EDITOR_IMPORT=false
-
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV NEXT_PUBLIC_USE_SLIDE_EDITOR_IMPORT=${NEXT_PUBLIC_USE_SLIDE_EDITOR_IMPORT}
 
 COPY servers/nextjs/package.json servers/nextjs/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \

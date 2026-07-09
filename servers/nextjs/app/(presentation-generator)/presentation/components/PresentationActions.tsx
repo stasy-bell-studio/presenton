@@ -1255,7 +1255,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
     if (!detail.handled) {
       notify.warning(
         "Insert unavailable",
-        "Content can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected.",
+        "Content can be added only to slides imported through the slide editor.",
       );
       return false;
     }

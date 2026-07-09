@@ -26,3 +26,12 @@ def test_build_system_prompt_omits_empty_memory_blocks():
     assert "Deck memory (background only; may be partial or stale):" not in system_prompt
     assert "Chat memory (earlier messages in this conversation):" not in system_prompt
     assert "Tool Protocol" in system_prompt
+
+
+def test_system_prompt_preserves_existing_content_for_additive_edits():
+    system_prompt = build_system_prompt("", "")
+
+    assert "Treat add/insert/include requests as additive" in system_prompt
+    assert "preserve existing substantive charts, tables, images, text, icons" in system_prompt
+    assert "update or add only those requested text elements" in system_prompt
+    assert "Use deleteElement, deleteComponent, or deleteSlide only when deletion is explicitly requested" in system_prompt
