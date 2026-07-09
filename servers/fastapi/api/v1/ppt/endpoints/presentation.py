@@ -49,12 +49,11 @@ from models.sql.presentation_layout_code import PresentationLayoutCodeModel
 from models.sse_response import SSECompleteResponse, SSEErrorResponse, SSEResponse
 
 from services.database import get_async_session
+from services.database import async_session_maker
 from services.concurrent_service import CONCURRENT_SERVICE
 from models.sql.presentation import PresentationModel, PresentationVersion
 from models.sql.template_v2 import TemplateV2
-from models.sql.async_presentation_generation_status import (
-    AsyncPresentationGenerationTaskModel,
-)
+from models.sql.async_task import AsyncTaskModel
 from utils.asset_directory_utils import get_images_directory
 from utils.llm_calls.generate_presentation_structure import (
     generate_presentation_structure,
@@ -94,6 +93,23 @@ logger = logging.getLogger(__name__)
 
 
 PRESENTATION_ROUTER = APIRouter(prefix="/presentation", tags=["Presentation"])
+ASYNC_TASK_TYPE_PRESENTATION_GENERATE = "presentation.generate"
+
+
+def _presentation_task_progress_data(
+    created_slides: int,
+    remaining_slides: int,
+) -> dict[str, int]:
+    return {
+        "created_slides": max(created_slides, 0),
+        "remaining_slides": max(remaining_slides, 0),
+    }
+
+
+def _requested_slide_count(request: GeneratePresentationRequest) -> int:
+    if request.slides_markdown:
+        return len(request.slides_markdown)
+    return request.n_slides or 0
 
 
 def _extract_custom_template_id(layout_name: Optional[str]) -> Optional[uuid.UUID]:
@@ -1953,7 +1969,7 @@ async def check_if_api_request_is_valid(
 async def generate_presentation_handler(
     request: GeneratePresentationRequest,
     presentation_id: uuid.UUID,
-    async_status: Optional[AsyncPresentationGenerationTaskModel],
+    async_status: Optional[AsyncTaskModel],
     export_cookie_header: Optional[str] = None,
     sql_session: AsyncSession = Depends(get_async_session),
 ):
@@ -1975,6 +1991,10 @@ async def generate_presentation_handler(
             # Updating async status
             if async_status:
                 async_status.message = "Generating presentation outlines"
+                async_status.data = _presentation_task_progress_data(
+                    created_slides=0,
+                    remaining_slides=_requested_slide_count(request),
+                )
                 async_status.updated_at = datetime.now()
                 sql_session.add(async_status)
                 await sql_session.commit()
@@ -2207,6 +2227,10 @@ async def generate_presentation_handler(
         # Updating async status
         if async_status:
             async_status.message = "Generating slides"
+            async_status.data = _presentation_task_progress_data(
+                created_slides=0,
+                remaining_slides=final_n_slides or 0,
+            )
             async_status.updated_at = datetime.now()
             sql_session.add(async_status)
             await sql_session.commit()
@@ -2220,6 +2244,7 @@ async def generate_presentation_handler(
 
         slide_layout_indices = presentation_structure.slides
         slide_layouts = [layout_model.slides[idx] for idx in slide_layout_indices]
+        total_slides_to_create = len(slide_layouts)
 
         # Schedule slide content generation and asset fetching in batches of 10
         batch_size = 10
@@ -2263,6 +2288,15 @@ async def generate_presentation_handler(
                 slides.append(slide)
                 batch_slides.append(slide)
 
+            if async_status:
+                async_status.data = _presentation_task_progress_data(
+                    created_slides=len(slides),
+                    remaining_slides=total_slides_to_create - len(slides),
+                )
+                async_status.updated_at = datetime.now()
+                sql_session.add(async_status)
+                await sql_session.commit()
+
             if using_slides_markdown:
                 image_urls_for_batch = get_images_for_slides_from_outline(
                     presentation_outlines.slides[start:end]
@@ -2288,6 +2322,10 @@ async def generate_presentation_handler(
 
         if async_status:
             async_status.message = "Fetching assets for slides"
+            async_status.data = _presentation_task_progress_data(
+                created_slides=len(slides),
+                remaining_slides=0,
+            )
             async_status.updated_at = datetime.now()
             sql_session.add(async_status)
             await sql_session.commit()
@@ -2335,7 +2373,10 @@ async def generate_presentation_handler(
         if async_status:
             async_status.message = "Presentation generation completed"
             async_status.status = "completed"
-            async_status.data = response.model_dump(mode="json")
+            async_status.data = _presentation_task_progress_data(
+                created_slides=len(slides),
+                remaining_slides=0,
+            )
             async_status.updated_at = datetime.now()
             sql_session.add(async_status)
             await sql_session.commit()
@@ -2399,9 +2440,41 @@ async def generate_presentation_sync(
         raise HTTPException(status_code=500, detail="Presentation generation failed")
 
 
-@PRESENTATION_ROUTER.post(
-    "/generate/async", response_model=AsyncPresentationGenerationTaskModel
-)
+async def _run_generate_presentation_task(
+    request: GeneratePresentationRequest,
+    presentation_id: uuid.UUID,
+    task_id: str,
+    export_cookie_header: Optional[str],
+) -> None:
+    async with async_session_maker() as sql_session:
+        async_status = await sql_session.get(AsyncTaskModel, task_id)
+        if not async_status:
+            logger.warning(
+                "[presentation.generate.async] task missing task_id=%s",
+                task_id,
+            )
+            return
+
+        async_status.status = "processing"
+        async_status.message = "Starting presentation generation"
+        async_status.data = _presentation_task_progress_data(
+            created_slides=0,
+            remaining_slides=_requested_slide_count(request),
+        )
+        async_status.updated_at = datetime.now()
+        sql_session.add(async_status)
+        await sql_session.commit()
+
+        await generate_presentation_handler(
+            request,
+            presentation_id,
+            async_status=async_status,
+            export_cookie_header=export_cookie_header,
+            sql_session=sql_session,
+        )
+
+
+@PRESENTATION_ROUTER.post("/generate/async", response_model=AsyncTaskModel)
 async def generate_presentation_async(
     request_http: Request,
     request: GeneratePresentationRequest,
@@ -2411,21 +2484,25 @@ async def generate_presentation_async(
     try:
         (presentation_id,) = await check_if_api_request_is_valid(request, sql_session)
 
-        async_status = AsyncPresentationGenerationTaskModel(
+        async_status = AsyncTaskModel(
+            type=ASYNC_TASK_TYPE_PRESENTATION_GENERATE,
             status="pending",
             message="Queued for generation",
-            data=None,
+            data=_presentation_task_progress_data(
+                created_slides=0,
+                remaining_slides=_requested_slide_count(request),
+            ),
         )
         sql_session.add(async_status)
         await sql_session.commit()
+        await sql_session.refresh(async_status)
 
         background_tasks.add_task(
-            generate_presentation_handler,
+            _run_generate_presentation_task,
             request,
             presentation_id,
-            async_status=async_status,
-            export_cookie_header=_build_export_cookie_header(request_http),
-            sql_session=sql_session,
+            async_status.id,
+            _build_export_cookie_header(request_http),
         )
         return async_status
 
@@ -2437,14 +2514,12 @@ async def generate_presentation_async(
         raise e
 
 
-@PRESENTATION_ROUTER.get(
-    "/status/{id}", response_model=AsyncPresentationGenerationTaskModel
-)
+@PRESENTATION_ROUTER.get("/status/{id}", response_model=AsyncTaskModel)
 async def check_async_presentation_generation_status(
     id: str = Path(description="ID of the presentation generation task"),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
-    status = await sql_session.get(AsyncPresentationGenerationTaskModel, id)
+    status = await sql_session.get(AsyncTaskModel, id)
     if not status:
         raise HTTPException(
             status_code=404, detail="No presentation generation task found"

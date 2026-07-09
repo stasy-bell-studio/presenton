@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlmodel import SQLModel
 
+from models.sql.async_task import AsyncTaskModel
 from models.sql.async_presentation_generation_status import (
     AsyncPresentationGenerationTaskModel,
 )
@@ -63,6 +64,7 @@ async def create_db_and_tables():
                         TemplateCreateInfoModel.__table__,
                         TemplateModel.__table__,
                         WebhookSubscription.__table__,
+                        AsyncTaskModel.__table__,
                         AsyncPresentationGenerationTaskModel.__table__,
                         OllamaPullStatus.__table__,
                     ],

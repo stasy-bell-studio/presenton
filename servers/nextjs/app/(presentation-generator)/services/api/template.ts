@@ -51,6 +51,17 @@ export interface TemplateDetailsResponse extends TemplateListItem {
     assets?: unknown;
 }
 
+export interface AsyncTaskResponse {
+    id: string;
+    type: string;
+    status: string;
+    message?: string | null;
+    error?: unknown;
+    data?: unknown;
+    created_at: string;
+    updated_at: string;
+}
+
 export interface UpdateTemplateMetadataPayload {
     name: string;
     description?: string | null;
@@ -98,9 +109,9 @@ class TemplateService {
         }
     }
 
-    static async createTemplate(payload: CreateTemplatePayload): Promise<TemplateDetailsResponse> {
+    static async createTemplate(payload: CreateTemplatePayload): Promise<AsyncTaskResponse> {
         try {
-            const response = await fetch(getApiUrl(`/api/v1/ppt/templates`), {
+            const response = await fetch(getApiUrl(`/api/v1/ppt/templates/async`), {
                 method: "POST",
                 headers: getHeader(),
                 body: JSON.stringify(payload),

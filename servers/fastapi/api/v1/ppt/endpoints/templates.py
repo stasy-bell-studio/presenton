@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Body,
     Depends,
     File,
@@ -32,8 +33,10 @@ from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from models.api_error_model import APIErrorModel
+from models.sql.async_task import AsyncTaskModel
 from models.sql.template_v2 import TemplateV2
-from services.database import get_async_session
+from services.database import async_session_maker, get_async_session
 from services.export_task_service import EXPORT_TASK_SERVICE
 from templates.preview import (
     FontsUploadAndSlidesPreviewResponse,
@@ -60,6 +63,7 @@ TEMPLATE_ASSETS_ROUTER = APIRouter(prefix="/template", tags=["Template Assets"])
 LOGGER = logging.getLogger(__name__)
 _TEMPLATE_LAYOUT_PATCH_LOCKS: dict[str, asyncio.Lock] = {}
 _TEMPLATE_LAYOUT_PATCH_LOCKS_GUARD = asyncio.Lock()
+ASYNC_TASK_TYPE_TEMPLATE_CREATE = "template.create"
 
 
 class InitTemplateV2Request(BaseModel):
@@ -199,6 +203,16 @@ class TemplateV2Response(TemplateV2ListItem):
     merged_components: Optional[dict[str, Any]] = None
     layouts: Optional[dict[str, Any]] = None
     assets: Optional[dict[str, Any]] = None
+
+
+def _template_v2_task_progress_data(
+    created_layouts: int,
+    remaining_layouts: int,
+) -> dict[str, int]:
+    return {
+        "created_layouts": max(created_layouts, 0),
+        "remaining_layouts": max(remaining_layouts, 0),
+    }
 
 
 def _derive_template_name(pptx_url: str, pptx_path: str) -> str:
@@ -705,12 +719,7 @@ async def init_template_v2(
     return template.id
 
 
-@TEMPLATES_ROUTER.post(
-    "",
-    status_code=201,
-    response_model=TemplateV2Response,
-)
-async def create_template_v2(
+async def _create_template_v2_sync(
     request: CreateTemplateV2Request = Body(...),
     sql_session: AsyncSession = Depends(get_async_session),
 ):
@@ -755,6 +764,87 @@ async def create_template_v2(
         template.name,
     )
     return template
+
+
+async def _run_create_template_v2_task(
+    task_id: str,
+    request: CreateTemplateV2Request,
+) -> None:
+    async with async_session_maker() as sql_session:
+        task = await sql_session.get(AsyncTaskModel, task_id)
+        if not task:
+            LOGGER.warning(
+                "[templates.v2.create.async] task missing task_id=%s",
+                task_id,
+            )
+            return
+
+        try:
+            task.status = "processing"
+            task.message = "Creating template"
+            task.data = _template_v2_task_progress_data(
+                created_layouts=0,
+                remaining_layouts=len(request.slide_image_urls),
+            )
+            task.updated_at = datetime.now()
+            sql_session.add(task)
+            await sql_session.commit()
+
+            template = await _create_template_v2_sync(request, sql_session)
+            created_layouts = _count_layouts(template.layouts)
+
+            task.status = "completed"
+            task.message = "Template creation completed"
+            task.data = _template_v2_task_progress_data(
+                created_layouts=created_layouts,
+                remaining_layouts=len(request.slide_image_urls) - created_layouts,
+            )
+            task.updated_at = datetime.now()
+            sql_session.add(task)
+            await sql_session.commit()
+        except Exception as exc:
+            LOGGER.exception(
+                "[templates.v2.create.async] template creation failed task_id=%s",
+                task_id,
+            )
+            task.status = "error"
+            task.message = "Template creation failed"
+            api_error = APIErrorModel.from_exception(
+                exc
+                if isinstance(exc, HTTPException)
+                else HTTPException(status_code=500, detail="Template creation failed")
+            )
+            task.error = api_error.model_dump(mode="json")
+            task.updated_at = datetime.now()
+            sql_session.add(task)
+            await sql_session.commit()
+
+
+@TEMPLATES_ROUTER.post(
+    "/async",
+    status_code=201,
+    response_model=AsyncTaskModel,
+)
+async def create_template_v2(
+    background_tasks: BackgroundTasks,
+    request: CreateTemplateV2Request = Body(...),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    task = AsyncTaskModel(
+        type=ASYNC_TASK_TYPE_TEMPLATE_CREATE,
+        status="pending",
+        message="Queued for template creation",
+        data=_template_v2_task_progress_data(
+            created_layouts=0,
+            remaining_layouts=len(request.slide_image_urls),
+        ),
+    )
+    sql_session.add(task)
+    await sql_session.commit()
+    await sql_session.refresh(task)
+
+    background_tasks.add_task(_run_create_template_v2_task, task.id, request)
+    return task
 
 
 @TEMPLATES_ROUTER.post(

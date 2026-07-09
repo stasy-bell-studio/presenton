@@ -24,6 +24,7 @@ REVISION_TEMPLATE_V2_LAYOUTS_OPTIONAL = "2c8f4a1b9d7e"
 REVISION_FONT_UPLOADS = "5d7e9a1b2c3f"
 REVISION_TEMPLATE_V2_ID_STRINGS = "3f2a1b4c5d6e"
 REVISION_TEMPLATE_V2_IS_DEFAULT = "4b7c9d0e1f2a"
+REVISION_ASYNC_TASKS = "a7d4c9e2f1b3"
 
 
 async def migrate_database_on_startup() -> None:
@@ -136,6 +137,7 @@ def _infer_revision_from_schema(inspector, tables: set[str], head_revision: str)
         template_v2_is_default_ready = _has_column(
             inspector, "template_v2", "is_default"
         )
+        async_tasks_ready = "async_tasks" in tables
         if (
             final_template_columns.issubset(cols)
             and not {"cluster_candidates", "clusters"}.intersection(cols)
@@ -146,10 +148,12 @@ def _infer_revision_from_schema(inspector, tables: set[str], head_revision: str)
                     return REVISION_TEMPLATE_V2_LAYOUTS_OPTIONAL
                 if not template_v2_id_strings_ready:
                     return REVISION_FONT_UPLOADS
+                if not template_v2_is_default_ready:
+                    return REVISION_TEMPLATE_V2_ID_STRINGS
                 return (
                     head_revision
-                    if template_v2_is_default_ready
-                    else REVISION_TEMPLATE_V2_ID_STRINGS
+                    if async_tasks_ready
+                    else REVISION_TEMPLATE_V2_IS_DEFAULT
                 )
             if slide_ui_ready and presentation_fonts_ready:
                 return REVISION_PRESENTATION_FONTS

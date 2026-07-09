@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi import HTTPException
+from fastapi import BackgroundTasks, HTTPException
 
 from api.v1.ppt.endpoints.templates import (
     CreateTemplateV2LayoutsRequest,
@@ -13,6 +13,7 @@ from api.v1.ppt.endpoints.templates import (
     InitTemplateV2Request,
     PatchTemplateV2SlideLayoutRequest,
     UpdateTemplateV2MetadataRequest,
+    _create_template_v2_sync,
     create_template_v2_slide_layouts,
     create_template_v2,
     delete_template_v2,
@@ -164,7 +165,7 @@ def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async
         return_value=4801,
     ) as randint_mock:
         template = asyncio.run(
-            create_template_v2(
+            _create_template_v2_sync(
                 CreateTemplateV2Request(
                     pptx_url="/app_data/uploads/quarterly-review.pptx",
                     slide_image_urls=["/app_data/images/slide-1.png"],
@@ -239,7 +240,7 @@ def test_create_template_v2_caps_raw_layouts_to_preview_images(tmp_path, fake_as
         return_value=4801,
     ):
         template = asyncio.run(
-            create_template_v2(
+            _create_template_v2_sync(
                 CreateTemplateV2Request(
                     pptx_url="/app_data/uploads/slidesgo.pptx",
                     slide_image_urls=["/app_data/images/slide-1.png"],
@@ -277,7 +278,7 @@ def test_create_template_v2_persists_when_component_dedup_fails(
         return_value=4801,
     ):
         template = asyncio.run(
-            create_template_v2(
+            _create_template_v2_sync(
                 CreateTemplateV2Request(
                     pptx_url="/app_data/uploads/dedup-fails.pptx",
                     slide_image_urls=["/app_data/images/slide-1.png"],
@@ -294,7 +295,7 @@ def test_create_template_v2_persists_when_component_dedup_fails(
 def test_create_template_v2_requires_slide_images(fake_async_session):
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
-            create_template_v2(
+            _create_template_v2_sync(
                 CreateTemplateV2Request(
                     pptx_url="/app_data/uploads/template.pptx",
                     slide_image_urls=[],
@@ -305,6 +306,29 @@ def test_create_template_v2_requires_slide_images(fake_async_session):
 
     assert exc.value.status_code == 400
     assert exc.value.detail == "At least one slide image is required"
+
+
+def test_create_template_v2_async_enqueues_task(fake_async_session):
+    background_tasks = BackgroundTasks()
+
+    task = asyncio.run(
+        create_template_v2(
+            background_tasks=background_tasks,
+            request=CreateTemplateV2Request(
+                pptx_url="/app_data/uploads/template.pptx",
+                slide_image_urls=["/app_data/images/slide-1.png"],
+            ),
+            sql_session=fake_async_session,
+        )
+    )
+
+    assert task.type == "template.create"
+    assert task.status == "pending"
+    assert task.message == "Queued for template creation"
+    assert task.data == {"created_layouts": 0, "remaining_layouts": 1}
+    assert fake_async_session.added == [task]
+    assert fake_async_session.commit_count == 1
+    assert len(background_tasks.tasks) == 1
 
 
 def test_template_v2_request_ids_accept_non_uuid_strings():
