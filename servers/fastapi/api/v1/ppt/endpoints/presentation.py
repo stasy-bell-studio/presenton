@@ -2211,6 +2211,7 @@ async def generate_presentation_handler(
 
         image_generation_service = ImageGenerationService(get_images_directory())
         async_assets_generation_tasks = []
+        image_warnings: List[dict] = []
 
         # 7. Generate slide content concurrently (batched), then build slides and fetch assets
         slides: List[SlideModel] = []
@@ -2275,6 +2276,8 @@ async def generate_presentation_handler(
                         slide,
                         outline_image_urls=image_urls_for_batch[offset],
                         icon_weight=layout_model.icon_weight,
+                        allow_image_fallback=True,
+                        image_warnings=image_warnings,
                     )
                 )
                 for offset, slide in enumerate(batch_slides)
@@ -2292,6 +2295,12 @@ async def generate_presentation_handler(
         generated_assets = []
         for assets_list in generated_assets_list:
             generated_assets.extend(assets_list)
+        for warning in image_warnings:
+            logger.warning(
+                "Slide image generation warning: presentation_id=%s detail=%s",
+                presentation_id,
+                warning.get("detail"),
+            )
 
         if is_template_v2:
             for slide in slides:

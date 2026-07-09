@@ -205,6 +205,8 @@ async def process_old_and_new_slides_and_fetch_assets(
     new_slide_content: dict,
     icon_weight: str = DEFAULT_ICON_WEIGHT,
     use_template_v2_asset_fields: bool = False,
+    allow_image_fallback: bool = False,
+    image_warnings: Optional[List[dict]] = None,
 ) -> List[ImageAsset]:
     resolved_icon_weight = normalize_icon_weight(icon_weight)
     old_image_assets = _asset_dicts_with_prompt(
@@ -274,7 +276,10 @@ async def process_old_and_new_slides_and_fetch_assets(
         )
         fetched_icon_targets.append(new_icon)
 
-    new_images = await asyncio.gather(*async_image_fetch_tasks)
+    new_images = await asyncio.gather(
+        *async_image_fetch_tasks,
+        return_exceptions=allow_image_fallback,
+    )
     new_icons = await asyncio.gather(*async_icon_fetch_tasks)
 
     # list of new assets
@@ -282,7 +287,13 @@ async def process_old_and_new_slides_and_fetch_assets(
 
     # Sets new image and icon urls for assets that were fetched
     for target, fetched_image in zip(fetched_image_targets, new_images):
-        if isinstance(fetched_image, ImageAsset):
+        if isinstance(fetched_image, BaseException):
+            if not allow_image_fallback:
+                raise fetched_image
+            image_url = normalize_slide_asset_url("/static/images/placeholder.jpg")
+            if image_warnings is not None and isinstance(fetched_image, Exception):
+                image_warnings.append(image_generation_warning(fetched_image))
+        elif isinstance(fetched_image, ImageAsset):
             new_assets.append(fetched_image)
             image_url = filesystem_image_path_to_app_data_url(fetched_image.path)
         else:

@@ -891,6 +891,7 @@ class PresentationChatMemoryLayer:
                 }
 
             updated_content = copy.deepcopy(content)
+            image_warnings: list[dict] = []
             new_assets = await process_old_and_new_slides_and_fetch_assets(
                 image_generation_service=image_generation_service,
                 old_slide_content=existing_slide.content or {},
@@ -899,7 +900,17 @@ class PresentationChatMemoryLayer:
                 use_template_v2_asset_fields=existing_slide.layout_group.startswith(
                     "template-v2"
                 ),
+                allow_image_fallback=True,
+                image_warnings=image_warnings,
             )
+            for warning in image_warnings:
+                LOGGER.warning(
+                    "Chat slide replacement image generation warning: "
+                    "presentation_id=%s slide_index=%s detail=%s",
+                    self._presentation_id,
+                    target_index,
+                    warning.get("detail"),
+                )
 
             existing_slide.id = uuid.uuid4()
             existing_slide.layout = layout_id
@@ -966,11 +977,20 @@ class PresentationChatMemoryLayer:
             content=new_slide_content,
             speaker_note=self._extract_speaker_note(new_slide_content),
         )
+        image_warnings: list[dict] = []
         new_assets = await process_slide_and_fetch_assets(
             image_generation_service=image_generation_service,
             slide=new_slide,
             icon_weight=icon_weight,
+            allow_image_fallback=True,
+            image_warnings=image_warnings,
         )
+        for warning in image_warnings:
+            LOGGER.warning(
+                "Chat slide image generation warning: presentation_id=%s detail=%s",
+                self._presentation_id,
+                warning.get("detail"),
+            )
         new_slide.ui = await self._build_template_v2_slide_ui(
             presentation=presentation,
             layout_id=layout_id,

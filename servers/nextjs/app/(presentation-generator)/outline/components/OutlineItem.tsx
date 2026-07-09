@@ -20,6 +20,9 @@ import {
 import { marked } from "marked";
 import { trimTextToWordLimit } from "@/utils/presentationLimits";
 
+const outlineTextWrapClass =
+  "min-w-0 max-w-full [overflow-wrap:anywhere] [word-break:break-word]";
+
 interface OutlineItemProps {
   sortableId: string;
   slideOutline: {
@@ -255,7 +258,7 @@ export function OutlineItem({
 
         <div
           id={`outline-item-${index}`}
-          className="flex flex-col basis-full gap-2"
+          className="flex min-w-0 flex-col basis-full gap-2"
         >
           <p className="text-black w-fit text-[10px] font-medium  bg-white border border-[#EDEEEF] rounded-[80px] px-2.5">
             Slide {index}
@@ -264,16 +267,16 @@ export function OutlineItem({
           {isStreaming ? (
             isActiveStreaming ? (
               <div
-                className="text-sm flex-1 font-normal prose prose-sm max-w-none"
+                className={`text-sm flex-1 font-normal prose prose-sm max-w-none ${outlineTextWrapClass}`}
                 dangerouslySetInnerHTML={{ __html: renderedHtml || "" }}
               />
             ) : stableHtml ? (
               <div
-                className="text-sm flex-1 font-normal prose prose-sm max-w-none"
+                className={`text-sm flex-1 font-normal prose prose-sm max-w-none ${outlineTextWrapClass}`}
                 dangerouslySetInnerHTML={{ __html: stableHtml }}
               />
             ) : (
-              <p className="text-sm  flex-1 font-normal">
+              <p className={`text-sm flex-1 font-normal ${outlineTextWrapClass}`}>
                 {slideOutline.content || ""}
               </p>
             )
@@ -286,7 +289,7 @@ export function OutlineItem({
                   onChange={handleTextareaChange}
                   onBlur={() => setIsEditing(false)}
                   placeholder="Enter markdown content here..."
-                  className="min-h-[140px] resize-none overflow-hidden rounded-[8px] border-[#D8D8DF] bg-[#FBFBFC] px-3 py-3 font-mono text-[13px] leading-6 text-[#191919] shadow-none focus-visible:border-[#7A5AF8] focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/20"
+                  className={`min-h-[140px] resize-none overflow-hidden rounded-[8px] border-[#D8D8DF] bg-[#FBFBFC] px-3 py-3 font-mono text-[13px] leading-6 text-[#191919] shadow-none focus-visible:border-[#7A5AF8] focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/20 ${outlineTextWrapClass}`}
                 />
               ) : (
                 <div
@@ -301,11 +304,11 @@ export function OutlineItem({
                       setIsEditing(true);
                     }
                   }}
-                  className="block min-h-[60px] w-full rounded-[8px] px-0 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/25"
+                  className={`block min-h-[60px] w-full min-w-0 rounded-[8px] px-0 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/25 ${outlineTextWrapClass}`}
                 >
                   {previewHtml ? (
                     <div
-                      className="text-sm sm:text-base flex-1 font-normal prose prose-sm max-w-none"
+                      className={`text-sm sm:text-base flex-1 font-normal prose prose-sm max-w-none ${outlineTextWrapClass}`}
                       dangerouslySetInnerHTML={{ __html: previewHtml }}
                     />
                   ) : (

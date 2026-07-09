@@ -1038,7 +1038,7 @@ function RawRichTextElement({
       verticalAlign={verticalAlign}
       lineHeight={textLineHeight}
       letterSpacing={font.letterSpacing}
-      wrap={font.wrap === "none" ? "none" : "word"}
+      wrap={font.wrap === "none" ? "none" : "char"}
       {...shadowProps(element)}
       listening={interactive}
     />

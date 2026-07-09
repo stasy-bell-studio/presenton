@@ -1,48 +1,7 @@
+import { extractApiErrorMessage } from "@/utils/apiErrorMessages";
+
 function isAbsoluteHttpUrl(path: string): boolean {
   return /^https?:\/\//i.test(path);
-}
-
-interface ApiErrorResponse {
-  detail?: unknown;
-  message?: string;
-  error?: string;
-}
-
-function normalizeApiErrorDetail(detail: unknown): string | null {
-  if (!detail) return null;
-
-  if (typeof detail === "string") {
-    return detail;
-  }
-
-  if (Array.isArray(detail)) {
-    const parts = detail
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object") {
-          const maybeMsg = (item as { msg?: unknown }).msg;
-          const maybeLoc = (item as { loc?: unknown }).loc;
-          const locPath = Array.isArray(maybeLoc)
-            ? maybeLoc
-                .filter((value) => typeof value === "string" || typeof value === "number")
-                .join(".")
-            : "";
-          if (typeof maybeMsg === "string") {
-            return locPath ? `${locPath}: ${maybeMsg}` : maybeMsg;
-          }
-        }
-        return null;
-      })
-      .filter((value): value is string => Boolean(value));
-
-    return parts.length ? parts.join("; ") : JSON.stringify(detail);
-  }
-
-  if (typeof detail === "object") {
-    return JSON.stringify(detail);
-  }
-
-  return String(detail);
 }
 
 export async function getApiErrorMessage(
@@ -51,17 +10,11 @@ export async function getApiErrorMessage(
 ): Promise<string> {
   try {
     const errorData: unknown = await response.clone().json();
-    if (errorData && typeof errorData === "object" && !Array.isArray(errorData)) {
-      const apiError = errorData as ApiErrorResponse;
-      const normalizedDetail = normalizeApiErrorDetail(apiError.detail);
-      return normalizedDetail || apiError.message || apiError.error || fallbackMessage;
-    }
-
-    return normalizeApiErrorDetail(errorData) || fallbackMessage;
+    return extractApiErrorMessage(errorData, fallbackMessage, response.status);
   } catch {
     try {
       const text = await response.text();
-      return text || fallbackMessage;
+      return extractApiErrorMessage(text, fallbackMessage, response.status);
     } catch {
       return fallbackMessage;
     }

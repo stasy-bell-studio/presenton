@@ -401,9 +401,22 @@ def test_handle_llm_client_exceptions(monkeypatch):
 
     from google.genai.errors import APIError as GoogleAPIError
     from llmai.shared.errors import BaseError as LLMAIBaseError
+    from utils.provider_error_messages import INVALID_API_KEY_MESSAGE
 
     llmai_err = LLMAIBaseError(status_code=429, message="busy")
     assert handle_llm_client_exceptions(llmai_err).detail == "busy"
+
+    wrapped_auth_err = LLMAIBaseError(
+        status_code=401,
+        message=(
+            "Error code: 401 - {'error': {'message': "
+            "'Incorrect API key provided: sk-proj-secret', "
+            "'code': 'invalid_api_key'}}"
+        ),
+    )
+    wrapped_auth_response = handle_llm_client_exceptions(wrapped_auth_err)
+    assert wrapped_auth_response.detail == INVALID_API_KEY_MESSAGE
+    assert "sk-proj" not in wrapped_auth_response.detail
 
     assert "OpenAI API request failed" in handle_llm_client_exceptions(
         OpenAIAPIError(

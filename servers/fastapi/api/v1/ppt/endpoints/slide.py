@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +19,7 @@ from utils.process_slides import process_old_and_new_slides_and_fetch_assets
 
 
 SLIDE_ROUTER = APIRouter(prefix="/slide", tags=["Slide"])
+LOGGER = logging.getLogger(__name__)
 
 
 @SLIDE_ROUTER.post("/edit")
@@ -60,13 +62,23 @@ async def edit_slide(
     image_generation_service = ImageGenerationService(get_images_directory())
 
     # This will mutate edited_slide_content
+    image_warnings: list[dict] = []
     new_assets = await process_old_and_new_slides_and_fetch_assets(
         image_generation_service,
         slide.content,
         edited_slide_content,
         icon_weight=presentation.get_layout().icon_weight,
         use_template_v2_asset_fields=slide.layout_group.startswith("template-v2"),
+        allow_image_fallback=True,
+        image_warnings=image_warnings,
     )
+    for warning in image_warnings:
+        LOGGER.warning(
+            "Slide edit image generation warning: presentation_id=%s slide_id=%s detail=%s",
+            presentation.id,
+            slide.id,
+            warning.get("detail"),
+        )
 
     # Always assign a new unique id to the slide
     slide.id = uuid.uuid4()

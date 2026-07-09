@@ -644,13 +644,20 @@ export function layoutRichText(
         });
       } else {
         const space = /^[ \t]+$/.test(part);
-        tokens.push({
-          text: part,
-          font: run.font,
-          newline: false,
-          space,
-          width: measureRunText(part, run.font),
-        });
+        const measuredParts =
+          wrap !== "none" && !space
+            ? splitOversizedTextSegment(part, run.font, maxWidth, measureRunText)
+            : [{ text: part, width: measureRunText(part, run.font) }];
+
+        for (const measuredPart of measuredParts) {
+          tokens.push({
+            text: measuredPart.text,
+            font: run.font,
+            newline: false,
+            space,
+            width: measuredPart.width,
+          });
+        }
       }
     }
   }
@@ -742,23 +749,29 @@ export function layoutRenderTextRuns(
         pushLine();
         continue;
       }
-      const segmentWidth = measureRenderText(part, run.font);
       const isWhitespace = part.trim().length === 0;
-      if (
-        wrap !== "none" &&
-        !isWhitespace &&
-        lineWidth > 0 &&
-        lineWidth + segmentWidth > width
-      ) {
-        pushLine();
+      const segments =
+        wrap !== "none" && !isWhitespace
+          ? splitOversizedTextSegment(part, run.font, width, measureRenderText)
+          : [{ text: part, width: measureRenderText(part, run.font) }];
+
+      for (const segment of segments) {
+        if (
+          wrap !== "none" &&
+          !isWhitespace &&
+          lineWidth > 0 &&
+          lineWidth + segment.width > width
+        ) {
+          pushLine();
+        }
+        if (lines.length === 0) lines.push([]);
+        lines[lines.length - 1].push({
+          ...run,
+          text: segment.text,
+          width: segment.width,
+        });
+        lineWidth += segment.width;
       }
-      if (lines.length === 0) lines.push([]);
-      lines[lines.length - 1].push({
-        ...run,
-        text: part,
-        width: segmentWidth,
-      });
-      lineWidth += segmentWidth;
     }
   }
 
@@ -776,6 +789,51 @@ export function lineRenderHeight(
         segment.font.size * (segment.font.lineHeight ?? fallbackLineHeight),
     ),
   );
+}
+
+function splitOversizedTextSegment(
+  text: string,
+  font: RenderTextFont,
+  maxWidth: number,
+  measure: (text: string, font: RenderTextFont) => number,
+): Array<{ text: string; width: number }> {
+  const fullWidth = measure(text, font);
+  if (!text || maxWidth <= 0 || fullWidth <= maxWidth) {
+    return [{ text, width: fullWidth }];
+  }
+
+  const characters = Array.from(text);
+  const segments: Array<{ text: string; width: number }> = [];
+  let start = 0;
+
+  while (start < characters.length) {
+    let low = start + 1;
+    let high = characters.length;
+    let bestEnd = low;
+    let bestWidth = measure(characters.slice(start, low).join(""), font);
+
+    while (low <= high) {
+      const mid = Math.floor((low + high) / 2);
+      const candidate = characters.slice(start, mid).join("");
+      const candidateWidth = measure(candidate, font);
+
+      if (candidateWidth <= maxWidth || mid === start + 1) {
+        bestEnd = mid;
+        bestWidth = candidateWidth;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
+
+    segments.push({
+      text: characters.slice(start, bestEnd).join(""),
+      width: bestWidth,
+    });
+    start = bestEnd;
+  }
+
+  return segments;
 }
 
 export function measureNoWrapTextWidth(text: string, font: RenderTextFont) {
