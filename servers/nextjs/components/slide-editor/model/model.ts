@@ -438,17 +438,21 @@ export function resizeRawElementBounds(
   return elements.map((value) => {
     const element = asRecord(value);
     if (!element) return value;
-    const box = elementBox(element);
+    const explicitSize = readOptionalSize(element.size);
     const childInfo = childArrayInfo(element);
     const resizedChildren = childInfo
       ? resizeRawElementBounds(childInfo.items, safeScaleX, safeScaleY)
       : null;
     return {
       ...element,
-      size: {
-        width: Math.max(1, box.width * safeScaleX),
-        height: Math.max(1, box.height * safeScaleY),
-      },
+      ...(explicitSize
+        ? {
+            size: {
+              width: Math.max(1, explicitSize.width * safeScaleX),
+              height: Math.max(1, explicitSize.height * safeScaleY),
+            },
+          }
+        : {}),
       ...(childInfo && resizedChildren
         ? withUpdatedChildItems({}, childInfo, resizedChildren)
         : {}),
@@ -466,6 +470,7 @@ export function scaleRawElements(
     const element = asRecord(value);
     if (!element) return value;
     const box = elementBox(element);
+    const explicitSize = readOptionalSize(element.size);
     const childInfo = childArrayInfo(element);
     const scaledChildren = childInfo
       ? scaleRawElements(childInfo.items, scaleX, scaleY, fontScale)
@@ -474,7 +479,14 @@ export function scaleRawElements(
     return {
       ...scaledElement,
       position: { x: box.x * scaleX, y: box.y * scaleY },
-      size: { width: box.width * scaleX, height: box.height * scaleY },
+      ...(explicitSize
+        ? {
+            size: {
+              width: Math.max(1, explicitSize.width * scaleX),
+              height: Math.max(1, explicitSize.height * scaleY),
+            },
+          }
+        : {}),
       ...(childInfo && scaledChildren
         ? withUpdatedChildItems({}, childInfo, scaledChildren)
         : {}),
