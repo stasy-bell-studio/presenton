@@ -243,7 +243,8 @@ class ChatTools:
                 description=(
                     "Update visible element content or geometry using an elementPath returned "
                     "by getSlideAtIndex. Supports text, lists, table, chart, image data, "
-                    "position, size, and toolbar-style element property patches. For "
+                    "position, size, and toolbar-style font, color, fill, stroke, "
+                    "alignment, opacity, and element property patches. For "
                     "charts, use the chart field for chartType, categories, "
                     "series.values, colors, axes, dataLabels, and legend."
                 ),
@@ -681,6 +682,9 @@ class ChatTools:
             element_patch = json.loads(json.dumps(parsed, ensure_ascii=False))
             if not isinstance(element_patch, dict):
                 raise ValueError("'element' must be a JSON object.")
+        style_patch = self._element_style_patch_from_update_payload(payload)
+        if style_patch:
+            element_patch = self._merge_dict_patch(element_patch or {}, style_patch)
         return await self._memory.update_slide_ui_element(
             index=payload.index,
             element_path=payload.element_path,
@@ -803,6 +807,46 @@ class ChatTools:
             return normalized
 
         raise ValueError("Tool arguments must be a JSON object.")
+
+    @staticmethod
+    def _element_style_patch_from_update_payload(
+        payload: UpdateSlideElementInput,
+    ) -> dict[str, Any]:
+        patch: dict[str, Any] = {}
+        if payload.font is not None:
+            font = payload.font.model_dump(exclude_none=True)
+            if font:
+                patch["font"] = font
+        if payload.alignment is not None:
+            alignment = payload.alignment.model_dump(exclude_none=True)
+            if alignment:
+                patch["alignment"] = alignment
+        if payload.fill is not None:
+            fill = payload.fill.model_dump(exclude_none=True)
+            if fill:
+                patch["fill"] = fill
+        if payload.stroke is not None:
+            stroke = payload.stroke.model_dump(exclude_none=True)
+            if stroke:
+                patch["stroke"] = stroke
+        if payload.color is not None:
+            patch["color"] = payload.color
+        if payload.opacity is not None:
+            patch["opacity"] = payload.opacity
+        return patch
+
+    @staticmethod
+    def _merge_dict_patch(
+        target: dict[str, Any],
+        patch: dict[str, Any],
+    ) -> dict[str, Any]:
+        merged = json.loads(json.dumps(target, ensure_ascii=False))
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = ChatTools._merge_dict_patch(merged[key], value)
+            else:
+                merged[key] = json.loads(json.dumps(value, ensure_ascii=False))
+        return merged
 
     def _repair_tool_args(
         self,

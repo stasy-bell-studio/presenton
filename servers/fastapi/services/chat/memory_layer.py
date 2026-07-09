@@ -1236,6 +1236,7 @@ class PresentationChatMemoryLayer:
         size: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         from services.chat.slide_ui_helpers import (
+            _apply_element_style_patch,
             _apply_image_element_value,
             _component_id_for_path,
             _content_update_requested_for_type,
@@ -1270,6 +1271,7 @@ class PresentationChatMemoryLayer:
                 raise ValueError("element.type must be a string when provided.")
             self._merge_ui_patch(element, element_patch)
             self._sync_ui_text_fields(element)
+            _apply_element_style_patch(element, element_patch)
             element_type = str(element.get("type") or element_type)
             if element_type == "chart":
                 _normalize_chart_element(element, theme)

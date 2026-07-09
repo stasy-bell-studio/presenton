@@ -335,6 +335,66 @@ class SlideElementSizeInput(StrictSchemaModel):
     height: float = Field(ge=1, le=10000)
 
 
+class SlideElementFontInput(OpenAIStrictSchemaModel):
+    family: str | None = Field(..., min_length=1, max_length=200)
+    size: float | None = Field(..., ge=1, le=512)
+    color: str | None = Field(..., min_length=1, max_length=64)
+    bold: bool | None = Field(...)
+    italic: bool | None = Field(...)
+    underline: bool | None = Field(...)
+    line_height: float | None = Field(..., alias="lineHeight", ge=0.1, le=10)
+    letter_spacing: float | None = Field(..., alias="letterSpacing", ge=-100, le=100)
+    wrap: Literal["word", "char", "none"] | None = Field(...)
+    opacity: float | None = Field(..., ge=0, le=1)
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_font_aliases(cls, value: Any) -> Any:
+        if not isinstance(value, dict):
+            return value
+        normalized = dict(value)
+        alias_pairs = (
+            ("fontFamily", "family"),
+            ("font_family", "family"),
+            ("fontName", "family"),
+            ("font_name", "family"),
+            ("name", "family"),
+            ("fontSize", "size"),
+            ("font_size", "size"),
+            ("fontColor", "color"),
+            ("font_color", "color"),
+            ("textColor", "color"),
+            ("text_color", "color"),
+            ("line_height", "lineHeight"),
+            ("line-height", "lineHeight"),
+            ("letter_spacing", "letterSpacing"),
+            ("letter-spacing", "letterSpacing"),
+        )
+        for source_key, target_key in alias_pairs:
+            if source_key in normalized and target_key not in normalized:
+                normalized[target_key] = normalized.pop(source_key)
+        return normalized
+
+
+class SlideElementAlignmentInput(OpenAIStrictSchemaModel):
+    horizontal: Literal["left", "center", "right"] | None = Field(...)
+    vertical: Literal["top", "middle", "bottom"] | None = Field(...)
+
+
+class SlideElementFillInput(OpenAIStrictSchemaModel):
+    color: str | None = Field(..., min_length=1, max_length=64)
+    opacity: float | None = Field(..., ge=0, le=1)
+
+
+class SlideElementStrokeInput(OpenAIStrictSchemaModel):
+    color: str | None = Field(..., min_length=1, max_length=64)
+    opacity: float | None = Field(..., ge=0, le=1)
+    width: float | None = Field(..., ge=0, le=100)
+    dash: list[float] | None = Field(..., min_length=1, max_length=12)
+
+
 class UpdateSlideElementInput(OpenAIStrictSchemaModel):
     index: int = Field(..., ge=0, le=1000)
     element_path: str = Field(
@@ -386,6 +446,41 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
             "for chart type, colors, axes, legend, and data labels. "
             "Object values are merged into the current element."
         ),
+    )
+    font: SlideElementFontInput | None = Field(
+        ...,
+        description=(
+            "Toolbar-style text font patch. For text, text-list, and table "
+            "elements, this updates both the element font and existing text runs."
+        ),
+    )
+    alignment: SlideElementAlignmentInput | None = Field(
+        ...,
+        description="Toolbar-style text alignment patch for text elements.",
+    )
+    fill: SlideElementFillInput | None = Field(
+        ...,
+        description="Toolbar-style fill/background patch for elements that support fill.",
+    )
+    stroke: SlideElementStrokeInput | None = Field(
+        ...,
+        description="Toolbar-style stroke/border/line patch.",
+    )
+    color: str | None = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description=(
+            "Convenience color patch. For text, text-list, and table elements this "
+            "means font.color; for icons/images it updates element color; for "
+            "basic shapes it updates fill color."
+        ),
+    )
+    opacity: float | None = Field(
+        ...,
+        ge=0,
+        le=1,
+        description="Toolbar-style element opacity patch.",
     )
     position: SlideElementPositionInput | None = Field(
         ...,
@@ -439,6 +534,99 @@ class UpdateSlideElementInput(OpenAIStrictSchemaModel):
                 for key in chart_keys
                 if key in normalized
             }
+
+        font_aliases = {
+            "fontFamily": "family",
+            "font_family": "family",
+            "fontName": "family",
+            "font_name": "family",
+            "fontSize": "size",
+            "font_size": "size",
+            "fontColor": "color",
+            "font_color": "color",
+            "textColor": "color",
+            "text_color": "color",
+            "bold": "bold",
+            "italic": "italic",
+            "underline": "underline",
+            "lineHeight": "lineHeight",
+            "line_height": "lineHeight",
+            "letterSpacing": "letterSpacing",
+            "letter_spacing": "letterSpacing",
+            "wrap": "wrap",
+        }
+        font_patch = (
+            dict(normalized["font"])
+            if isinstance(normalized.get("font"), dict)
+            else {}
+        )
+        for source_key, target_key in font_aliases.items():
+            if source_key in normalized and target_key not in font_patch:
+                font_patch[target_key] = normalized.pop(source_key)
+        if font_patch and "font" not in normalized:
+            normalized["font"] = font_patch
+        elif font_patch:
+            normalized["font"] = font_patch
+
+        alignment_aliases = {
+            "align": "horizontal",
+            "textAlign": "horizontal",
+            "text_align": "horizontal",
+            "horizontalAlign": "horizontal",
+            "horizontal_align": "horizontal",
+            "horizontalAlignment": "horizontal",
+            "verticalAlign": "vertical",
+            "vertical_align": "vertical",
+            "verticalAlignment": "vertical",
+        }
+        alignment_patch = (
+            dict(normalized["alignment"])
+            if isinstance(normalized.get("alignment"), dict)
+            else {}
+        )
+        for source_key, target_key in alignment_aliases.items():
+            if source_key in normalized and target_key not in alignment_patch:
+                alignment_patch[target_key] = normalized.pop(source_key)
+        if alignment_patch:
+            normalized["alignment"] = alignment_patch
+
+        fill_patch = (
+            dict(normalized["fill"])
+            if isinstance(normalized.get("fill"), dict)
+            else {}
+        )
+        for source_key in (
+            "fillColor",
+            "fill_color",
+            "backgroundColor",
+            "background_color",
+        ):
+            if source_key in normalized and "color" not in fill_patch:
+                fill_patch["color"] = normalized.pop(source_key)
+        if "fillOpacity" in normalized and "opacity" not in fill_patch:
+            fill_patch["opacity"] = normalized.pop("fillOpacity")
+        if "fill_opacity" in normalized and "opacity" not in fill_patch:
+            fill_patch["opacity"] = normalized.pop("fill_opacity")
+        if fill_patch:
+            normalized["fill"] = fill_patch
+
+        stroke_patch = (
+            dict(normalized["stroke"])
+            if isinstance(normalized.get("stroke"), dict)
+            else {}
+        )
+        for source_key in ("strokeColor", "stroke_color", "borderColor", "border_color"):
+            if source_key in normalized and "color" not in stroke_patch:
+                stroke_patch["color"] = normalized.pop(source_key)
+        for source_key in ("strokeWidth", "stroke_width", "borderWidth", "border_width"):
+            if source_key in normalized and "width" not in stroke_patch:
+                stroke_patch["width"] = normalized.pop(source_key)
+        if "strokeOpacity" in normalized and "opacity" not in stroke_patch:
+            stroke_patch["opacity"] = normalized.pop("strokeOpacity")
+        if "stroke_opacity" in normalized and "opacity" not in stroke_patch:
+            stroke_patch["opacity"] = normalized.pop("stroke_opacity")
+        if stroke_patch:
+            normalized["stroke"] = stroke_patch
         return normalized
 
 

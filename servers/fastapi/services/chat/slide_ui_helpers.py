@@ -997,6 +997,7 @@ def _visit_editable_element(
                 "content_editable": is_content_editable,
                 "geometry_editable": True,
                 "content": _element_content(element),
+                "style": _element_style(element),
                 "limits": _element_limits(element),
             }
         )
@@ -1088,6 +1089,89 @@ def _element_content(element: dict[str, Any]) -> Any:
             "data": element.get("data"),
             "is_icon": element.get("is_icon"),
         }
+    return None
+
+
+def _element_style(element: dict[str, Any]) -> dict[str, Any]:
+    keys = (
+        "font",
+        "alignment",
+        "fill",
+        "stroke",
+        "color",
+        "opacity",
+        "shadow",
+        "border_radius",
+        "borderRadius",
+        "padding",
+        "marker",
+        "fit",
+        "focus_x",
+        "focus_y",
+        "crop_scale",
+    )
+    style = {key: copy.deepcopy(element[key]) for key in keys if key in element}
+    base_font = style.get("font") if isinstance(style.get("font"), dict) else {}
+    run_font = _first_text_font(element) or {}
+    if base_font or run_font:
+        style["font"] = {**copy.deepcopy(base_font), **run_font}
+    return style
+
+
+def _first_text_font(element: dict[str, Any]) -> dict[str, Any] | None:
+    element_type = element.get("type")
+    if element_type == "text":
+        return _first_run_font(element.get("runs"))
+    if element_type == "text-list":
+        items = element.get("items")
+        if not isinstance(items, list):
+            return None
+        for item in items:
+            if isinstance(item, list):
+                font = _first_run_font(item)
+            elif isinstance(item, dict):
+                font = (
+                    copy.deepcopy(item["font"])
+                    if isinstance(item.get("font"), dict)
+                    else _first_run_font(item.get("runs"))
+                )
+            else:
+                font = None
+            if font:
+                return font
+    if element_type == "table":
+        columns = element.get("columns")
+        if isinstance(columns, list):
+            for cell in columns:
+                font = _table_cell_font(cell)
+                if font:
+                    return font
+        rows = element.get("rows")
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, list):
+                    continue
+                for cell in row:
+                    font = _table_cell_font(cell)
+                    if font:
+                        return font
+    return None
+
+
+def _table_cell_font(cell: Any) -> dict[str, Any] | None:
+    if not isinstance(cell, dict):
+        return None
+    if isinstance(cell.get("font"), dict):
+        return copy.deepcopy(cell["font"])
+    return _first_run_font(cell.get("runs"))
+
+
+def _first_run_font(runs: Any) -> dict[str, Any] | None:
+    if not isinstance(runs, list):
+        return None
+    for run in runs:
+        if isinstance(run, dict) and isinstance(run.get("font"), dict):
+            return copy.deepcopy(run["font"])
     return None
 
 
@@ -1578,6 +1662,193 @@ def _update_chart_element(
             values = item.get("values")
             if isinstance(values, list) and len(values) != category_count:
                 raise ValueError("Each chart series must match the category count.")
+
+
+TEXT_STYLE_ELEMENT_TYPES = {"text", "text-list", "table"}
+
+
+def _apply_element_style_patch(
+    element: dict[str, Any],
+    patch: dict[str, Any],
+) -> None:
+    element_type = str(element.get("type") or "")
+    if "color" in patch:
+        _apply_direct_color_patch(element, element_type, patch.get("color"), patch)
+
+    font_patch = _text_font_patch_from_element_patch(element_type, patch)
+    if not font_patch:
+        return
+
+    if element_type == "text":
+        _apply_font_patch_to_text_element(element, font_patch)
+    elif element_type == "text-list":
+        _apply_font_patch_to_text_list_element(element, font_patch)
+    elif element_type == "table":
+        _apply_font_patch_to_table_element(element, font_patch)
+
+
+def _apply_direct_color_patch(
+    element: dict[str, Any],
+    element_type: str,
+    value: Any,
+    patch: dict[str, Any],
+) -> None:
+    if not isinstance(value, str) or not value.strip():
+        return
+    if element_type in TEXT_STYLE_ELEMENT_TYPES:
+        font = element.get("font") if isinstance(element.get("font"), dict) else {}
+        element["font"] = {**font, "color": value}
+        return
+    if element_type == "line":
+        stroke = element.get("stroke") if isinstance(element.get("stroke"), dict) else {}
+        element["stroke"] = {**stroke, "color": value}
+        return
+    if "fill" not in patch and element_type in {
+        "container",
+        "ellipse",
+        "flex",
+        "grid",
+        "grid-view",
+        "group",
+        "infographic",
+        "rectangle",
+    }:
+        fill = element.get("fill") if isinstance(element.get("fill"), dict) else {}
+        element["fill"] = {**fill, "color": value}
+
+
+def _text_font_patch_from_element_patch(
+    element_type: str,
+    patch: dict[str, Any],
+) -> dict[str, Any]:
+    if element_type not in TEXT_STYLE_ELEMENT_TYPES:
+        return {}
+
+    font_patch: dict[str, Any] = {}
+    raw_font = patch.get("font")
+    if isinstance(raw_font, dict):
+        font_patch.update(_normalize_font_patch(raw_font))
+    direct_color = patch.get("color")
+    if isinstance(direct_color, str) and direct_color.strip():
+        font_patch["color"] = direct_color
+    return {
+        key: copy.deepcopy(value)
+        for key, value in font_patch.items()
+        if value is not None
+    }
+
+
+def _normalize_font_patch(value: dict[str, Any]) -> dict[str, Any]:
+    normalized: dict[str, Any] = {}
+    aliases = {
+        "family": "family",
+        "fontFamily": "family",
+        "font_family": "family",
+        "fontName": "family",
+        "font_name": "family",
+        "name": "family",
+        "size": "size",
+        "fontSize": "size",
+        "font_size": "size",
+        "color": "color",
+        "fontColor": "color",
+        "font_color": "color",
+        "textColor": "color",
+        "text_color": "color",
+        "bold": "bold",
+        "italic": "italic",
+        "underline": "underline",
+        "line_height": "line_height",
+        "lineHeight": "line_height",
+        "letter_spacing": "letter_spacing",
+        "letterSpacing": "letter_spacing",
+        "wrap": "wrap",
+        "ellipsis": "ellipsis",
+        "opacity": "opacity",
+    }
+    for source_key, target_key in aliases.items():
+        if source_key in value:
+            normalized[target_key] = value[source_key]
+    return normalized
+
+
+def _apply_font_patch_to_text_element(
+    element: dict[str, Any],
+    font_patch: dict[str, Any],
+) -> None:
+    _merge_font_patch(element, font_patch)
+    runs = element.get("runs")
+    if not isinstance(runs, list) or not runs:
+        text = str(element.get("text") or "")
+        element["runs"] = [{"text": text, "font": copy.deepcopy(element["font"])}]
+        return
+    for run in runs:
+        if isinstance(run, dict):
+            _merge_font_patch(run, font_patch)
+
+
+def _apply_font_patch_to_text_list_element(
+    element: dict[str, Any],
+    font_patch: dict[str, Any],
+) -> None:
+    _merge_font_patch(element, font_patch)
+    items = element.get("items")
+    if not isinstance(items, list):
+        return
+    for index, item in enumerate(items):
+        if isinstance(item, list):
+            for run in item:
+                if isinstance(run, dict):
+                    _merge_font_patch(run, font_patch)
+        elif isinstance(item, dict):
+            _merge_font_patch(item, font_patch)
+            runs = item.get("runs")
+            if isinstance(runs, list):
+                for run in runs:
+                    if isinstance(run, dict):
+                        _merge_font_patch(run, font_patch)
+        elif isinstance(item, str):
+            items[index] = [{"text": item, "font": copy.deepcopy(element["font"])}]
+
+
+def _apply_font_patch_to_table_element(
+    element: dict[str, Any],
+    font_patch: dict[str, Any],
+) -> None:
+    _merge_font_patch(element, font_patch)
+    columns = element.get("columns")
+    if isinstance(columns, list):
+        for cell in columns:
+            _apply_font_patch_to_table_cell(cell, font_patch)
+    rows = element.get("rows")
+    if isinstance(rows, list):
+        for row in rows:
+            if isinstance(row, list):
+                for cell in row:
+                    _apply_font_patch_to_table_cell(cell, font_patch)
+
+
+def _apply_font_patch_to_table_cell(
+    cell: Any,
+    font_patch: dict[str, Any],
+) -> None:
+    if not isinstance(cell, dict):
+        return
+    _merge_font_patch(cell, font_patch)
+    runs = cell.get("runs")
+    if not isinstance(runs, list) or not runs:
+        return
+    for run in runs:
+        if isinstance(run, dict):
+            _merge_font_patch(run, font_patch)
+
+
+def _merge_font_patch(target: dict[str, Any], font_patch: dict[str, Any]) -> None:
+    source = target.get("font") if isinstance(target.get("font"), dict) else {}
+    target["font"] = {
+        **source,
+        **copy.deepcopy(font_patch),
+    }
 
 
 def _replacement_runs(

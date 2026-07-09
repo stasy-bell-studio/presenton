@@ -149,6 +149,12 @@ def test_get_slide_elements_reports_editable_layout():
     assert payload["editable_count"] == 2
     paths = {element["path"] for element in payload["elements"]}
     assert "components[0].elements[0]" in paths
+    title = next(
+        element
+        for element in payload["elements"]
+        if element["path"] == "components[0].elements[0]"
+    )
+    assert title["style"] == {"font": {"size": 20, "family": "Inter"}}
 
 
 def test_update_slide_element_edits_ui_text():
@@ -360,6 +366,133 @@ def test_update_slide_element_applies_toolbar_style_patch():
     assert result["result"]["updated"] is True
     assert element["fill"] == {"color": "#FF0000", "opacity": 0.5}
     assert element["stroke"] == {"color": "#111111", "width": 2}
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_applies_text_font_patch_to_runs():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[0].elements[0]",
+            "font": {
+                "family": "Roboto",
+                "size": 36,
+                "color": "#FF0000",
+                "bold": True,
+            },
+            "alignment": {"horizontal": "center", "vertical": "middle"},
+        },
+    )
+
+    element = slide.ui["components"][0]["elements"][0]
+    assert result["ok"] is True
+    assert result["result"]["updated"] is True
+    assert element["font"] == {
+        "family": "Roboto",
+        "size": 36.0,
+        "color": "#FF0000",
+        "bold": True,
+    }
+    assert element["alignment"] == {"horizontal": "center", "vertical": "middle"}
+    assert element["runs"][0]["text"] == "Old title"
+    assert element["runs"][0]["font"] == {
+        "size": 36.0,
+        "family": "Roboto",
+        "color": "#FF0000",
+        "bold": True,
+    }
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_raw_font_patch_updates_text_runs():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[0].elements[0]",
+            "element": json.dumps(
+                {
+                    "font": {
+                        "size": 44,
+                        "color": "#00AAFF",
+                    }
+                }
+            ),
+        },
+    )
+
+    element = slide.ui["components"][0]["elements"][0]
+    assert result["ok"] is True
+    assert element["font"] == {"size": 44, "color": "#00AAFF"}
+    assert element["runs"][0]["font"] == {
+        "size": 44,
+        "family": "Inter",
+        "color": "#00AAFF",
+    }
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_accepts_common_text_style_aliases():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[0].elements[0]",
+            "fontSize": 28,
+            "fontColor": "#22C55E",
+            "fontFamily": "Inter Tight",
+            "textAlign": "right",
+        },
+    )
+
+    element = slide.ui["components"][0]["elements"][0]
+    assert result["ok"] is True
+    assert element["font"] == {
+        "size": 28.0,
+        "color": "#22C55E",
+        "family": "Inter Tight",
+    }
+    assert element["alignment"] == {"horizontal": "right"}
+    assert element["runs"][0]["font"] == {
+        "size": 28.0,
+        "family": "Inter Tight",
+        "color": "#22C55E",
+    }
+    assert session.commit_count == 1
+
+
+def test_update_slide_element_text_list_color_updates_item_runs():
+    slide = _slide()
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateElement",
+        {
+            "index": 0,
+            "elementPath": "components[1].elements[0]",
+            "color": "#7C3AED",
+            "fontSize": 22,
+        },
+    )
+
+    element = slide.ui["components"][1]["elements"][0]
+    assert result["ok"] is True
+    assert element["font"] == {"size": 22.0, "color": "#7C3AED"}
+    assert element["items"][0][0]["font"] == {"size": 22.0, "color": "#7C3AED"}
     assert session.commit_count == 1
 
 

@@ -59,6 +59,7 @@ Use the available tools to inspect and edit the current presentation.
 - Use addElement, updateElement, deleteElement, addComponent, createComponent, updateComponent, or deleteComponent for rendered slide UI edits.
 - Use updateElement for element content, geometry, and toolbar-style properties.
 - Toolbar-style properties include fill, stroke, font, alignment, opacity, chart type/colors, image fit/crop, table cell styling, and line styling.
+- For text styling requests such as font family, font size, color, bold, italic, underline, line height, letter spacing, or alignment, call updateElement with the font, color, and/or alignment fields and wait for a successful update result.
 - Use updateComponent for whole-component move, resize, replace, duplicate, layer order, group, and ungroup requests.
 - Treat add/insert/include requests as additive: preserve existing substantive charts, tables, images, text, icons, and components unless the user explicitly asks to remove, replace, clear, or simplify them.
 - For partial content updates such as adding a proper header, title, subtitle, or description, update or add only those requested text elements and preserve existing charts, tables, images, and other non-target elements.
