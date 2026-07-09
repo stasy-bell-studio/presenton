@@ -29,6 +29,8 @@ import {
   limitOutlines,
   parseLimitedSlideCount,
 } from "@/utils/presentationLimits";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 const DEFAULT_OUTLINE_CONFIG: PresentationConfig = {
   slides: null,
@@ -218,6 +220,19 @@ const OutlinePage: React.FC = () => {
 
     setIsRegeneratingOutline(true);
     setHasOutlineStreamFinished(false);
+    trackEvent(MixpanelEvent.TemplateV2_Outline_Regeneration_Started, {
+      presentation_id,
+      template_id: selectedTemplateId,
+      prompt_present: draftConfig.prompt.trim().length > 0,
+      document_count: documentPaths.length,
+      slide_count: parseLimitedSlideCount(draftConfig.slides),
+      language: draftConfig.language,
+      tone: draftConfig.tone,
+      verbosity: draftConfig.verbosity,
+      web_search: !!draftConfig.webSearch,
+      include_title_slide: !!draftConfig.includeTitleSlide,
+      include_table_of_contents: !!draftConfig.includeTableOfContents,
+    });
     try {
       const createResponse = await PresentationGenerationApi.createPresentation({
         content: draftConfig.prompt ?? "",
@@ -235,9 +250,22 @@ const OutlinePage: React.FC = () => {
       dispatch(setPptGenUploadState({ config: draftConfig, files }));
       dispatch(clearOutlines());
       dispatch(setPresentationId(createResponse.id));
+      trackEvent(MixpanelEvent.TemplateV2_Outline_Regeneration_Completed, {
+        old_presentation_id: presentation_id,
+        new_presentation_id: createResponse.id,
+        template_id: selectedTemplateId,
+      });
       setActiveTab(TABS.OUTLINE);
     } catch (error: any) {
       console.error("Error regenerating outline", error);
+      trackEvent(MixpanelEvent.TemplateV2_Outline_Regeneration_Failed, {
+        presentation_id,
+        template_id: selectedTemplateId,
+        error_message: sanitizeAnalyticsError(
+          error,
+          "Failed to regenerate outline"
+        ),
+      });
       toast.error("Outline Error", {
         description: error.message || "Failed to regenerate outline.",
       });
@@ -253,6 +281,8 @@ const OutlinePage: React.FC = () => {
     hasSelectedTemplate,
     isOutlineReady,
     outlineControlsBusy,
+    presentation_id,
+    selectedTemplateId,
   ]);
 
   const handleOutlineChanged = useCallback(async () => {
@@ -347,6 +377,7 @@ const OutlinePage: React.FC = () => {
 
                 <TabsContent value={TABS.LAYOUTS} className="mt-0">
                   <TemplateSelection
+                    presentationId={presentation_id}
                     selectedTemplateId={selectedTemplateId}
                     onSelectTemplateId={handleTemplateSelectId}
                   />

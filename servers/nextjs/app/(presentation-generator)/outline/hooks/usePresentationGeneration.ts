@@ -7,6 +7,7 @@ import { PresentationGenerationApi } from "../../services/api/presentation-gener
 import { LoadingState, TABS } from "../types/index";
 
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
 import {
   limitOutlines,
   MAX_NUMBER_OF_SLIDES,
@@ -115,6 +116,11 @@ export const usePresentationGeneration = (
       });
 
       if (response) {
+        trackEvent(MixpanelEvent.TemplateV2_Prepare_Completed, {
+          presentation_id: presentationId,
+          template_id: selectedTemplateId,
+          outline_count: preparedOutlines.length,
+        });
         dispatch(clearPresentationData());
         clearTheme();
         router.replace(
@@ -125,6 +131,15 @@ export const usePresentationGeneration = (
 
     } catch (error: any) {
       console.error("Error In Presentation Generation(prepare).", error);
+      trackEvent(MixpanelEvent.TemplateV2_Prepare_Failed, {
+        presentation_id: presentationId,
+        template_id: selectedTemplateId,
+        outline_count: preparedOutlines.length,
+        error_message: sanitizeAnalyticsError(
+          error,
+          "Error in presentation generation"
+        ),
+      });
       notify.error(
         "Generation error",
         error.message || "Error in presentation generation."

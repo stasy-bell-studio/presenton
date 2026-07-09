@@ -148,6 +148,7 @@ function TemplateV2PromptOverlay({
 
 export const V1ContentRender = ({
     slide,
+    presentationId,
     isEditMode,
     theme,
     fonts,
@@ -158,6 +159,7 @@ export const V1ContentRender = ({
     onTemplatePromptOverlayDismiss,
 }: {
     slide: any,
+    presentationId?: string,
     isEditMode: boolean,
     theme?: any,
     fonts?: unknown,
@@ -213,6 +215,7 @@ export const V1ContentRender = ({
                     layout={directLayout ?? BLANK_TEMPLATE_V2_LAYOUT}
                     isEditMode={isEditMode}
                     slideId={safeSlide.id ?? null}
+                    presentationId={presentationId}
                     slideIndex={safeSlide.index ?? 0}
                     renderIndex={renderIndex}
                     fonts={fonts}

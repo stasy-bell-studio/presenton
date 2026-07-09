@@ -9,6 +9,7 @@ import {
 import { jsonrepair } from "jsonrepair";
 import { notify } from "@/components/ui/sonner";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
 import { getApiUrl, normalizeBackendAssetUrls } from "@/utils/api";
 import { store } from "@/store/store";
 import {
@@ -201,6 +202,15 @@ function isTemplateV2SlidePayload(slide: unknown): boolean {
   );
 }
 
+function isTemplateV2PresentationPayload(presentation: unknown): boolean {
+  if (!presentation || typeof presentation !== "object") return false;
+  const record = presentation as Record<string, unknown>;
+  return (
+    hasTemplateV2LayoutPayload(record.layout) ||
+    (Array.isArray(record.slides) && record.slides.some(isTemplateV2SlidePayload))
+  );
+}
+
 export const usePresentationStreaming = (
   presentationId: string,
   stream: string | null,
@@ -227,6 +237,8 @@ export const usePresentationStreaming = (
     const shownAssetWarnings = new Set<string>();
     let preloadAttempted = false;
     let preloadRequest: Promise<void> | null = null;
+    const streamStartedAt = Date.now();
+    let streamIsTemplateV2 = preloadPresentationData;
 
     const closeEventSource = () => {
       if (eventSource) {
@@ -246,6 +258,14 @@ export const usePresentationStreaming = (
       description: string,
       options: { showToast?: boolean } = {}
     ) => {
+      if (streamIsTemplateV2) {
+        trackEvent(MixpanelEvent.TemplateV2_Stream_Failed, {
+          presentation_id: presentationId,
+          retry_count: retryCount,
+          duration_ms: Date.now() - streamStartedAt,
+          error_message: sanitizeAnalyticsError(description, "Stream failed"),
+        });
+      }
       closeEventSource();
       clearRetryTimer();
       setLoading(false);
@@ -302,6 +322,9 @@ export const usePresentationStreaming = (
           );
           if (!isClosed) {
             const prev = store.getState().presentationGeneration.presentationData;
+            streamIsTemplateV2 =
+              streamIsTemplateV2 ||
+              isTemplateV2PresentationPayload(preparedPresentation);
             dispatch(
               setPresentationData({
                 ...(prev ?? {}),
@@ -318,6 +341,22 @@ export const usePresentationStreaming = (
       })();
 
       return preloadRequest;
+    };
+
+    const trackTemplateV2StreamCompleted = (presentation: unknown) => {
+      if (!streamIsTemplateV2 && !isTemplateV2PresentationPayload(presentation)) {
+        return;
+      }
+      streamIsTemplateV2 = true;
+      const slides = isTemplateV2PresentationPayload(presentation)
+        ? (presentation as Record<string, unknown>).slides
+        : store.getState().presentationGeneration.presentationData?.slides;
+      trackEvent(MixpanelEvent.TemplateV2_Stream_Completed, {
+        presentation_id: presentationId,
+        slide_count: Array.isArray(slides) ? slides.length : 0,
+        retry_count: retryCount,
+        duration_ms: Date.now() - streamStartedAt,
+      });
     };
 
     const openStream = () => {
@@ -360,6 +399,7 @@ export const usePresentationStreaming = (
                 isTemplateV2SlidePayload(normalizedSlide) &&
                 !hasTemplateV2LayoutPayload(prev?.layout)
               ) {
+                streamIsTemplateV2 = true;
                 void preloadPreparedPresentation(true);
               }
             }
@@ -416,6 +456,7 @@ export const usePresentationStreaming = (
                 isTemplateV2SlidePayload(normalizedSlide) &&
                 !hasTemplateV2LayoutPayload(prev?.layout)
               ) {
+                streamIsTemplateV2 = true;
                 void preloadPreparedPresentation(true);
               }
             }
@@ -448,6 +489,7 @@ export const usePresentationStreaming = (
                   )
                 )
               );
+              trackTemplateV2StreamCompleted(data.presentation);
               dispatch(setStreaming(false));
               setLoading(false);
               isClosed = true;
@@ -475,6 +517,7 @@ export const usePresentationStreaming = (
                 )
               )
             );
+            trackTemplateV2StreamCompleted(data.presentation);
             setLoading(false);
             dispatch(setStreaming(false));
             isClosed = true;

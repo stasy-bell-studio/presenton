@@ -51,6 +51,8 @@ import {
   MAX_NUMBER_OF_SLIDES,
   MAX_OUTLINE_CONTENT_WORDS,
 } from "@/utils/presentationLimits";
+import { bucketMessageLength, sanitizeAnalyticsError } from "@/utils/analytics";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   {
@@ -328,6 +330,10 @@ export type ChatApiAdapter = {
     resourceId: string,
     conversationId: string
   ) => Promise<{ messages: ChatHistoryMessage[] }>;
+  deleteConversation: (
+    resourceId: string,
+    conversationId: string
+  ) => Promise<void>;
   streamMessage: (
     payload: {
       resourceId: string;
@@ -345,6 +351,8 @@ const presentationChatAdapter: ChatApiAdapter = {
     PresentationChatApi.listConversations(resourceId),
   getHistory: (resourceId, conversationId) =>
     PresentationChatApi.getHistory(resourceId, conversationId),
+  deleteConversation: (resourceId, conversationId) =>
+    PresentationChatApi.deleteConversation(resourceId, conversationId),
   streamMessage: (payload, handlers, options) =>
     PresentationChatApi.streamMessage(
       {
@@ -365,6 +373,17 @@ type AssistantActivity = {
   round?: number;
   tool?: string;
   state: "running" | "success" | "error" | "info";
+};
+
+type AssistantPromptMetrics = {
+  startedAt: number;
+  attachmentImageCount: number;
+  attachmentDocumentCount: number;
+  linkCount: number;
+  mutatingToolCount: number;
+  readToolCount: number;
+  uniqueTools: Set<string>;
+  mutatedSlides: Set<number>;
 };
 
 const createMessageId = () => {
@@ -855,7 +874,27 @@ const Chat = ({
   const refreshInFlightRef = useRef(false);
   const refreshQueuedRef = useRef(false);
   const didIncrementalRefreshRef = useRef(false);
+  const openedAnalyticsKeyRef = useRef<string | null>(null);
+  const promptMetricsRef = useRef<AssistantPromptMetrics | null>(null);
   const activeResourceId = resourceId ?? presentationId;
+
+  const baseAnalyticsProps = useCallback(
+    () => ({
+      variant,
+      presentation_id: presentationId,
+      resource_id: activeResourceId,
+      conversation_scope: conversationStorageScope,
+    }),
+    [activeResourceId, conversationStorageScope, presentationId, variant]
+  );
+
+  useEffect(() => {
+    if (!activeResourceId) return;
+    const key = `${variant}:${activeResourceId}`;
+    if (openedAnalyticsKeyRef.current === key) return;
+    openedAnalyticsKeyRef.current = key;
+    trackEvent(MixpanelEvent.AI_Assistant_Opened, baseAnalyticsProps());
+  }, [activeResourceId, baseAnalyticsProps, variant]);
 
   useEffect(() => {
     let cancelled = false;
@@ -874,6 +913,7 @@ const Chat = ({
     setIsUploadingPastedImage(false);
     setIsDraggingAttachment(false);
     setExpandedActivityByMessage({});
+    promptMetricsRef.current = null;
 
     if (!activeResourceId) {
       return;
@@ -1176,7 +1216,9 @@ const Chat = ({
     return [...contextLines, `User message: ${message}`].join("\n");
   };
 
-  const resetChat = () => {
+  const resetChat = async () => {
+    const conversationIdToDelete = conversationId;
+    trackEvent(MixpanelEvent.AI_Assistant_Chat_Reset, baseAnalyticsProps());
     setMessages([]);
     setInput("");
     setPastedImages([]);
@@ -1193,6 +1235,22 @@ const Chat = ({
     }
 
     inputRef.current?.focus();
+
+    if (activeResourceId && conversationIdToDelete) {
+      try {
+        await chatAdapter.deleteConversation(
+          activeResourceId,
+          conversationIdToDelete
+        );
+      } catch (error) {
+        console.error("Failed to delete chat conversation:", error);
+        const detail =
+          error instanceof Error
+            ? error.message
+            : "Could not delete the saved chat conversation";
+        notify.error("Could not delete chat", detail);
+      }
+    }
   };
 
   const refreshPresentationIncrementally = useCallback(async () => {
@@ -1327,7 +1385,10 @@ const Chat = ({
     abortControllerRef.current?.abort();
   };
 
-  const processTemplateV2Files = async (files: File[]) => {
+  const processTemplateV2Files = async (
+    files: File[],
+    source: "file_input" | "paste" | "drop" = "file_input"
+  ) => {
     if (files.length === 0 || isSending || isHistoryLoading) {
       return;
     }
@@ -1390,7 +1451,20 @@ const Chat = ({
         "Attachment ready",
         `${files.length} file${files.length === 1 ? "" : "s"} attached.`
       );
+      trackEvent(MixpanelEvent.AI_Assistant_Attachment_Added, {
+        ...baseAnalyticsProps(),
+        source,
+        image_count: imageFiles.length,
+        document_count: documentFiles.length,
+        total_count: files.length,
+      });
     } catch (error) {
+      trackEvent(MixpanelEvent.AI_Assistant_Attachment_Failed, {
+        ...baseAnalyticsProps(),
+        source,
+        file_count: files.length,
+        error_message: sanitizeAnalyticsError(error, "Attachment upload failed"),
+      });
       notify.error(
         "Could not attach file",
         error instanceof Error ? error.message : "Upload failed."
@@ -1475,6 +1549,12 @@ const Chat = ({
       try {
         imagesForMessage = await extractImageTextContext(pastedImages);
       } catch (error) {
+        trackEvent(MixpanelEvent.AI_Assistant_Attachment_Failed, {
+          ...baseAnalyticsProps(),
+          source: "image_ocr",
+          file_count: pastedImages.length,
+          error_message: sanitizeAnalyticsError(error, "Image processing failed"),
+        });
         notify.error(
           "Could not read image",
           error instanceof Error ? error.message : "Image processing failed."
@@ -1512,6 +1592,26 @@ const Chat = ({
     didIncrementalRefreshRef.current = false;
     refreshQueuedRef.current = false;
     refreshInFlightRef.current = false;
+    promptMetricsRef.current = {
+      startedAt: Date.now(),
+      attachmentImageCount: imagesForMessage.length,
+      attachmentDocumentCount: attachedDocuments.length,
+      linkCount: chatLinks.length,
+      mutatingToolCount: 0,
+      readToolCount: 0,
+      uniqueTools: new Set<string>(),
+      mutatedSlides: new Set<number>(),
+    };
+    trackEvent(MixpanelEvent.AI_Assistant_Prompt_Submitted, {
+      ...baseAnalyticsProps(),
+      has_text: trimmedMessage.length > 0,
+      message_length_bucket: bucketMessageLength(outboundMessage.length),
+      attachment_image_count: imagesForMessage.length,
+      attachment_document_count: attachedDocuments.length,
+      link_count: chatLinks.length,
+      has_selected_slide: typeof currentSlide === "number",
+      has_selected_template_target: Boolean(selectedTemplateV2Target),
+    });
     const streamAbortController = new AbortController();
     abortControllerRef.current = streamAbortController;
 
@@ -1544,6 +1644,19 @@ const Chat = ({
             });
           },
           onTrace: (trace) => {
+            const metrics = promptMetricsRef.current;
+            if (metrics && trace.tool && trace.status === "start") {
+              metrics.uniqueTools.add(trace.tool);
+              if (MUTATING_TOOLS.has(trace.tool)) {
+                metrics.mutatingToolCount += 1;
+                const slideIndex = readTraceSlideIndex(trace);
+                if (slideIndex !== null) {
+                  metrics.mutatedSlides.add(slideIndex);
+                }
+              } else {
+                metrics.readToolCount += 1;
+              }
+            }
             maybeFollowAgentSlide(trace);
             if (
               trace.status === "success" &&
@@ -1601,11 +1714,40 @@ const Chat = ({
       await refreshPresentationIfNeeded(
         Array.isArray(response.tool_calls) ? response.tool_calls : []
       );
+      const metrics = promptMetricsRef.current;
+      const responseToolCalls = Array.isArray(response.tool_calls)
+        ? response.tool_calls
+        : [];
+      responseToolCalls.forEach((tool) => metrics?.uniqueTools.add(tool));
+      trackEvent(MixpanelEvent.AI_Assistant_Prompt_Completed, {
+        ...baseAnalyticsProps(),
+        conversation_id_present: Boolean(response.conversation_id ?? conversationId),
+        duration_ms: metrics ? Date.now() - metrics.startedAt : null,
+        mutating_tool_count:
+          metrics?.mutatingToolCount ??
+          responseToolCalls.filter((tool) => MUTATING_TOOLS.has(tool)).length,
+        read_tool_count:
+          metrics?.readToolCount ??
+          responseToolCalls.filter((tool) => !MUTATING_TOOLS.has(tool)).length,
+        unique_tools: metrics
+          ? Array.from(metrics.uniqueTools)
+          : Array.from(new Set(responseToolCalls)),
+        mutated_slide_count: metrics?.mutatedSlides.size ?? 0,
+        attachment_image_count: metrics?.attachmentImageCount ?? imagesForMessage.length,
+        attachment_document_count:
+          metrics?.attachmentDocumentCount ?? attachedDocuments.length,
+        link_count: metrics?.linkCount ?? chatLinks.length,
+      });
       setPastedImages([]);
       setAttachedDocuments([]);
       setChatLinks([]);
     } catch (error) {
       if (isAbortError(error)) {
+        const metrics = promptMetricsRef.current;
+        trackEvent(MixpanelEvent.AI_Assistant_Prompt_Stopped, {
+          ...baseAnalyticsProps(),
+          duration_ms: metrics ? Date.now() - metrics.startedAt : null,
+        });
         setMessages((previous) =>
           previous.map((message) =>
             message.id === assistantMessageId
@@ -1627,6 +1769,14 @@ const Chat = ({
 
       const message =
         error instanceof Error ? error.message : "Failed to send chat message";
+      const metrics = promptMetricsRef.current;
+      trackEvent(MixpanelEvent.AI_Assistant_Prompt_Failed, {
+        ...baseAnalyticsProps(),
+        duration_ms: metrics ? Date.now() - metrics.startedAt : null,
+        error_message: sanitizeAnalyticsError(message, "Failed to send chat message"),
+        mutating_tool_count: metrics?.mutatingToolCount ?? 0,
+        unique_tools: metrics ? Array.from(metrics.uniqueTools) : [],
+      });
 
       setMessages((previous) =>
         previous.map((entry) =>
@@ -1663,6 +1813,7 @@ const Chat = ({
         current === assistantMessageId ? null : current
       );
       setIsSending(false);
+      promptMetricsRef.current = null;
     }
   };
 
@@ -1730,7 +1881,7 @@ const Chat = ({
   ) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    void processTemplateV2Files(files);
+    void processTemplateV2Files(files, "file_input");
   };
 
   const handlePaste = async (event: ClipboardEvent<HTMLTextAreaElement>) => {
@@ -1748,7 +1899,7 @@ const Chat = ({
       if (cleanText) {
         setInput((previous) => appendInputText(previous, cleanText));
       }
-      void processTemplateV2Files(files);
+      void processTemplateV2Files(files, "paste");
       return;
     }
 
@@ -1787,11 +1938,24 @@ const Chat = ({
         throw new Error("Image upload did not return a URL.");
       }
       setPastedImages((previous) => [...previous, ...nextImages]);
+      trackEvent(MixpanelEvent.AI_Assistant_Attachment_Added, {
+        ...baseAnalyticsProps(),
+        source: "paste",
+        image_count: nextImages.length,
+        document_count: 0,
+        total_count: nextImages.length,
+      });
       notify.success(
         "Image pasted",
         `${nextImages.length} image${nextImages.length === 1 ? "" : "s"} ready to use.`
       );
     } catch (error) {
+      trackEvent(MixpanelEvent.AI_Assistant_Attachment_Failed, {
+        ...baseAnalyticsProps(),
+        source: "paste",
+        file_count: imageFiles.length,
+        error_message: sanitizeAnalyticsError(error, "Image upload failed"),
+      });
       notify.error(
         "Could not paste image",
         error instanceof Error ? error.message : "Image upload failed."
@@ -1844,7 +2008,7 @@ const Chat = ({
       notify.warning("Drop unavailable", "Use the attach button for this file.");
       return;
     }
-    void processTemplateV2Files(files);
+    void processTemplateV2Files(files, "drop");
   };
 
   const isOutlineVariant = variant === "outline";
@@ -1897,7 +2061,7 @@ const Chat = ({
         {!isOutlineVariant && messages.length > 0 && (
           <button
             type="button"
-            onClick={resetChat}
+            onClick={() => void resetChat()}
             disabled={isSending || isHistoryLoading}
             className="rounded-full p-1 text-[#8C8C8C] transition-colors hover:bg-[#F7F7F7] hover:text-[#191919] disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Reset chat"

@@ -164,6 +164,26 @@ async def replace_messages(
     await session.flush()
 
 
+async def delete_conversation(
+    session: AsyncSession,
+    *,
+    presentation_id: uuid.UUID | None = None,
+    template_v2_id: uuid.UUID | None = None,
+    conversation_id: uuid.UUID,
+) -> None:
+    resource_clause = _resource_filter(
+        presentation_id=presentation_id,
+        template_v2_id=template_v2_id,
+    )
+    await session.execute(
+        sa_delete(ChatHistoryMessageModel).where(
+            resource_clause,
+            ChatHistoryMessageModel.conversation_id == conversation_id,
+        )
+    )
+    await session.flush()
+
+
 async def append_turn(
     session: AsyncSession,
     *,

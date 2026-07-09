@@ -28,6 +28,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notify } from "@/components/ui/sonner";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 import type { SlideElement } from "@/components/slide-editor/types";
 
 import {
@@ -840,6 +841,11 @@ const BlocksPanel = ({
     const cached = templateBlocksCache.get(cacheKey);
     if (cached) {
       dispatchBlockState({ type: "cached", blocks: cached });
+      trackEvent(MixpanelEvent.Editor_Template_Blocks_Loaded, {
+        presentation_id: presentationId,
+        block_group_count: cached.length,
+        from_cache: true,
+      });
       return;
     }
 
@@ -851,6 +857,11 @@ const BlocksPanel = ({
           templateBlocksCache.set(cacheKey, nextBlocks);
         }
         dispatchBlockState({ type: "loaded", blocks: nextBlocks });
+        trackEvent(MixpanelEvent.Editor_Template_Blocks_Loaded, {
+          presentation_id: presentationId,
+          block_group_count: nextBlocks.length,
+          from_cache: false,
+        });
       })
       .catch(() => {
         if (cancelled) return;
@@ -858,12 +869,16 @@ const BlocksPanel = ({
           type: "failed",
           message: "Could not load template components.",
         });
+        trackEvent(MixpanelEvent.Editor_Template_Blocks_Load_Failed, {
+          presentation_id: presentationId,
+          error_message: "Could not load template components.",
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [cacheKey, presentationData]);
+  }, [cacheKey, presentationData, presentationId]);
 
   return (
     <div className="h-full overflow-y-auto px-5 pb-8 pt-8 hide-scrollbar">
@@ -1214,17 +1229,17 @@ const PresentationActions = (props: PresentationActionsProps) => {
   const insertEditorContent = (
     content: EditorInsertContent,
     label: string,
-  ) => {
-    if (typeof window === "undefined") return;
+  ): boolean => {
+    if (typeof window === "undefined") return false;
     if (typeof props.currentSlide !== "number") {
       notify.warning("Select a slide", "Choose a slide before adding content.");
-      return;
+      return false;
     }
     if (
       (content.elements?.length ?? 0) === 0 &&
       (content.components?.length ?? 0) === 0
     ) {
-      return;
+      return false;
     }
 
     const detail: TemplateV2InsertElementsDetail = {
@@ -1242,7 +1257,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
         "Insert unavailable",
         "Content can be added only when a USE_SLIDE_EDITOR_IMPORT slide is selected.",
       );
-      return;
+      return false;
     }
 
     window.requestAnimationFrame(() => {
@@ -1251,30 +1266,71 @@ const PresentationActions = (props: PresentationActionsProps) => {
         block: "center",
       });
     });
+    return true;
   };
 
   const insertEditorElements = (elements: SlideElement[], label: string) => {
-    insertEditorContent({ elements }, label);
+    return insertEditorContent({ elements }, label);
   };
 
   const handleTextItemSelect = (item: PaletteItem) => {
-    insertEditorElements(createTextInsertElements(item.id), item.label);
+    if (insertEditorElements(createTextInsertElements(item.id), item.label)) {
+      trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+        presentation_id: props.presentationId,
+        category: "texts",
+        item_id: item.id,
+        item_label: item.label,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleChartItemSelect = (item: PaletteItem) => {
-    insertEditorElements(createChartInsertElements(item.id), item.label);
+    if (insertEditorElements(createChartInsertElements(item.id), item.label)) {
+      trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+        presentation_id: props.presentationId,
+        category: "charts",
+        item_id: item.id,
+        item_label: item.label,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleTableItemSelect = (item: PaletteItem) => {
-    insertEditorElements(createTableInsertElements(item.id), item.label);
+    if (insertEditorElements(createTableInsertElements(item.id), item.label)) {
+      trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+        presentation_id: props.presentationId,
+        category: "tables",
+        item_id: item.id,
+        item_label: item.label,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleImageItemSelect = (item: PaletteItem) => {
-    insertEditorContent(createImageInsertContent(item.id), item.label);
+    if (insertEditorContent(createImageInsertContent(item.id), item.label)) {
+      trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+        presentation_id: props.presentationId,
+        category: "images",
+        item_id: item.id,
+        item_label: item.label,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleElementItemSelect = (item: PaletteItem) => {
-    insertEditorElements(createElementInsertElements(item.id), item.label);
+    if (insertEditorElements(createElementInsertElements(item.id), item.label)) {
+      trackEvent(MixpanelEvent.Editor_Insert_Palette_Item_Selected, {
+        presentation_id: props.presentationId,
+        category: "elements",
+        item_id: item.id,
+        item_label: item.label,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleBlockSelect = (block: TemplateBlock) => {
@@ -1283,10 +1339,19 @@ const PresentationActions = (props: PresentationActionsProps) => {
       hasUsableComponentSize(block.raw) &&
       readRecordArray(block.raw, "elements").length > 0
     ) {
-      insertEditorContent(
+      const inserted = insertEditorContent(
         { components: [block.raw as TemplateV2InsertComponent] },
         block.title,
       );
+      if (inserted) {
+        trackEvent(MixpanelEvent.Editor_Template_Block_Inserted, {
+          presentation_id: props.presentationId,
+          block_title: block.title,
+          block_index: block.index,
+          element_count: readRecordArray(block.raw, "elements").length,
+          slide_index: props.currentSlide,
+        });
+      }
       return;
     }
 
@@ -1299,10 +1364,23 @@ const PresentationActions = (props: PresentationActionsProps) => {
       return;
     }
 
-    insertEditorElements([element], block.title);
+    if (insertEditorElements([element], block.title)) {
+      trackEvent(MixpanelEvent.Editor_Template_Block_Inserted, {
+        presentation_id: props.presentationId,
+        block_title: block.title,
+        block_index: block.index,
+        element_count: 1,
+        slide_index: props.currentSlide,
+      });
+    }
   };
 
   const handleActionSelect = (activeAction: ActionId) => {
+    trackEvent(MixpanelEvent.Editor_Side_Panel_Tab_Selected, {
+      presentation_id: props.presentationId,
+      tab: activeAction,
+      variant: "template-v2",
+    });
     dispatchUiState({ type: "selectAction", activeAction });
   };
 

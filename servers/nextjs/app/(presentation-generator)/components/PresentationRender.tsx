@@ -7,6 +7,7 @@ const BASE_HEIGHT = 720;
 
 const SlideScale = ({
   slide,
+  presentationId,
   theme,
   fonts,
   isEditMode = true,
@@ -23,6 +24,7 @@ const SlideScale = ({
   onTemplatePromptOverlayDismiss,
 }: {
   slide: any;
+  presentationId?: string;
   theme?: any;
   fonts?: unknown;
   isEditMode?: boolean;
@@ -120,6 +122,7 @@ const SlideScale = ({
             )}
             <V1ContentRender
               slide={slide}
+              presentationId={presentationId}
               isEditMode={isEditMode}
               theme={theme}
               fonts={fonts}

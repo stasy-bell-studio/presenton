@@ -6,6 +6,8 @@ import { getApiUrl } from "@/utils/api";
 import { isAuthDisabled } from "@/utils/auth";
 import { formatFastApiDetail, UNAUTHORIZED_DETAIL } from "@/utils/authErrors";
 import { notify } from "@/components/ui/sonner";
+import { sanitizeAnalyticsError } from "@/utils/analytics";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 type AuthStatus = {
   configured: boolean;
@@ -31,6 +33,11 @@ export default function AuthGate() {
 
   useEffect(() => {
     if (isAuthDisabled()) {
+      trackEvent(MixpanelEvent.Auth_Status_Checked, {
+        configured: true,
+        authenticated: true,
+        auth_disabled: true,
+      });
       setStatus({
         configured: true,
         authenticated: true,
@@ -88,6 +95,11 @@ export default function AuthGate() {
       }
 
       const data = (await response.json()) as AuthStatus;
+      trackEvent(MixpanelEvent.Auth_Status_Checked, {
+        configured: Boolean(data.configured),
+        authenticated: Boolean(data.authenticated),
+        auth_disabled: false,
+      });
       setStatus({
         configured: Boolean(data.configured),
         authenticated: Boolean(data.authenticated),
@@ -95,6 +107,15 @@ export default function AuthGate() {
       });
     } catch (fetchError) {
       console.error(fetchError);
+      trackEvent(MixpanelEvent.Auth_Status_Checked, {
+        configured: false,
+        authenticated: false,
+        auth_disabled: false,
+        error_message: sanitizeAnalyticsError(
+          fetchError,
+          "Could not load login state"
+        ),
+      });
       notify.error(
         "Could not load login",
         "We could not connect to the login service. Please refresh and try again."
@@ -133,6 +154,14 @@ export default function AuthGate() {
     }
 
     setIsSubmitting(true);
+    trackEvent(
+      isSetupMode
+        ? MixpanelEvent.Auth_Setup_Started
+        : MixpanelEvent.Auth_SignIn_Started,
+      {
+        username_length: cleanedUsername.length,
+      }
+    );
 
     try {
       const response = await fetch(
@@ -153,6 +182,18 @@ export default function AuthGate() {
       const payload = await response.json();
       if (!response.ok) {
         const detail = formatFastApiDetail(payload?.detail);
+        trackEvent(
+          isSetupMode
+            ? MixpanelEvent.Auth_Setup_Failed
+            : MixpanelEvent.Auth_SignIn_Failed,
+          {
+            status_code: response.status,
+            error_message: sanitizeAnalyticsError(
+              detail,
+              isSetupMode ? "Could not create account" : "Sign-in failed"
+            ),
+          }
+        );
         if (response.status === 401) {
           notify.error(
             "Sign-in failed",
@@ -170,6 +211,9 @@ export default function AuthGate() {
       }
 
       if (isSetupMode) {
+        trackEvent(MixpanelEvent.Auth_Setup_Completed, {
+          username_length: cleanedUsername.length,
+        });
         setStatus({
           configured: true,
           authenticated: false,
@@ -188,6 +232,9 @@ export default function AuthGate() {
         authenticated: Boolean((payload as AuthStatus).authenticated),
         username: (payload as AuthStatus).username ?? cleanedUsername,
       });
+      trackEvent(MixpanelEvent.Auth_SignIn_Completed, {
+        username_length: cleanedUsername.length,
+      });
       setPassword("");
       setConfirmPassword("");
       notify.success(
@@ -196,6 +243,18 @@ export default function AuthGate() {
       );
     } catch (submitError) {
       console.error(submitError);
+      trackEvent(
+        isSetupMode
+          ? MixpanelEvent.Auth_Setup_Failed
+          : MixpanelEvent.Auth_SignIn_Failed,
+        {
+          status_code: null,
+          error_message: sanitizeAnalyticsError(
+            submitError,
+            isSetupMode ? "Could not create account" : "Login unavailable"
+          ),
+        }
+      );
       notify.error(
         "Login unavailable",
         "The login service is unavailable right now. Please try again in a moment."

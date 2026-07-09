@@ -98,6 +98,7 @@ const SlideContent = ({
         <div className="relative">
           <SlideScale
             slide={slide}
+            presentationId={presentationId}
             theme={theme ?? null}
             fonts={fonts}
             renderIndex={index}

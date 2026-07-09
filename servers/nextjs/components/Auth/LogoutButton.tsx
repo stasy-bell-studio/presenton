@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LogOut } from "lucide-react";
 
 import { getApiUrl } from "@/utils/api";
+import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 type LogoutButtonProps = {
   label?: string;
@@ -24,6 +25,9 @@ export default function LogoutButton({
     }
 
     setIsSubmitting(true);
+    trackEvent(MixpanelEvent.Auth_Signed_Out, {
+      source: "logout_button",
+    });
     try {
       await fetch(getApiUrl("/api/v1/auth/logout"), {
         method: "POST",
