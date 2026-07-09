@@ -8,6 +8,11 @@ export type TemplateFontOption = {
   sourceUrl: string;
 };
 
+type GoogleFontCatalogRecord = {
+  font_name?: unknown;
+  font_url?: unknown;
+};
+
 export const GOOGLE_FONT_OPTIONS: GoogleFontOption[] = [
   {
     family: "Inter",
@@ -217,24 +222,79 @@ export const GOOGLE_FONT_OPTIONS: GoogleFontOption[] = [
 
 const GOOGLE_FONT_STYLESHEET_TIMEOUT_MS = 2500;
 const FONT_FACE_LOAD_TIMEOUT_MS = 3000;
-const GOOGLE_FONT_URL_BY_FAMILY = new Map(
-  GOOGLE_FONT_OPTIONS.map(({ family, cssUrl }) => [family, cssUrl]),
+const LOCAL_FONT_FAMILY_KEYS = new Set(
+  [
+    "arial",
+    "helvetica",
+    "times",
+    "times new roman",
+    "georgia",
+    "courier",
+    "courier new",
+    "verdana",
+    "tahoma",
+    "trebuchet ms",
+    "impact",
+    "comic sans ms",
+    "system-ui",
+    "sans-serif",
+    "serif",
+    "monospace",
+  ].map(fontFamilyKey),
 );
+const GOOGLE_FONT_URL_BY_FAMILY = new Map(
+  GOOGLE_FONT_OPTIONS.map(({ family, cssUrl }) => [
+    fontFamilyKey(family),
+    cssUrl,
+  ]),
+);
+let googleFontCatalogPromise: Promise<GoogleFontOption[]> | null = null;
+let googleFontCatalogUrlByFamily: Map<string, string> | null = null;
 const pendingStylesheetLoads = new Map<string, Promise<void>>();
 const pendingFontDescriptorLoads = new Map<string, Promise<void>>();
 
 export function isGoogleFontFamily(family: string) {
-  return GOOGLE_FONT_URL_BY_FAMILY.has(family.trim());
+  return syncGoogleFontCssUrl(family) != null;
+}
+
+export function loadGoogleFontOptions() {
+  if (!googleFontCatalogPromise) {
+    googleFontCatalogPromise = import("../font.json")
+      .then((module) => {
+        const catalogOptions = googleFontOptionsFromCatalog(module.default);
+        const options = mergeGoogleFontOptions(
+          GOOGLE_FONT_OPTIONS,
+          catalogOptions,
+        );
+        googleFontCatalogUrlByFamily = new Map(
+          options.map(({ family, cssUrl }) => [fontFamilyKey(family), cssUrl]),
+        );
+        return options;
+      })
+      .catch((error) => {
+        googleFontCatalogPromise = null;
+        throw error;
+      });
+  }
+
+  return googleFontCatalogPromise;
 }
 
 export function ensureGoogleFontLoaded(family: string) {
   if (typeof document === "undefined") return null;
 
   const normalizedFamily = family.trim();
-  const cssUrl = GOOGLE_FONT_URL_BY_FAMILY.get(normalizedFamily);
-  if (!cssUrl) return null;
+  if (!normalizedFamily) return null;
 
-  return ensureStylesheetLoaded(normalizedFamily, cssUrl);
+  const cssUrl = syncGoogleFontCssUrl(normalizedFamily);
+  if (cssUrl) {
+    return ensureStylesheetLoaded(normalizedFamily, cssUrl);
+  }
+
+  return lazyGoogleFontCssUrl(normalizedFamily).then((lazyCssUrl) => {
+    if (!lazyCssUrl || typeof document === "undefined") return;
+    return ensureStylesheetLoaded(normalizedFamily, lazyCssUrl) ?? undefined;
+  });
 }
 
 export function ensureGoogleFontsLoaded(families: Iterable<string>) {
@@ -250,17 +310,93 @@ export function ensureGoogleFontsLoaded(families: Iterable<string>) {
 
 export function ensureGoogleFontsForDescriptors(
   descriptors: Iterable<string>,
+  excludedFamilies: Iterable<string> = [],
 ) {
   const families = new Set<string>();
+  const excludedFamilySet = new Set(
+    Array.from(excludedFamilies)
+      .map((family) => family.trim())
+      .filter(Boolean),
+  );
 
   Array.from(descriptors).forEach((descriptor) => {
     const family = fontFamilyFromFontDescriptor(descriptor);
-    if (family && isGoogleFontFamily(family)) {
-      families.add(family);
-    }
+    if (!family) return;
+    if (excludedFamilySet.has(family)) return;
+    if (isLocalFontFamily(family)) return;
+    families.add(family);
   });
 
   return ensureGoogleFontsLoaded(families);
+}
+
+function lazyGoogleFontCssUrl(family: string) {
+  return loadGoogleFontOptions().then(
+    () => syncGoogleFontCssUrl(family),
+    () => null,
+  );
+}
+
+function syncGoogleFontCssUrl(family: string) {
+  const normalizedFamily = family.trim();
+  if (!normalizedFamily) return null;
+  const familyKey = fontFamilyKey(normalizedFamily);
+  return (
+    googleFontCatalogUrlByFamily?.get(familyKey) ??
+    GOOGLE_FONT_URL_BY_FAMILY.get(familyKey) ??
+    null
+  );
+}
+
+function googleFontOptionsFromCatalog(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(googleFontOptionFromCatalogRecord)
+    .filter((option): option is GoogleFontOption => option != null);
+}
+
+function googleFontOptionFromCatalogRecord(value: unknown) {
+  if (!value || typeof value !== "object") return null;
+  const record = value as GoogleFontCatalogRecord;
+  if (typeof record.font_name !== "string") return null;
+  if (typeof record.font_url !== "string") return null;
+
+  const family = record.font_name.trim();
+  const cssUrl = record.font_url.trim();
+  if (!family || !cssUrl) return null;
+  return { family, cssUrl };
+}
+
+function mergeGoogleFontOptions(
+  ...optionLists: GoogleFontOption[][]
+): GoogleFontOption[] {
+  const orderedFamilies: string[] = [];
+  const optionByFamily = new Map<string, GoogleFontOption>();
+
+  optionLists.forEach((options) => {
+    options.forEach((option) => {
+      const family = option.family.trim();
+      const cssUrl = option.cssUrl.trim();
+      if (!family || !cssUrl) return;
+      if (!optionByFamily.has(family)) {
+        orderedFamilies.push(family);
+      }
+      optionByFamily.set(family, { family, cssUrl });
+    });
+  });
+
+  return orderedFamilies.flatMap((family) => {
+    const option = optionByFamily.get(family);
+    return option ? [option] : [];
+  });
+}
+
+function isLocalFontFamily(family: string) {
+  return LOCAL_FONT_FAMILY_KEYS.has(fontFamilyKey(family));
+}
+
+function fontFamilyKey(family: string) {
+  return family.trim().toLowerCase();
 }
 
 export function templateFontOptionsFromMap(

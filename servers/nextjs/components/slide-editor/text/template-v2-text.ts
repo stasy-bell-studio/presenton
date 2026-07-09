@@ -500,11 +500,17 @@ export function rawRenderTextRuns(
 export function textVisualLocalBox(
   element: TemplateV2RawTextElement,
   box: TemplateV2TextBox,
+  options: {
+    content?: string;
+    runs?: RenderTextRun[];
+  } = {},
 ): TemplateV2TextBox {
   const font = rawFont(element);
-  const content = rawTextContent(element);
+  const renderRuns = options.runs ?? rawRenderTextRuns(element);
+  const content =
+    options.content ??
+    (options.runs ? textRunsContent(options.runs) : rawTextContent(element));
   const displayContent = displayText(content);
-  const renderRuns = rawRenderTextRuns(element);
   const renderRunsDifferFromElement =
     renderRuns.length > 0 &&
     textRunsHaveMixedStyle([{ text: "", font }, ...renderRuns]);
@@ -587,7 +593,22 @@ export function textVisualLocalBox(
     };
   }
 
-  if (font.wrap !== "none") return box;
+  if (font.wrap !== "none") {
+    const textNodeRuns =
+      renderRuns.length > 0 ? renderRuns : [{ text: displayContent, font }];
+    return {
+      ...box,
+      height: Math.max(
+        box.height,
+        measureRenderTextRunsHeight(
+          textNodeRuns,
+          box.width,
+          font.wrap,
+          textLineHeight,
+        ),
+      ),
+    };
+  }
 
   const textNodeWidth = Math.max(
     box.width,
@@ -605,6 +626,20 @@ export function textVisualLocalBox(
     width: textNodeWidth,
     height: textNodeHeight,
   };
+}
+
+function measureRenderTextRunsHeight(
+  runs: RenderTextRun[],
+  width: number,
+  wrap: string | null | undefined,
+  fallbackLineHeight: number,
+) {
+  const lines = layoutRenderTextRuns(runs, width, wrap);
+  if (lines.length === 0) return fallbackLineHeight;
+  return lines.reduce(
+    (sum, line) => sum + lineRenderHeight(line, fallbackLineHeight),
+    0,
+  );
 }
 
 export function textRunsHaveMixedStyle(runs: RenderTextRun[]) {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -36,6 +37,8 @@ import {
   ensureGoogleFontLoaded,
   ensureTemplateFontLoaded,
   GOOGLE_FONT_OPTIONS,
+  loadGoogleFontOptions,
+  type GoogleFontOption,
   type TemplateFontOption,
 } from "@/components/slide-editor/text/google-fonts";
 import {
@@ -49,7 +52,6 @@ import {
   FloatingToolbarBoundsProvider,
   FloatingToolbarPanel,
 } from "@/components/slide-editor/toolbar/FloatingToolbar";
-import { inlineStyles } from "@/components/slide-editor/toolbar/inlineStyles";
 import {
   numericInputMode,
   preventInvalidNumberInput,
@@ -75,6 +77,9 @@ const TEXT_TOOLBAR_FALLBACK_WIDTH = 560;
 const TEXT_TOOLBAR_FALLBACK_HEIGHT = 44;
 const TEXT_TOOLBAR_EDGE_PADDING = 8;
 const TEXT_TOOLBAR_GAP = 8;
+const FONT_MENU_OPTION_HEIGHT = 30;
+const FONT_MENU_MAX_VISIBLE_ROWS = 8;
+const FONT_MENU_OVERSCAN_ROWS = 4;
 
 type TextToolbarPanel = "marker" | "settings";
 type FontPickerSource = "template" | "google";
@@ -155,14 +160,11 @@ export function TextToolbar({
     listMarker === "number" ? ListOrdered : listMarker === "none" ? Ban : List;
   const hasListMarkerControls =
     listMarker != null && onListMarkerChange != null;
-  const templateFontFamilySet = new Set(
-    templateFonts.map(({ family }) => family),
-  );
-  const googleFontOptions = GOOGLE_FONT_OPTIONS.filter(
-    ({ family }) => !templateFontFamilySet.has(family),
-  );
+  const formattedFontSize = formatToolbarFontSize(font.size);
   const [openPanel, setOpenPanel] = useState<TextToolbarPanel | null>(null);
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
+  const [fontSizeDraft, setFontSizeDraft] = useState(formattedFontSize);
+  const [fontSizeEditing, setFontSizeEditing] = useState(false);
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -210,11 +212,32 @@ export function TextToolbar({
     updateFont({ size: clampFontSize(nextSize) });
   };
   const updateFontSize = (value: string) => {
+    setFontSizeDraft(value);
+    if (!value.trim()) return;
     commitFontSize(Number.parseFloat(value));
   };
+  const commitFontSizeDraft = () => {
+    const value = fontSizeDraft.trim();
+    const nextSize = Number.parseFloat(value);
+    if (!value || !Number.isFinite(nextSize)) {
+      setFontSizeDraft(formattedFontSize);
+      return;
+    }
+
+    const clampedSize = clampFontSize(nextSize);
+    commitFontSize(clampedSize);
+    setFontSizeDraft(formatToolbarFontSize(clampedSize));
+  };
   const stepFontSize = (delta: number) => {
-    const currentSize = Number.isFinite(font.size) ? font.size : 12;
-    commitFontSize(currentSize + delta);
+    const draftSize = Number.parseFloat(fontSizeDraft);
+    const currentSize = Number.isFinite(draftSize)
+      ? draftSize
+      : Number.isFinite(font.size)
+        ? font.size
+        : 12;
+    const nextSize = clampFontSize(currentSize + delta);
+    commitFontSize(nextSize);
+    setFontSizeDraft(formatToolbarFontSize(nextSize));
   };
   const fontSizeInputOptions = {
     allowDecimal: true,
@@ -257,6 +280,12 @@ export function TextToolbar({
       ),
     });
   };
+
+  useEffect(() => {
+    if (!fontSizeEditing) {
+      setFontSizeDraft(formattedFontSize);
+    }
+  }, [fontSizeEditing, formattedFontSize]);
 
   useEffect(() => {
     loadFontFamily(font.family);
@@ -383,7 +412,7 @@ export function TextToolbar({
           <FontFamilyPicker
             selectedFamily={font.family}
             templateFonts={templateFonts}
-            googleFonts={googleFontOptions}
+            googleFonts={GOOGLE_FONT_OPTIONS}
             onSelect={updateFontFamily}
           />
           <Divider />
@@ -393,7 +422,15 @@ export function TextToolbar({
               title="Font size"
               type="text"
               inputMode={numericInputMode(fontSizeInputOptions)}
-              value={formatToolbarFontSize(font.size)}
+              value={fontSizeDraft}
+              onFocus={() => {
+                setFontSizeEditing(true);
+                setFontSizeDraft(formattedFontSize);
+              }}
+              onBlur={() => {
+                setFontSizeEditing(false);
+                commitFontSizeDraft();
+              }}
               onChange={(event) =>
                 updateFontSize(
                   sanitizeNumericInput(event.target.value, fontSizeInputOptions),
@@ -408,6 +445,16 @@ export function TextToolbar({
                 if (event.key === "ArrowDown") {
                   event.preventDefault();
                   stepFontSize(-1);
+                }
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  commitFontSizeDraft();
+                  event.currentTarget.blur();
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setFontSizeDraft(formattedFontSize);
+                  event.currentTarget.blur();
                 }
               }}
               style={textToolbarStyles.fontSizeInput}
@@ -624,6 +671,19 @@ function ToolbarButton({
   );
 }
 
+function uniqueFontFamilies(families: string[]) {
+  const seenFamilies = new Set<string>();
+  const uniqueFamilies: string[] = [];
+
+  families.forEach((family) => {
+    if (seenFamilies.has(family)) return;
+    seenFamilies.add(family);
+    uniqueFamilies.push(family);
+  });
+
+  return uniqueFamilies;
+}
+
 function FontFamilyPicker({
   selectedFamily,
   templateFonts,
@@ -632,12 +692,15 @@ function FontFamilyPicker({
 }: {
   selectedFamily: string;
   templateFonts: TemplateFontOption[];
-  googleFonts: typeof GOOGLE_FONT_OPTIONS;
+  googleFonts: GoogleFontOption[];
   onSelect: (family: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(selectedFamily);
   const [searching, setSearching] = useState(false);
+  const [loadedGoogleFonts, setLoadedGoogleFonts] = useState<
+    GoogleFontOption[] | null
+  >(null);
   const [activeSource, setActiveSource] = useState<FontPickerSource>(() =>
     templateFonts.some(({ family }) => family === selectedFamily)
       ? "template"
@@ -646,9 +709,24 @@ function FontFamilyPicker({
   const menuRef = useRef<HTMLDivElement | null>(null);
   const menuPanelRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const googleFontLoadStartedRef = useRef(false);
+  const loadFullGoogleFonts = useCallback(() => {
+    if (googleFontLoadStartedRef.current) return;
+
+    googleFontLoadStartedRef.current = true;
+    void loadGoogleFontOptions().then(
+      (options) => {
+        setLoadedGoogleFonts(options);
+      },
+      () => {
+        googleFontLoadStartedRef.current = false;
+      },
+    );
+  }, []);
 
   useEffect(() => {
     if (!open) return;
+    loadFullGoogleFonts();
     setQuery(selectedFamily);
     setSearching(false);
     setActiveSource(
@@ -660,7 +738,7 @@ function FontFamilyPicker({
       searchInputRef.current?.focus();
       searchInputRef.current?.select();
     }, 0);
-  }, [open, selectedFamily, templateFonts]);
+  }, [loadFullGoogleFonts, open, selectedFamily, templateFonts]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") return;
@@ -693,22 +771,41 @@ function FontFamilyPicker({
     onSelect(family);
     setOpen(false);
   };
+  const resolvedGoogleFonts = loadedGoogleFonts ?? googleFonts;
+  const templateFontFamilySet = useMemo(
+    () => new Set(templateFonts.map(({ family }) => family)),
+    [templateFonts],
+  );
   const normalizedQuery = query.trim().toLowerCase();
   const hasSearchQuery = searching && normalizedQuery.length > 0;
-  const templateFamilies = templateFonts.map(({ family }) => family);
-  const googleFamilies = googleFonts.map(({ family }) => family);
+  const templateFamilies = useMemo(
+    () => templateFonts.map(({ family }) => family),
+    [templateFonts],
+  );
+  const googleFamilies = useMemo(
+    () =>
+      resolvedGoogleFonts
+        .filter(({ family }) => !templateFontFamilySet.has(family))
+        .map(({ family }) => family),
+    [resolvedGoogleFonts, templateFontFamilySet],
+  );
   const activeFamilies =
     activeSource === "template" && templateFamilies.length > 0
       ? templateFamilies
       : googleFamilies;
-  const searchFamilies = [...templateFamilies, ...googleFamilies].filter(
-    (family, familyIndex, families) => families.indexOf(family) === familyIndex,
+  const searchFamilies = useMemo(
+    () => uniqueFontFamilies([...templateFamilies, ...googleFamilies]),
+    [googleFamilies, templateFamilies],
   );
-  const visibleFamilies = hasSearchQuery
-    ? searchFamilies.filter((family) =>
-      family.toLowerCase().includes(normalizedQuery),
-    )
-    : activeFamilies;
+  const visibleFamilies = useMemo(
+    () =>
+      hasSearchQuery
+        ? searchFamilies.filter((family) =>
+            family.toLowerCase().includes(normalizedQuery),
+          )
+        : activeFamilies,
+    [activeFamilies, hasSearchQuery, normalizedQuery, searchFamilies],
+  );
   const activeTitle = hasSearchQuery
     ? "All Fonts"
     : activeSource === "template" && templateFamilies.length > 0
@@ -831,6 +928,28 @@ function FontMenuSection({
   onSelect: (family: string) => void;
   onSwap: () => void;
 }) {
+  const optionsRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const viewportRows = Math.min(families.length, FONT_MENU_MAX_VISIBLE_ROWS);
+  const viewportHeight = Math.max(1, viewportRows) * FONT_MENU_OPTION_HEIGHT;
+  const firstVisibleIndex = Math.max(
+    0,
+    Math.floor(scrollTop / FONT_MENU_OPTION_HEIGHT) - FONT_MENU_OVERSCAN_ROWS,
+  );
+  const visibleOptionCount =
+    viewportRows + FONT_MENU_OVERSCAN_ROWS * 2 + 1;
+  const virtualFamilies = families.slice(
+    firstVisibleIndex,
+    firstVisibleIndex + visibleOptionCount,
+  );
+
+  useEffect(() => {
+    setScrollTop(0);
+    if (optionsRef.current) {
+      optionsRef.current.scrollTop = 0;
+    }
+  }, [families]);
+
   return (
     <div style={textToolbarStyles.fontMenuSection}>
       <div style={textToolbarStyles.fontMenuHeading}>
@@ -846,35 +965,58 @@ function FontMenuSection({
           <Repeat2 size={14} strokeWidth={2.1} aria-hidden="true" />
         </button>
       </div>
-      <div style={textToolbarStyles.fontMenuOptions}>
-        {families.map((family) => {
-          const selected = family === selectedFamily;
-          return (
-            <button
-              key={family}
-              type="button"
-              role="option"
-              aria-selected={selected}
-              title={family}
-              style={{
-                ...textToolbarStyles.fontMenuOption,
-                ...(selected ? textToolbarStyles.fontMenuOptionSelected : {}),
-              }}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onSelect(family)}
-            >
-              <span style={textToolbarStyles.fontMenuCheck}>
-                {selected ? (
-                  <Check size={14} strokeWidth={2.4} aria-hidden="true" />
-                ) : null}
-              </span>
-              <span style={textToolbarStyles.fontMenuOptionLabel}>
-                {family}
-              </span>
-              <span style={textToolbarStyles.fontMenuSample}>Aa</span>
-            </button>
-          );
-        })}
+      <div
+        ref={optionsRef}
+        style={{
+          ...textToolbarStyles.fontMenuOptions,
+          height: viewportHeight,
+        }}
+        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+      >
+        {families.length === 0 ? (
+          <div style={textToolbarStyles.fontMenuEmpty}>No fonts</div>
+        ) : (
+          <div
+            style={{
+              ...textToolbarStyles.fontMenuVirtualSpace,
+              height: families.length * FONT_MENU_OPTION_HEIGHT,
+            }}
+          >
+            {virtualFamilies.map((family, offset) => {
+              const familyIndex = firstVisibleIndex + offset;
+              const selected = family === selectedFamily;
+              return (
+                <button
+                  key={family}
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  title={family}
+                  style={{
+                    ...textToolbarStyles.fontMenuOption,
+                    ...textToolbarStyles.fontMenuOptionVirtual,
+                    top: familyIndex * FONT_MENU_OPTION_HEIGHT,
+                    ...(selected
+                      ? textToolbarStyles.fontMenuOptionSelected
+                      : {}),
+                  }}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => onSelect(family)}
+                >
+                  <span style={textToolbarStyles.fontMenuCheck}>
+                    {selected ? (
+                      <Check size={14} strokeWidth={2.4} aria-hidden="true" />
+                    ) : null}
+                  </span>
+                  <span style={textToolbarStyles.fontMenuOptionLabel}>
+                    {family}
+                  </span>
+                  <span style={textToolbarStyles.fontMenuSample}>Aa</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1255,6 +1397,11 @@ const textToolbarStyles = {
     overflowY: "auto",
     overscrollBehavior: "contain",
   },
+  fontMenuVirtualSpace: {
+    position: "relative",
+    width: "100%",
+    minHeight: "100%",
+  },
   fontMenuOption: {
     width: "100%",
     minHeight: 30,
@@ -1275,9 +1422,24 @@ const textToolbarStyles = {
     fontWeight: 400,
     lineHeight: 1,
   },
+  fontMenuOptionVirtual: {
+    position: "absolute",
+    left: 0,
+    height: FONT_MENU_OPTION_HEIGHT,
+  },
   fontMenuOptionSelected: {
     background: "#F1F1F4",
     color: "#111827",
+  },
+  fontMenuEmpty: {
+    height: FONT_MENU_OPTION_HEIGHT,
+    display: "flex",
+    alignItems: "center",
+    padding: "0 8px",
+    color: "#6B7280",
+    fontFamily:
+      "var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif",
+    fontSize: 13,
   },
   fontMenuCheck: {
     width: 22,

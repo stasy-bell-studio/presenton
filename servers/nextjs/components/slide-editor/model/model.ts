@@ -16,6 +16,7 @@ import {
   rawFontRecordForEditor,
   rawTableCellText,
   rawTextContent,
+  rawTextListRenderTextRuns,
   rawTextListItemText,
   rawTextListRunsForEditor,
   rawTextRunsForEditor,
@@ -26,6 +27,7 @@ import {
   setRawTextRunsContent,
   setRawTextWrap,
   normalizeRawTextMarkdownElement,
+  textVisualLocalBox,
 } from "@/components/slide-editor/text/template-v2-text";
 import {
   intrinsicFlowSize,
@@ -1265,10 +1267,20 @@ export function componentBox(component: RawComponent): Box {
 }
 
 export function elementBox(element: RawElement): Box {
-  return {
+  const box = {
     ...readPoint(element.position),
     ...elementSize(element),
   };
+  const type = readString(element.type);
+  if (type === "text") {
+    return textVisualLocalBox(element, box);
+  }
+  if (type === "text-list") {
+    return textVisualLocalBox(element, box, {
+      runs: rawTextListRenderTextRuns(element),
+    });
+  }
+  return box;
 }
 
 export function isManualPositioned(element: RawElement) {

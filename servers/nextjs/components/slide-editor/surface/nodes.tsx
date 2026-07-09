@@ -295,6 +295,9 @@ export function RawComponentNode({
   const elements = readArray(renderedComponent.elements).filter(
     isRecord,
   ) as RawElement[];
+  const clipBounds = isEditMode
+    ? null
+    : componentTextClipBounds(elements, box);
 
   return (
     <Group
@@ -309,10 +312,10 @@ export function RawComponentNode({
       offsetX={box.width / 2}
       offsetY={box.height / 2}
       rotation={readNumber(renderedComponent.rotation) ?? 0}
-      clipX={isEditMode ? undefined : 0}
-      clipY={isEditMode ? undefined : 0}
-      clipWidth={isEditMode ? undefined : box.width}
-      clipHeight={isEditMode ? undefined : box.height}
+      clipX={clipBounds?.x}
+      clipY={clipBounds?.y}
+      clipWidth={clipBounds?.width}
+      clipHeight={clipBounds?.height}
       draggable={isEditMode}
       onMouseDown={(event) => {
         if (!isEditMode) return;
@@ -415,6 +418,52 @@ export function RawComponentNode({
       ))}
     </Group>
   );
+}
+
+function componentTextClipBounds(elements: RawElement[], componentBox: Box): Box {
+  let left = 0;
+  let top = 0;
+  let right = componentBox.width;
+  let bottom = componentBox.height;
+
+  const includeBox = (box: Box, offsetX: number, offsetY: number) => {
+    left = Math.min(left, offsetX + box.x);
+    top = Math.min(top, offsetY + box.y);
+    right = Math.max(right, offsetX + box.x + box.width);
+    bottom = Math.max(bottom, offsetY + box.y + box.height);
+  };
+
+  const visitElement = (
+    element: RawElement,
+    box: Box,
+    offsetX: number,
+    offsetY: number,
+  ) => {
+    const type = readString(element.type);
+    if (type === "text" || type === "text-list") {
+      includeBox(box, offsetX, offsetY);
+    }
+
+    const childInfo = childArrayInfo(element);
+    if (!childInfo) return;
+    layoutChildren(element, childInfo.items, box).forEach((childLayout) => {
+      visitElement(
+        childLayout.child,
+        childLayout.box ?? elementBox(childLayout.child),
+        offsetX + box.x,
+        offsetY + box.y,
+      );
+    });
+  };
+
+  elements.forEach((element) => visitElement(element, elementBox(element), 0, 0));
+
+  return {
+    x: left,
+    y: top,
+    width: Math.max(1, right - left),
+    height: Math.max(1, bottom - top),
+  };
 }
 
 export const MemoizedRawComponentNode = memo(

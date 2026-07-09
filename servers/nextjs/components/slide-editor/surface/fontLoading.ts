@@ -70,9 +70,10 @@ export function useFontLoadState(
 
     const fonts = document.fonts;
     const descriptors = fontSignature.split("\n").filter(Boolean);
+    const templateFontFamilies = templateFonts.map(({ family }) => family);
     const stylesheetLoads = [
       ...ensureTemplateFontsForDescriptors(descriptors, templateFonts),
-      ...ensureGoogleFontsForDescriptors(descriptors),
+      ...ensureGoogleFontsForDescriptors(descriptors, templateFontFamilies),
     ];
     const fontsAlreadyReady =
       stylesheetLoads.length === 0 && areFontDescriptorsLoaded(fontSignature);
