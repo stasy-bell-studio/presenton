@@ -15,6 +15,10 @@
   <a href="https://presenton.ai/"><img src="https://img.shields.io/badge/Platform-Docker%20%7C%20Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=flat" alt="Platform" /></a>
 </p>
 
+<p align="center">
+  <a href="https://trendshift.io/repositories/18582?utm_source=repository-badge&amp;utm_medium=badge&amp;utm_campaign=badge-repository-18582" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/18582" alt="presenton%2Fpresenton | Trendshift" width="250" height="55" /></a>
+</p>
+
 # Open-Source AI Presentation Generator and API (Gamma, Canva, Beautiful AI, Decktopus, Presentations AI Alternative)
 
 Discover what Presenton can do from AI-powered presentation generation to editing, exporting, and flexible model providers.
