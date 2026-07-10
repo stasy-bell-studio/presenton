@@ -3,18 +3,13 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type Konva from "konva";
 import { Transformer } from "react-konva";
-import {
-  EDITOR_STAGE_HEIGHT,
-  EDITOR_STAGE_WIDTH,
-} from "@/components/slide-editor/types";
 
 const CORNER_HANDLE_SIZE = 14;
 const EDGE_HANDLE_LENGTH = 28;
 const EDGE_HANDLE_THICKNESS = 9;
 const ROTATION_HANDLE_SIZE = 28;
-const ROTATION_HANDLE_GAP = 12;
-const ROTATION_HANDLE_VIEWPORT_MARGIN = 3;
-const ROTATION_ANCHOR_OFFSET = ROTATION_HANDLE_SIZE / 2 + ROTATION_HANDLE_GAP;
+const BOTTOM_CENTER_ROTATION_ANCHOR_OFFSET = 26;
+const BOTTOM_CENTER_ROTATION_ANCHOR_ANGLE = 180;
 const ROTATION_ICON_SIZE = 18;
 const ROTATION_ICON_VIEWBOX_SIZE = 24;
 const REFRESH_CW_ICON_PATHS = [
@@ -24,34 +19,14 @@ const REFRESH_CW_ICON_PATHS = [
   "M8 16H3v5",
 ];
 const SHADOW_EVENT_NAMESPACE = ".presentonSelectionShadows";
-const ROTATION_ANCHOR_EVENT_NAMESPACE = ".presentonSelectionRotationAnchor";
+const BOTTOM_CENTER_ROTATION_ANCHOR_EVENT_NAMESPACE =
+  ".presentonBottomCenterRotationAnchor";
 const MULTI_SELECTION_GROUP_DASH = [5, 5];
 const MULTI_SELECTION_MEMBER_DASH = [7, 4];
 const HORIZONTAL_ONLY_ANCHORS = ["middle-left", "middle-right"];
 let refreshCwIconPaths: Path2D[] | null = null;
 
 type SelectionKind = "component" | "multi-component" | "element" | null;
-
-type RotationAnchorSide = "top" | "bottom" | "right" | "left";
-
-type RotationAnchorPlacement = {
-  angle: number;
-  offset: number;
-  side: RotationAnchorSide;
-};
-
-const DEFAULT_ROTATION_ANCHOR_PLACEMENT: RotationAnchorPlacement = {
-  angle: 0,
-  offset: ROTATION_ANCHOR_OFFSET,
-  side: "top",
-};
-
-const ROTATION_ANCHOR_CANDIDATES: RotationAnchorPlacement[] = [
-  DEFAULT_ROTATION_ANCHOR_PLACEMENT,
-  { angle: 180, offset: ROTATION_ANCHOR_OFFSET, side: "bottom" },
-  { angle: 90, offset: ROTATION_ANCHOR_OFFSET, side: "right" },
-  { angle: -90, offset: ROTATION_ANCHOR_OFFSET, side: "left" },
-];
 
 type TemplateV2SelectionTransformersProps = {
   nodeRefs: RefObject<Map<string, Konva.Node>>;
@@ -222,79 +197,22 @@ function TemplateV2MultiSelectionMemberOutline({
   );
 }
 
-function rotationAnchorPlacementForNode(
+function getBottomCenterRotationAnchorAngle(
   node: Konva.Node | null | undefined,
-): RotationAnchorPlacement {
-  if (!node) return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
-
-  const width = Math.abs(node.width());
-  const height = Math.abs(node.height());
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
-    return DEFAULT_ROTATION_ANCHOR_PLACEMENT;
-  }
-
-  const absoluteTransform = node.getAbsoluteTransform().copy();
-  const scoredPlacements = ROTATION_ANCHOR_CANDIDATES.map((placement) => {
-    const anchorCenter = localRotationAnchorCenter(width, height, placement);
-    const absoluteCenter = absoluteTransform.point(anchorCenter);
-    return {
-      placement,
-      overflow: rotationAnchorOverflow(absoluteCenter),
-    };
-  });
-  const visiblePlacement = scoredPlacements.find(
-    ({ overflow }) => overflow.total === 0,
-  );
-  if (visiblePlacement) return visiblePlacement.placement;
-
-  return scoredPlacements.reduce((best, current) =>
-    current.overflow.total < best.overflow.total ? current : best,
-  ).placement;
-}
-
-function localRotationAnchorCenter(
-  width: number,
-  height: number,
-  placement: RotationAnchorPlacement,
 ) {
-  switch (placement.side) {
-    case "bottom":
-      return { x: width / 2, y: height + placement.offset };
-    case "right":
-      return { x: width + placement.offset, y: height / 2 };
-    case "left":
-      return { x: -placement.offset, y: height / 2 };
-    case "top":
-    default:
-      return { x: width / 2, y: -placement.offset };
-  }
+  return (
+    BOTTOM_CENTER_ROTATION_ANCHOR_ANGLE - (node?.getAbsoluteRotation() ?? 0)
+  );
 }
 
-function rotationAnchorOverflow(point: { x: number; y: number }) {
-  const clearance = ROTATION_HANDLE_SIZE / 2 + ROTATION_HANDLE_VIEWPORT_MARGIN;
-  const left = Math.max(0, clearance - point.x);
-  const top = Math.max(0, clearance - point.y);
-  const right = Math.max(0, point.x + clearance - EDITOR_STAGE_WIDTH);
-  const bottom = Math.max(0, point.y + clearance - EDITOR_STAGE_HEIGHT);
-
-  return {
-    left,
-    top,
-    right,
-    bottom,
-    total: left + top + right + bottom,
-  };
-}
-
-function applyRotationAnchorPlacement(
+function applyBottomCenterRotationAnchor(
   transformer: Konva.Transformer | null,
   node: Konva.Node | null | undefined,
 ) {
   if (!transformer) return;
 
-  const placement = rotationAnchorPlacementForNode(node);
-  transformer.rotateAnchorAngle(placement.angle);
-  transformer.rotateAnchorOffset(placement.offset);
+  transformer.rotateAnchorAngle(getBottomCenterRotationAnchorAngle(node));
+  transformer.rotateAnchorOffset(BOTTOM_CENTER_ROTATION_ANCHOR_OFFSET);
   transformer.forceUpdate();
   transformer.getLayer()?.batchDraw();
 }
@@ -310,16 +228,17 @@ export function TemplateV2SelectionTransformers({
 }: TemplateV2SelectionTransformersProps) {
   const selectedTransformerRef = useRef<Konva.Transformer | null>(null);
   const contextTransformerRef = useRef<Konva.Transformer | null>(null);
-  const selectedNode = selectedKey ? nodeRefs.current?.get(selectedKey) : null;
   const isMultiComponentSelection = selectionKind === "multi-component";
+  const selectedNode =
+    selectionKind === "component" && selectedKey
+      ? nodeRefs.current?.get(selectedKey)
+      : null;
+  const bottomCenterRotationAnchorAngle =
+    getBottomCenterRotationAnchorAngle(selectedNode);
   const multiSelectionMemberKeys =
     isMultiComponentSelection && !suppressSelectedOutline
       ? selectedKeys ?? []
       : [];
-  const rotationAnchorPlacement =
-    selectionKind === "component"
-      ? rotationAnchorPlacementForNode(selectedNode)
-      : DEFAULT_ROTATION_ANCHOR_PLACEMENT;
 
   useEffect(() => {
     const keys = selectedKeys?.length
@@ -352,10 +271,11 @@ export function TemplateV2SelectionTransformers({
       selectionKind === "component" && selectedNodes.length === 1
         ? selectedNodes[0]
         : null;
-    const refreshRotationAnchorPlacement = () => {
-      applyRotationAnchorPlacement(selectedTransformer, selectedRotationNode);
+    const refreshBottomCenterRotationAnchor = () => {
+      if (selectedTransformer?.isTransforming()) return;
+      applyBottomCenterRotationAnchor(selectedTransformer, selectedRotationNode);
     };
-    refreshRotationAnchorPlacement();
+    refreshBottomCenterRotationAnchor();
 
     selectedTransformer?.getLayer()?.batchDraw();
 
@@ -373,25 +293,21 @@ export function TemplateV2SelectionTransformers({
       node.on(`dragend${SHADOW_EVENT_NAMESPACE}`, enableShadows);
     });
     selectedRotationNode?.on(
-      `dragstart${ROTATION_ANCHOR_EVENT_NAMESPACE}`,
-      refreshRotationAnchorPlacement,
+      `rotationChange${BOTTOM_CENTER_ROTATION_ANCHOR_EVENT_NAMESPACE}`,
+      refreshBottomCenterRotationAnchor,
     );
     selectedRotationNode?.on(
-      `dragmove${ROTATION_ANCHOR_EVENT_NAMESPACE}`,
-      refreshRotationAnchorPlacement,
+      `absoluteTransformChange${BOTTOM_CENTER_ROTATION_ANCHOR_EVENT_NAMESPACE}`,
+      refreshBottomCenterRotationAnchor,
     );
     selectedRotationNode?.on(
-      `dragend${ROTATION_ANCHOR_EVENT_NAMESPACE}`,
-      refreshRotationAnchorPlacement,
-    );
-    selectedRotationNode?.on(
-      `transformend${ROTATION_ANCHOR_EVENT_NAMESPACE}`,
-      refreshRotationAnchorPlacement,
+      `transformend${BOTTOM_CENTER_ROTATION_ANCHOR_EVENT_NAMESPACE}`,
+      refreshBottomCenterRotationAnchor,
     );
 
     return () => {
       dragNodes.forEach((node) => node.off(SHADOW_EVENT_NAMESPACE));
-      selectedRotationNode?.off(ROTATION_ANCHOR_EVENT_NAMESPACE);
+      selectedRotationNode?.off(BOTTOM_CENTER_ROTATION_ANCHOR_EVENT_NAMESPACE);
       enableShadows();
     };
   }, [
@@ -439,8 +355,8 @@ export function TemplateV2SelectionTransformers({
             : []
         }
         resizeEnabled={selectionKind === "component"}
-        rotateAnchorAngle={rotationAnchorPlacement.angle}
-        rotateAnchorOffset={rotationAnchorPlacement.offset}
+        rotateAnchorAngle={bottomCenterRotationAnchorAngle}
+        rotateAnchorOffset={BOTTOM_CENTER_ROTATION_ANCHOR_OFFSET}
         rotateEnabled={selectionKind === "component"}
         rotateLineVisible={false}
       />
