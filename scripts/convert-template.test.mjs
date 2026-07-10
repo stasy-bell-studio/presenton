@@ -12,13 +12,21 @@ test("converts an exported template to the bundled default-template shape", asyn
   const inputDirectory = path.join(root, "templates", "modern");
   const input = path.join(inputDirectory, "source.json");
   const output = path.join(inputDirectory, "template.json");
-  const image = path.join(appData, "pptx-to-json", "session", "images", "hero.png");
+  const decorativeImage = path.join(
+    appData,
+    "pptx-to-json",
+    "session",
+    "images",
+    "decoration.png",
+  );
   const preview = path.join(appData, "uploads", "template-previews", "id", "slide_1.png");
-  await mkdir(path.dirname(image), { recursive: true });
+  const staticDirectory = path.join(inputDirectory, "static");
+  await mkdir(path.dirname(decorativeImage), { recursive: true });
   await mkdir(path.dirname(preview), { recursive: true });
-  await mkdir(inputDirectory, { recursive: true });
-  await writeFile(image, "image bytes");
+  await mkdir(staticDirectory, { recursive: true });
+  await writeFile(decorativeImage, "decorative image bytes");
   await writeFile(preview, "preview bytes");
+  await writeFile(path.join(staticDirectory, "stale.png"), "stale bytes");
   await writeFile(
     input,
     JSON.stringify({
@@ -39,8 +47,22 @@ test("converts an exported template to the bundled default-template shape", asyn
                 elements: [
                   {
                     type: "image",
-                    data: "/app_data/pptx-to-json/session/images/hero.png",
+                    data: "/app_data/pptx-to-json/session/images/editable.png",
+                    decorative: false,
+                    is_icon: false,
                     custom_image_key: true,
+                  },
+                  {
+                    type: "image",
+                    data: "/app_data/pptx-to-json/session/images/icon.svg",
+                    decorative: true,
+                    is_icon: true,
+                  },
+                  {
+                    type: "image",
+                    data: "/app_data/pptx-to-json/session/images/decoration.png",
+                    decorative: true,
+                    is_icon: false,
                   },
                 ],
               },
@@ -75,18 +97,30 @@ test("converts an exported template to the bundled default-template shape", asyn
   assert.equal(converted.merged_components[0].metadata.created_at, "keep nested");
   assert.equal(converted.layouts[0].custom_key, "keep me");
   assert.equal(converted.layouts[0].components[0].elements[0].custom_image_key, true);
-  assert.equal(converted.layouts[0].components[0].elements[0].data, "static/hero.png");
+  assert.equal(
+    converted.layouts[0].components[0].elements[0].data,
+    "/static/images/replaceable_template_image.png",
+  );
+  assert.equal(
+    converted.layouts[0].components[0].elements[1].data,
+    "/static/icons/placeholder.svg",
+  );
+  assert.equal(
+    converted.layouts[0].components[0].elements[2].data,
+    "static/decoration.png",
+  );
   assert.deepEqual(converted.fonts, {
     Montserrat: "https://fonts.example/montserrat.css",
   });
   assert.equal(
-    await readFile(path.join(inputDirectory, "static", "hero.png"), "utf8"),
-    "image bytes",
+    await readFile(path.join(staticDirectory, "decoration.png"), "utf8"),
+    "decorative image bytes",
   );
   assert.equal(
-    await readFile(path.join(inputDirectory, "static", "thumbnail.png"), "utf8"),
+    await readFile(path.join(staticDirectory, "thumbnail.png"), "utf8"),
     "preview bytes",
   );
+  await assert.rejects(readFile(path.join(staticDirectory, "stale.png")), /ENOENT/);
   assert.equal(result.assetCount, 2);
 });
 
@@ -100,7 +134,20 @@ test("fails before writing output when a retained asset is missing", async () =>
       id: "missing",
       name: "Missing",
       layouts: [
-        { components: [{ elements: [{ type: "image", data: "/app_data/no.png" }] }] },
+        {
+          components: [
+            {
+              elements: [
+                {
+                  type: "image",
+                  data: "/app_data/no.png",
+                  decorative: true,
+                  is_icon: false,
+                },
+              ],
+            },
+          ],
+        },
       ],
       merged_components: [],
       assets: { fonts: {} },

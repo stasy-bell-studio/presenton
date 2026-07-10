@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  rmdir,
+  stat,
+  writeFile,
+} from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -14,6 +23,9 @@ const TOP_LEVEL_KEYS = [
   "layouts",
   "fonts",
 ];
+
+const REPLACEABLE_IMAGE = "/static/images/replaceable_template_image.png";
+const ICON_PLACEHOLDER = "/static/icons/placeholder.svg";
 
 function usage() {
   return `Usage: node scripts/convert-template.mjs <input.json> [options]
@@ -99,6 +111,25 @@ function buildTargetShape(raw, outputPath) {
     },
     thumbnailSource,
   };
+}
+
+function replaceEditableImages(value) {
+  if (Array.isArray(value)) {
+    return value.map(replaceEditableImages);
+  }
+  if (!value || typeof value !== "object") return value;
+
+  const converted = Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, replaceEditableImages(child)]),
+  );
+  if (value.type !== "image") return converted;
+  if (value.is_icon === true) {
+    return { ...converted, data: ICON_PLACEHOLDER };
+  }
+  if (value.decorative !== true) {
+    return { ...converted, data: REPLACEABLE_IMAGE };
+  }
+  return converted;
 }
 
 function collectStrings(value, result = new Set()) {
@@ -193,7 +224,11 @@ async function planAssets(template, thumbnailSource, context) {
         ? `thumbnail${path.extname(asset.preferredName) || ".png"}`
         : asset.preferredName;
     targetName = targetName.replaceAll("\\", "/").replace(/^\/+/, "");
-    assertInside(context.staticDirectory, path.resolve(context.staticDirectory, targetName), targetName);
+    assertInside(
+      context.staticDirectory,
+      path.resolve(context.staticDirectory, targetName),
+      targetName,
+    );
 
     const claimed = claimedNames.get(targetName);
     if (claimed && claimed.sourceKey !== sourceKey) {
@@ -227,6 +262,34 @@ function rewriteStrings(value, plans) {
   return value;
 }
 
+async function cleanStaticDirectory(directory, retainedTargets) {
+  async function clean(currentDirectory) {
+    let entries;
+    try {
+      entries = await readdir(currentDirectory, { withFileTypes: true });
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+
+    for (const entry of entries) {
+      const entryPath = path.join(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await clean(entryPath);
+        try {
+          await rmdir(entryPath);
+        } catch (error) {
+          if (error.code !== "ENOTEMPTY" && error.code !== "EEXIST") throw error;
+        }
+      } else if (!retainedTargets.has(path.resolve(entryPath))) {
+        await rm(entryPath, { force: true });
+      }
+    }
+  }
+
+  await clean(directory);
+}
+
 export async function convertTemplate({ input, output = input, appData } = {}) {
   if (!input) throw new Error("input is required");
 
@@ -239,7 +302,8 @@ export async function convertTemplate({ input, output = input, appData } = {}) {
   const outputDirectory = path.dirname(outputPath);
   const staticDirectory = path.join(outputDirectory, "static");
   const raw = JSON.parse(await readFile(inputPath, "utf8"));
-  const { template, thumbnailSource } = buildTargetShape(raw, outputPath);
+  const { template: targetShape, thumbnailSource } = buildTargetShape(raw, outputPath);
+  const template = replaceEditableImages(targetShape);
   const plans = await planAssets(template, thumbnailSource, {
     appDataRoot,
     inputDirectory,
@@ -254,6 +318,10 @@ export async function convertTemplate({ input, output = input, appData } = {}) {
       await copyFile(plan.source, plan.target);
     }
   }
+  await cleanStaticDirectory(
+    staticDirectory,
+    new Set([...plans.values()].map((plan) => path.resolve(plan.target))),
+  );
   await writeFile(outputPath, `${JSON.stringify(converted, null, 2)}\n`, "utf8");
 
   return {

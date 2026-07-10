@@ -572,7 +572,7 @@
                 "height": 592
               },
               "rotation": 0,
-              "data": "static/image1-58b2edf71644.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "border_radius": {
                 "tl": 4,
@@ -609,7 +609,7 @@
                 "height": 384
               },
               "rotation": 0,
-              "data": "static/image14-e69f9d8d331d.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "left_media_image",
@@ -1263,7 +1263,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image2-e4030ff9c9cd.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -1413,7 +1413,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image3-4808736ad57f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -1563,7 +1563,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image4-f0a131a4bc22.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -1713,7 +1713,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image5-b067b79edd5f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -1863,7 +1863,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image6-b834691d4f6f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -2013,7 +2013,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image7-7c5acf00e440.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -2188,7 +2188,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image8-b412d3bd5ac5.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -2308,7 +2308,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image9-4c299673c112.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -2428,7 +2428,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image10-46b88e7ae7e7.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -2548,7 +2548,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image11-e31653bd78a7.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -4049,7 +4049,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image17-388effbd80f7.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -4072,7 +4072,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image16-b094bdb628a3.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -4291,7 +4291,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image20-8e546f0e8ca9.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -4314,7 +4314,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image19-384c959acf17.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -4596,7 +4596,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image21-bf02b0ca54d3.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -4744,7 +4744,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image22-2add2a635d09.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -4892,7 +4892,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image23-bc09890f7e1a.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -5040,7 +5040,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image24-302745ca835a.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -5234,7 +5234,7 @@
                     "width": 520.95,
                     "height": 220
                   },
-                  "data": "static/image25-4c61f7f9bc73.png",
+                  "data": "/static/images/replaceable_template_image.png",
                   "fit": "fill",
                   "decorative": false,
                   "name": "wide_feature_visual",
@@ -8157,7 +8157,7 @@
                 "height": 592
               },
               "rotation": 0,
-              "data": "static/image1-58b2edf71644.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "border_radius": {
                 "tl": 4,
@@ -8374,7 +8374,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image2-e4030ff9c9cd.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -8524,7 +8524,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image3-4808736ad57f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -8674,7 +8674,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image4-f0a131a4bc22.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -8824,7 +8824,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image5-b067b79edd5f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -8974,7 +8974,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image6-b834691d4f6f.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -9124,7 +9124,7 @@
                     "width": 48,
                     "height": 48
                   },
-                  "data": "static/image7-7c5acf00e440.png",
+                  "data": "/static/icons/placeholder.svg",
                   "fit": "fill",
                   "color": "#234CD9",
                   "decorative": false,
@@ -9416,7 +9416,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image8-b412d3bd5ac5.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -9536,7 +9536,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image9-4c299673c112.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -9656,7 +9656,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image10-46b88e7ae7e7.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -9776,7 +9776,7 @@
                         "width": 48,
                         "height": 48
                       },
-                      "data": "static/image11-e31653bd78a7.png",
+                      "data": "/static/icons/placeholder.svg",
                       "fit": "fill",
                       "color": "#234CD9",
                       "decorative": false,
@@ -11207,7 +11207,7 @@
                 "height": 384
               },
               "rotation": 0,
-              "data": "static/image14-e69f9d8d331d.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "left_media_image",
@@ -11471,7 +11471,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image17-388effbd80f7.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -11494,7 +11494,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image16-b094bdb628a3.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -11713,7 +11713,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image20-8e546f0e8ca9.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -11736,7 +11736,7 @@
                         "height": 178
                       },
                       "rotation": 0,
-                      "data": "static/image19-384c959acf17.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 0,
@@ -12157,7 +12157,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image21-bf02b0ca54d3.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -12305,7 +12305,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image22-2add2a635d09.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -12453,7 +12453,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image23-bc09890f7e1a.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -12601,7 +12601,7 @@
                         "width": 222,
                         "height": 160
                       },
-                      "data": "static/image24-302745ca835a.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 6,
@@ -12824,7 +12824,7 @@
                     "width": 520.95,
                     "height": 220
                   },
-                  "data": "static/image25-4c61f7f9bc73.png",
+                  "data": "/static/images/replaceable_template_image.png",
                   "fit": "fill",
                   "decorative": false,
                   "name": "wide_feature_visual",

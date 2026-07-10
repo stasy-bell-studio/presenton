@@ -325,7 +325,7 @@
                 "width": 640,
                 "height": 656
               },
-              "data": "static/image1-57f7b45f587f.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "large_side_photo",
@@ -356,7 +356,7 @@
                 "height": 600
               },
               "rotation": 0,
-              "data": "static/image3-511339c1b3b7.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "main_visual",
@@ -1048,7 +1048,7 @@
               },
               "rotation": 0,
               "opacity": 1,
-              "data": "static/image9-d357db510753.png",
+              "data": "/static/icons/placeholder.svg",
               "fit": "fill",
               "decorative": false,
               "name": "card_icon",
@@ -1562,7 +1562,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image5-248636241dd8.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "left_photo",
@@ -2798,7 +2798,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image11-8e1e29d433a2.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -2956,7 +2956,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image12-09660255d385.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -3114,7 +3114,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image13-7e49d788f051.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -5920,7 +5920,7 @@
                 "width": 422.39,
                 "height": 656
               },
-              "data": "static/image14-2c616ec91325.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "portrait_panel_image",
@@ -7328,7 +7328,7 @@
                 "width": 640,
                 "height": 656
               },
-              "data": "static/image1-57f7b45f587f.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "large_side_photo",
@@ -7865,7 +7865,7 @@
                 "height": 600
               },
               "rotation": 0,
-              "data": "static/image3-511339c1b3b7.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "main_visual",
@@ -8238,7 +8238,7 @@
                 "height": 720
               },
               "rotation": 0,
-              "data": "static/image5-248636241dd8.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "left_photo",
@@ -9428,7 +9428,7 @@
               },
               "rotation": 0,
               "opacity": 1,
-              "data": "static/image9-d357db510753.png",
+              "data": "/static/icons/placeholder.svg",
               "fit": "fill",
               "decorative": false,
               "name": "card_icon",
@@ -9780,7 +9780,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image11-8e1e29d433a2.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -9938,7 +9938,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image12-09660255d385.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -10096,7 +10096,7 @@
                         "height": 300
                       },
                       "rotation": 0,
-                      "data": "static/image13-7e49d788f051.png",
+                      "data": "/static/images/replaceable_template_image.png",
                       "fit": "fill",
                       "border_radius": {
                         "tl": 4,
@@ -11929,7 +11929,7 @@
                 "width": 422.39,
                 "height": 656
               },
-              "data": "static/image14-2c616ec91325.png",
+              "data": "/static/images/replaceable_template_image.png",
               "fit": "fill",
               "decorative": false,
               "name": "portrait_panel_image",
