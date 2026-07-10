@@ -3294,16 +3294,21 @@ class PresentationChatMemoryLayer:
     def _apply_template_v2_element_content(
         cls,
         element: dict[str, Any],
-        content: dict[str, Any],
+        content: Any,
         *,
         theme: dict[str, Any] | None = None,
+        direct_value: bool = False,
     ) -> None:
+        content_values = content if isinstance(content, dict) else {}
         element_type = element.get("type")
         name = element.get("name")
         has_value = False
         value = None
         if isinstance(name, str):
-            has_value, value = cls._template_v2_content_value(content, name)
+            has_value, value = cls._template_v2_content_value(
+                content_values,
+                name,
+            )
 
         if (
             has_value
@@ -3317,7 +3322,21 @@ class PresentationChatMemoryLayer:
             )
             return
 
-        nested_content = value if isinstance(value, dict) else content
+        if (
+            direct_value
+            and not has_value
+            and element.get("decorative") is False
+            and element_type in TEMPLATE_V2_GENERATED_ELEMENT_TYPES
+        ):
+            cls._set_template_v2_element_value(
+                element,
+                content,
+                theme=theme,
+            )
+            return
+
+        nested_content = value if isinstance(value, dict) else content_values
+        nested_direct_value = direct_value and not has_value
 
         child = element.get("child")
         if isinstance(child, dict):
@@ -3325,6 +3344,7 @@ class PresentationChatMemoryLayer:
                 child,
                 nested_content,
                 theme=theme,
+                direct_value=nested_direct_value,
             )
 
         children = element.get("children")
@@ -3336,8 +3356,9 @@ class PresentationChatMemoryLayer:
                     if isinstance(source_child, dict):
                         cls._apply_template_v2_element_content(
                             source_child,
-                            item if isinstance(item, dict) else {},
+                            item,
                             theme=theme,
+                            direct_value=True,
                         )
                     next_children.append(source_child)
                 element["children"] = next_children
@@ -3349,6 +3370,7 @@ class PresentationChatMemoryLayer:
                         child_element,
                         nested_content,
                         theme=theme,
+                        direct_value=nested_direct_value,
                     )
 
     @staticmethod

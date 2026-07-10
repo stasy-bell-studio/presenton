@@ -671,18 +671,20 @@ def _apply_template_v2_content_to_ui(
 
 def _apply_template_v2_content_to_element(
     element: Any,
-    content: dict[str, Any],
+    content: Any,
+    *,
+    direct_value: bool = False,
 ) -> Any:
     if not isinstance(element, dict):
         return element
 
+    content_values = content if isinstance(content, dict) else {}
     element_type = element.get("type")
     name = element.get("name") if isinstance(element.get("name"), str) else None
     has_value = False
     value = None
     if name:
-        has_value, value = _template_v2_content_value(content, name)
-    nested_content = value if isinstance(value, dict) else content
+        has_value, value = _template_v2_content_value(content_values, name)
 
     if (
         element.get("decorative") is False
@@ -692,11 +694,28 @@ def _apply_template_v2_content_to_element(
     ):
         return _apply_template_v2_content_value(element, value)
 
+    # Repeated flex/grid schemas omit the child-name wrapper when an item is a
+    # direct generated value. For example, three image children are emitted as
+    # [{"image_prompt": ..., "image_url": ...}, ...], not as
+    # [{"gallery_photo": {...}}, ...]. In that case the array item itself is
+    # the value for the child element.
+    if (
+        direct_value
+        and not has_value
+        and element.get("decorative") is False
+        and element_type in GENERATED_VALUE_ELEMENT_TYPES
+    ):
+        return _apply_template_v2_content_value(element, content)
+
+    nested_content = value if isinstance(value, dict) else content_values
+    nested_direct_value = direct_value and not has_value
+
     if element_type == "container":
         updated = copy.deepcopy(element)
         updated["child"] = _apply_template_v2_content_to_element(
             element.get("child"),
             nested_content,
+            direct_value=nested_direct_value,
         )
         return updated
 
@@ -709,6 +728,7 @@ def _apply_template_v2_content_to_element(
             children,
             value,
             nested_content,
+            direct_value=nested_direct_value,
         )
         return updated
 
@@ -743,19 +763,26 @@ def _template_v2_content_name_candidates(name: str) -> list[str]:
 def _apply_template_v2_content_to_children(
     children: list[Any],
     value: Any,
-    content: dict[str, Any],
+    content: Any,
+    *,
+    direct_value: bool = False,
 ) -> list[Any]:
     if isinstance(value, list) and children:
         return [
             _apply_template_v2_content_to_element(
                 children[min(index, len(children) - 1)],
-                item if isinstance(item, dict) else {},
+                item,
+                direct_value=True,
             )
             for index, item in enumerate(value)
         ]
 
     return [
-        _apply_template_v2_content_to_element(child, content)
+        _apply_template_v2_content_to_element(
+            child,
+            content,
+            direct_value=direct_value,
+        )
         for child in children
     ]
 

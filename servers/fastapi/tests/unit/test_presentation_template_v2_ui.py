@@ -807,3 +807,105 @@ def test_apply_template_v2_content_to_ui_matches_repeated_content_lengths():
         [{"text": "Generated bullet one"}],
         [{"text": "Generated bullet two"}],
     ]
+
+
+def test_apply_template_v2_content_to_ui_hydrates_direct_repeated_images():
+    ui = {
+        "id": "layout-1",
+        "components": [
+            {
+                "id": "gallery",
+                "elements": [
+                    {
+                        "type": "grid",
+                        "name": "photo_panels",
+                        "children": [
+                            {
+                                "type": "image",
+                                "decorative": False,
+                                "name": "gallery_photo_panel",
+                                "data": "/static/images/replaceable_template_image.png",
+                                "is_icon": False,
+                            }
+                            for _ in range(3)
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    content = {
+        "gallery": {
+            "photo_panels": [
+                {
+                    "image_prompt": "Melting glacier",
+                    "image_url": "/app_data/images/glacier.png",
+                },
+                {
+                    "image_prompt": "Wildfire smoke",
+                    "image_url": "/app_data/images/wildfire.png",
+                },
+                {
+                    "image_prompt": "Flooded street",
+                    "image_url": "/static/images/placeholder.jpg",
+                },
+            ]
+        }
+    }
+
+    hydrated = presentation_endpoint._apply_template_v2_content_to_ui(ui, content)
+
+    images = hydrated["components"][0]["elements"][0]["children"]
+    assert [image["data"] for image in images] == [
+        "/app_data/images/glacier.png",
+        "/app_data/images/wildfire.png",
+        "/static/images/placeholder.jpg",
+    ]
+    assert [image["prompt"] for image in images] == [
+        "Melting glacier",
+        "Wildfire smoke",
+        "Flooded street",
+    ]
+
+
+def test_chat_template_v2_content_hydrates_direct_repeated_images():
+    ui = {
+        "components": [
+            {
+                "id": "gallery",
+                "elements": [
+                    {
+                        "type": "grid",
+                        "name": "photo_panels",
+                        "children": [
+                            {
+                                "type": "image",
+                                "decorative": False,
+                                "name": "gallery_photo_panel",
+                                "data": "/static/images/replaceable_template_image.png",
+                                "is_icon": False,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    PresentationChatMemoryLayer._apply_template_v2_content_to_ui(
+        ui,
+        {
+            "gallery": {
+                "photo_panels": [
+                    {
+                        "image_prompt": "Generated landscape",
+                        "image_url": "/app_data/images/landscape.png",
+                    }
+                ]
+            }
+        },
+    )
+
+    image = ui["components"][0]["elements"][0]["children"][0]
+    assert image["data"] == "/app_data/images/landscape.png"
+    assert image["prompt"] == "Generated landscape"
