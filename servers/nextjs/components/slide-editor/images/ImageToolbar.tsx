@@ -7,6 +7,7 @@ import {
   FlipVertical2,
   Image as ImageIcon,
   RotateCcw,
+  Scan,
   X,
 } from "lucide-react";
 import {
@@ -38,7 +39,7 @@ import {
 import { OpacitySwatchIcon } from "@/components/slide-editor/toolbar/OpacitySwatchIcon";
 import { resolveBackendAssetSource } from "@/utils/api";
 
-type ImagePanel = "fit" | "crop" | "opacity" | null;
+type ImagePanel = "fit" | "crop" | "radius" | "opacity" | null;
 type ImageFit = "contain" | "cover" | "fill";
 type CropPoint = { x: number; y: number };
 type CropFrame = { left: number; top: number; width: number; height: number };
@@ -463,6 +464,11 @@ export function ImageToolbar({
     const willOpen = openPanel !== panel;
     setOpenPanel(willOpen ? panel : null);
   };
+  const commitRadius = (value: number) => {
+    const next = clampNumber(value, 0, maxRadius);
+    setRadiusDraft(next);
+    update({ border_radius: uniformBorderRadius(next) });
+  };
 
   return (
     <>
@@ -475,7 +481,7 @@ export function ImageToolbar({
             height: box.h * scale,
           }
         }
-        fallbackWidth={330}
+        fallbackWidth={360}
         inlineEditIgnore
         className="inline-flex items-center gap-3 rounded-[6px] bg-white px-[10px] py-[6px] text-[#191919] shadow-[0_0_4px_rgba(0,0,0,0.15)]"
       >
@@ -514,34 +520,6 @@ export function ImageToolbar({
                   {option.label}
                 </button>
               ))}
-              <div className="my-1 h-px bg-[#EDEEEF]" />
-              <label className="px-1 text-[12px] font-medium text-[#6B7280]">
-                Radius
-                <input
-                  aria-label="Image border radius"
-                  type="range"
-                  min={0}
-                  max={maxRadius}
-                  step={Math.max(0.01, maxRadius / 100)}
-                  value={radiusDraft}
-                  onChange={(event) => setRadiusDraft(Number(event.target.value))}
-                  onKeyUp={(event) =>
-                    update({
-                      border_radius: uniformBorderRadius(
-                        Number((event.target as HTMLInputElement).value),
-                      ),
-                    })
-                  }
-                  onPointerUp={(event) =>
-                    update({
-                      border_radius: uniformBorderRadius(
-                        Number((event.target as HTMLInputElement).value),
-                      ),
-                    })
-                  }
-                  className="mt-2 w-full cursor-pointer accent-[#7A5AF8]"
-                />
-              </label>
             </Panel>
           ) : null}
         </div>
@@ -605,6 +583,54 @@ export function ImageToolbar({
             <FlipVertical2 size={16} strokeWidth={1.7} aria-hidden="true" />
           </button>
 
+          <div className="relative">
+            <button
+              type="button"
+              title="Image border radius"
+              aria-label="Image border radius"
+              aria-pressed={openPanel === "radius"}
+              onClick={() => togglePanel("radius")}
+              className={cn(
+                "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
+                openPanel === "radius" && "bg-[#F4F1FF] text-[#7C3AED]",
+              )}
+            >
+              <Scan size={16} strokeWidth={1.7} aria-hidden="true" />
+            </button>
+            {openPanel === "radius" ? (
+              <Panel className="w-[220px] p-3">
+                <label className="block text-[12px] font-medium text-[#4B5563]">
+                  <span className="mb-2 flex items-center justify-between">
+                    <span>Border radius</span>
+                    <span className="font-medium text-[#191919]">
+                      {formatRadiusValue(radiusDraft)}
+                    </span>
+                  </span>
+                  <input
+                    aria-label="Image border radius"
+                    type="range"
+                    min={0}
+                    max={maxRadius}
+                    step={Math.max(0.01, maxRadius / 100)}
+                    value={radiusDraft}
+                    onChange={(event) =>
+                      setRadiusDraft(Number(event.currentTarget.value))
+                    }
+                    onBlur={(event) =>
+                      commitRadius(Number(event.currentTarget.value))
+                    }
+                    onKeyUp={(event) =>
+                      commitRadius(Number(event.currentTarget.value))
+                    }
+                    onPointerUp={(event) =>
+                      commitRadius(Number(event.currentTarget.value))
+                    }
+                    className="w-full cursor-pointer accent-[#7A5AF8]"
+                  />
+                </label>
+              </Panel>
+            ) : null}
+          </div>
         </div>
         <Divider />
 
@@ -984,4 +1010,9 @@ function Panel({
 
 function Divider() {
   return <span aria-hidden="true" className="h-[23px] w-px flex-none bg-[#EDEEEF]" />;
+}
+
+function formatRadiusValue(value: number) {
+  if (!Number.isFinite(value)) return "0";
+  return Number(value.toFixed(1)).toString();
 }
