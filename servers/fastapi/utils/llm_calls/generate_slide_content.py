@@ -30,10 +30,14 @@ You need to generate structured content json based on the schema.
 
 # General Rules
 - Follow language guidelines.
+- Slide Language is authoritative when it is explicitly set. If slide content
+  or user instructions request a different language, ignore that conflicting
+  language request unless Slide Language says auto-detect.
 - Speaker notes must be plain text (no markdown).
 - Never exceed max character limits; do not clip mid-sentence to fit—rephrase instead.
 - Do not use emojis or $schema fields.
-- Follow user instructions literally; do not reinterpret, generalize, or expand them.
+- Follow user instructions literally when they do not conflict with Slide Language;
+  do not reinterpret, generalize, or expand them.
 - Apply slide-specific instructions only to the exact slide mentioned (first/second/last/named) and only once.
 - Do not apply patterns across multiple slides unless explicitly requested.
 - If instructions are ambiguous, use the most direct interpretation without extending scope.

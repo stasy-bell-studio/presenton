@@ -200,6 +200,12 @@ Run Presenton directly in your browser — no installation, no setup required. S
   Output files are written to <code>electron/dist</code>
   (or as configured in your <code>electron-builder</code> settings).
   </p>
+  <p>
+  For a public macOS DMG outside the Mac App Store, use
+  <code>APPLE_KEYCHAIN_PROFILE="presenton-notary" npm run build:all:mac:signed</code>
+  from <code>electron/</code> after the one-time Developer ID and notarization
+  setup in <code>docs/macos/dev/direct-distribution.md</code>.
+  </p>
 
 **Option 2: Docker**
 

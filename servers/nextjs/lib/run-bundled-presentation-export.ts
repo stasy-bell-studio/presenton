@@ -86,6 +86,16 @@ export type BundledPresentationExportResult = { path: string };
 const EXPORT_DIRECTORY_MODE = 0o755;
 const EXPORT_FILE_MODE = 0o644;
 
+export function normalizeExportFileUrlPathname(
+  fsPath: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  if (platform === "win32" && /^\/[A-Za-z]:[\\/]/.test(fsPath)) {
+    return fsPath.slice(1);
+  }
+  return fsPath;
+}
+
 function normalizeExportOutputPath(params: {
   pathValue?: string;
   urlValue?: string;
@@ -115,7 +125,9 @@ function normalizeExportOutputPath(params: {
   if (urlValue && typeof urlValue === "string") {
     if (urlValue.startsWith("file://")) {
       const parsed = new URL(urlValue);
-      const fsPath = decodeURIComponent(parsed.pathname || "");
+      const fsPath = normalizeExportFileUrlPathname(
+        decodeURIComponent(parsed.pathname || "")
+      );
       if (fsPath.startsWith("/app_data/")) {
         return resolveAppDataRelative(fsPath);
       }

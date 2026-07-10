@@ -8,7 +8,7 @@ This guide covers Apple Developer setup, local provisioning files, and the npm s
 
 | Target | Purpose | npm script |
 |--------|---------|------------|
-| `dmg` | Local install (default) | `npm run build:all` |
+| `dmg` | Direct download outside the App Store | `npm run build:all:mac:signed` |
 | `mas-dev` | Sandbox testing on registered Macs | `npm run build:all:mas-dev` |
 | `mas` | App Store submission | `npm run build:all:mas` |
 
@@ -132,13 +132,15 @@ PRESENTON_MAS_DISTRIBUTION_IDENTITY="Apple Distribution: Your Org (TEAMID)" \
   npm run dist:mac:mas
 ```
 
-### Default DMG (not App Store)
+### Direct DMG (not App Store)
 
-For a standard macOS disk image (no sandbox, no MAS signing):
+For a signed and notarized macOS disk image that does not go through App Store approval:
 
 ```bash
-npm run build:all
+npm run build:all:mac:signed
 ```
+
+See [Direct distribution](./direct-distribution.md) for the Developer ID certificate, notarization, and verification flow.
 
 Artifacts land in `electron/dist/`.
 
@@ -151,7 +153,7 @@ electron/dist/
   mas-dev-arm64/          # unsigned or dev-signed .app (mas-dev)
   mas-arm64/              # distribution-signed .app (mas)
   Presenton-<version>.pkg # MAS installer for upload
-  Presenton-<version>.dmg # local DMG (default target)
+  Presenton-<version>.dmg # signed and notarized direct distribution DMG
 ```
 
 Upload the `.pkg` from the `mas` build to [App Store Connect](https://appstoreconnect.apple.com).

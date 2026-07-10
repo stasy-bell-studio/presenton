@@ -1,7 +1,7 @@
 {
   "name": "presenton",
   "productName": "Presenton Open Source",
-  "version": "0.8.8-beta",
+  "version": "0.8.9-beta",
   "exportVersion": "v0.3.6",
   "main": "app_dist/main.js",
   "description": "Open-Source AI Presentation Generator",
@@ -48,11 +48,14 @@
     "generate:version": "node scripts/generate-version.cjs",
     "upload:sourcemaps": "node scripts/upload-sourcemaps.cjs",
     "build:electron": "npm run generate:version && npm run build:export-runtime && npm run prepare:export-chromium && npm run prepare:imagemagick && npm run typecheck && npm run build:ts && npm run check:main-no-undef && node build.js",
+    "build:electron:mac:signed": "npm run generate:version && npm run build:export-runtime && npm run prepare:export-chromium && npm run prepare:imagemagick && npm run typecheck && npm run build:ts && npm run check:main-no-undef && cross-env PRESENTON_MAC_TARGET=dmg PRESENTON_REQUIRE_MAC_SIGNING=1 node build.js",
     "build:electron:mas-dev": "npm run generate:version && npm run build:export-runtime && npm run prepare:export-chromium && npm run prepare:imagemagick && npm run typecheck && npm run build:ts && npm run check:main-no-undef && cross-env PRESENTON_MAC_TARGET=mas-dev node build.js",
     "build:electron:mas": "npm run generate:version && npm run build:export-runtime && npm run prepare:export-chromium && npm run prepare:imagemagick && npm run typecheck && npm run build:ts && npm run check:main-no-undef && cross-env PRESENTON_MAC_TARGET=mas node build.js",
+    "dist:mac:signed": "cross-env PRESENTON_MAC_TARGET=dmg PRESENTON_REQUIRE_MAC_SIGNING=1 node build.js",
     "dist:mac:mas-dev": "cross-env PRESENTON_MAC_TARGET=mas-dev node build.js",
     "dist:mac:mas": "cross-env PRESENTON_MAC_TARGET=mas node build.js",
     "build:all": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron",
+    "build:all:mac:signed": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron:mac:signed",
     "build:all:mas-dev": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron:mas-dev",
     "build:all:mas": "npm run clean:build && npm run setup:env && npm run build:ts && npm run install:pyinstaller && npm run build:nextjs && npm run build:fastapi && npm run build:electron:mas",
     "clean:build": "node -e \"for (const p of ['resources/nextjs','resources/fastapi','app_dist']) fs.rmSync(p,{recursive:true,force:true})\""

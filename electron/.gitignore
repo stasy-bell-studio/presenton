@@ -39,6 +39,11 @@ resources/chromium/
 resources/imagemagick/
 *.pkg
 *.provisionprofile
+*.cer
+*.certSigningRequest
+*.mobileprovision
+*.p12
+*.p8
 *.toc
 *.zip
 *.pyc

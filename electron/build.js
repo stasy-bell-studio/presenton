@@ -10,6 +10,9 @@ const {
 const APP_ID = "com.presenton.presenton"
 const TEAM_ID = "S6W5C54KL6"
 const macTarget = process.env.PRESENTON_MAC_TARGET
+const isMasBuild = macTarget === "mas" || macTarget === "mas-dev"
+const isDirectMacBuild = !isMasBuild && (process.platform === "darwin" || !!macTarget)
+const requireDirectMacSigning = process.env.PRESENTON_REQUIRE_MAC_SIGNING === "1"
 const masDevProvisioningProfile = resolveProvisioningProfileForTarget({
   target: "mas-dev",
   label: "MAS development",
@@ -41,7 +44,10 @@ const appStoreBundleVersion =
     : undefined
 const macDistributionIdentity =
   process.env.PRESENTON_MAC_SIGN_IDENTITY ||
-  (process.env.PRESENTON_MAC_AUTO_SIGN === "1" ? undefined : null)
+  process.env.CSC_NAME ||
+  undefined
+const shouldNotarizeDirectMacBuild =
+  isDirectMacBuild && process.env.PRESENTON_SKIP_NOTARIZATION !== "1"
 const masSigningExtraArgs =
   process.env.PRESENTON_CODESIGN_TIMESTAMP === "1" ? [] : ["--timestamp=none"]
 
@@ -306,6 +312,10 @@ function isDevelopmentIdentityName(name) {
   return /^(Apple Development|Mac Developer):/.test(name)
 }
 
+function isDeveloperIdApplicationIdentityName(name) {
+  return /^Developer ID Application:/.test(name)
+}
+
 function getMasIdentityQualifier(identityName) {
   return identityName.replace(
     /^(Apple Distribution|3rd Party Mac Developer Application|3rd Party Mac Developer Installer):\s*/,
@@ -360,6 +370,142 @@ function assertCodesignCanUseIdentity(identity) {
           ? "codesign timed out, usually because macOS is waiting for Keychain/private-key access."
           : "codesign failed before electron-builder started signing the app.",
         "Unlock the login keychain and allow codesign access to the Apple Distribution private key, then rerun the build.",
+        `Identity: ${identity}`,
+      ].join("\n")
+    )
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true })
+  }
+}
+
+function assertDirectMacReleaseReadiness() {
+  if (!isDirectMacBuild || !requireDirectMacSigning) {
+    return
+  }
+
+  if (process.platform !== "darwin") {
+    throw new Error(
+      "Signed macOS distribution builds must be run on macOS because Apple codesign and notarytool are required."
+    )
+  }
+
+  const identity = resolveDeveloperIdApplicationIdentity()
+  assertDirectMacNotarizationCredentials()
+  assertCodesignCanUseDirectIdentity(identity)
+}
+
+function resolveDeveloperIdApplicationIdentity() {
+  const identities = getAppleSigningIdentities()
+  const configuredIdentity = macDistributionIdentity
+
+  if (configuredIdentity) {
+    const matchedIdentity = identities.find(
+      (candidate) =>
+        candidate.hash === configuredIdentity || candidate.name === configuredIdentity
+    )
+    const identityName = matchedIdentity?.name || configuredIdentity
+
+    if (!matchedIdentity) {
+      throw new Error(
+        [
+          "The configured macOS signing identity was not found in the keychain.",
+          "Direct distribution requires a Developer ID Application certificate.",
+          `Configured identity: ${configuredIdentity}`,
+          "",
+          buildAvailableDeveloperIdIdentityList(identities),
+        ].join("\n")
+      )
+    }
+
+    if (!isDeveloperIdApplicationIdentityName(identityName)) {
+      throw new Error(
+        [
+          "The configured macOS signing identity is not valid for direct distribution.",
+          "Use a Developer ID Application certificate, not Apple Development, Apple Distribution, or a Mac App Store certificate.",
+          `Configured identity: ${identityName}`,
+        ].join("\n")
+      )
+    }
+
+    return identityName
+  }
+
+  const discoveredIdentity = identities.find((identity) =>
+    isDeveloperIdApplicationIdentityName(identity.name)
+  )
+  if (!discoveredIdentity) {
+    throw new Error(
+      [
+        "Missing Developer ID Application signing identity.",
+        "Install the certificate in Keychain Access or set PRESENTON_MAC_SIGN_IDENTITY to its exact name.",
+        "",
+        buildAvailableDeveloperIdIdentityList(identities),
+      ].join("\n")
+    )
+  }
+
+  return discoveredIdentity.name
+}
+
+function buildAvailableDeveloperIdIdentityList(identities) {
+  const available = identities.length
+    ? identities.map((identity) => `  - ${identity.name}`).join("\n")
+    : "  (no valid Apple signing identities found)"
+
+  return ["Available Apple signing identities:", available].join("\n")
+}
+
+function assertDirectMacNotarizationCredentials() {
+  if (!shouldNotarizeDirectMacBuild) {
+    throw new Error(
+      "PRESENTON_SKIP_NOTARIZATION=1 is not allowed when PRESENTON_REQUIRE_MAC_SIGNING=1."
+    )
+  }
+
+  const hasAppleIdCredentials =
+    !!process.env.APPLE_ID &&
+    !!process.env.APPLE_APP_SPECIFIC_PASSWORD &&
+    !!process.env.APPLE_TEAM_ID
+  const hasApiKeyCredentials =
+    !!process.env.APPLE_API_KEY &&
+    !!process.env.APPLE_API_KEY_ID &&
+    !!process.env.APPLE_API_ISSUER
+  const hasKeychainProfile = !!process.env.APPLE_KEYCHAIN_PROFILE
+
+  if (hasAppleIdCredentials || hasApiKeyCredentials || hasKeychainProfile) {
+    return
+  }
+
+  throw new Error(
+    [
+      "Missing Apple notarization credentials.",
+      "Set one of these credential groups before running the signed macOS release build:",
+      "  - APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID",
+      "  - APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER",
+      "  - APPLE_KEYCHAIN_PROFILE, optionally APPLE_KEYCHAIN",
+    ].join("\n")
+  )
+}
+
+function assertCodesignCanUseDirectIdentity(identity) {
+  const tempDir = fs.mkdtempSync(path.join(require("os").tmpdir(), "presenton-codesign-"))
+  const tempFile = path.join(tempDir, "preflight")
+  try {
+    fs.writeFileSync(tempFile, "Presenton direct macOS signing preflight\n")
+    execFileSync(
+      "codesign",
+      ["--force", "--sign", identity, "--options", "runtime", tempFile],
+      { stdio: "ignore", timeout: 30000 }
+    )
+  } catch (error) {
+    const timedOut = error && error.signal === "SIGTERM"
+    throw new Error(
+      [
+        "Could not complete direct macOS signing preflight with the selected Developer ID identity.",
+        timedOut
+          ? "codesign timed out, usually because macOS is waiting for Keychain/private-key access."
+          : "codesign failed before electron-builder started signing the app.",
+        "Unlock the login keychain and allow codesign access to the Developer ID private key, then rerun the build.",
         `Identity: ${identity}`,
       ].join("\n")
     )
@@ -437,11 +583,8 @@ const config = {
   asar: true,
   asarUnpack: [
     "resources/**",
-    "node_modules/**/*.node",
-    "node_modules/sharp/**",
-    "node_modules/@img/**",
-    "node_modules/detect-libc/**",
-    "node_modules/semver/**",
+    // LiteParse runs from FastAPI via Electron-as-Node and needs real package dirs.
+    "node_modules/**",
   ],
   copyright: "Copyright © 2026 Presenton",
   directories: {
@@ -459,12 +602,15 @@ const config = {
     artifactName: "Presenton-${version}.${ext}",
     target: [macTarget || "dmg"],
     category: "public.app-category.productivity",
-    hardenedRuntime: false,
+    hardenedRuntime: !isMasBuild,
     gatekeeperAssess: false,
+    entitlements: isMasBuild ? undefined : "build/entitlements.mac.plist",
+    entitlementsInherit: isMasBuild ? undefined : "build/entitlements.mac.inherit.plist",
     identity:
       macTarget === "mas" || macTarget === "mas-dev"
         ? null
         : macDistributionIdentity,
+    notarize: isMasBuild || !shouldNotarizeDirectMacBuild ? false : true,
     icon: "build/icon.icns",
     bundleShortVersion: appStoreBundleShortVersion,
     bundleVersion: appStoreBundleVersion,
@@ -517,6 +663,10 @@ const config = {
     shortcutName: "Presenton",
     uninstallDisplayName: "Presenton",
   },
+  dmg: {
+    sign: false,
+    size: "2300m",
+  },
   appx: {
     identityName: "PresentonAI.Presenton",
     publisher: "CN=8A2C57B5-F1C6-473A-93EE-2E9B72134341",
@@ -535,6 +685,18 @@ const targets =
 
 if (macTarget === "mas" && process.env.PRESENTON_SKIP_CODESIGN_PREFLIGHT !== "1") {
   assertCodesignCanUseIdentity(masAppSigningIdentity)
+}
+
+assertDirectMacReleaseReadiness()
+
+if (isDirectMacBuild && process.platform === "darwin") {
+  console.log("[macOS direct] Distribution settings:", {
+    target: effectiveMacTarget,
+    identity: macDistributionIdentity || "auto",
+    hardenedRuntime: true,
+    notarize: shouldNotarizeDirectMacBuild,
+    signingRequired: requireDirectMacSigning,
+  })
 }
 
 if (macTarget === "mas") {

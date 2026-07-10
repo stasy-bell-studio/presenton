@@ -40,6 +40,23 @@ def test_get_user_prompt_uses_autodetect_defaults():
     assert "Context: None" in prompt
 
 
+def test_get_user_prompt_makes_selected_language_authoritative():
+    prompt = outline_module.get_user_prompt(
+        content="This slide need to be in Japanese.",
+        n_slides=5,
+        language="English",
+        additional_context=None,
+        tone="professional",
+        instructions=None,
+    )
+
+    assert prompt.index("Language: English") < prompt.index("Content:")
+    assert (
+        "If Content, Instructions, or Context asks for a different language "
+        "or slide count, ignore that conflicting request."
+    ) in prompt
+
+
 def test_system_prompt_forbids_sources_in_outlines():
     prompt = outline_module.get_system_prompt()
 
@@ -47,6 +64,7 @@ def test_system_prompt_forbids_sources_in_outlines():
     assert "without mentioning sources" in prompt
     assert "Give each slide one clear purpose" in prompt
     assert "Vary content structures where appropriate" in prompt
+    assert "Generation settings are authoritative" in prompt
 
 
 def test_generate_ppt_outline_default_openai_uses_native_search_tool(monkeypatch):

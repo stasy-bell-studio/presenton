@@ -4,6 +4,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { spawn, spawnSync } from "child_process";
 import { randomUUID } from "crypto";
+import { request } from "http";
 import {
   chmodSync,
   closeSync,
@@ -45,8 +46,6 @@ const canChangeKeys = process.env.CAN_CHANGE_KEYS !== "false";
 const fastapiPort = 8000;
 const nextjsPort = 3000;
 const appmcpPort = 8001;
-/** Must match `listen` in nginx.conf (public HTTP inside the container). */
-const nginxListenPort = 80;
 
 const appDataDirectory = process.env.APP_DATA_DIRECTORY;
 if (!appDataDirectory) {
@@ -245,47 +244,177 @@ const forwardProcessOutput = (stream, target, onChunk) => {
   if (!stream) {
     return;
   }
+  let buffered = "";
+
+  const writeLine = (line, ending = "\n") => {
+    if (!suppressStartupUrls || !shouldSuppressStartupLogLine(line)) {
+      target.write(line + ending);
+    }
+  };
+
   stream.on("data", (chunk) => {
-    const text = chunk.toString();
-    target.write(text);
-    onChunk?.(text);
+    buffered += chunk.toString();
+    const lines = buffered.split(/\r?\n/);
+    buffered = lines.pop() ?? "";
+    for (const line of lines) {
+      writeLine(line);
+    }
+  });
+
+  stream.on("end", () => {
+    if (buffered) {
+      writeLine(buffered, "");
+      buffered = "";
+    }
   });
 };
 
-const waitForProcessReady = (processName, childProcess, readinessRegexes = []) => {
-  if (readinessRegexes.length === 0) {
-    return Promise.resolve();
-  }
-
+const waitForProcessOutputLine = (processName, childProcess, readinessRegexes) => {
   return new Promise((resolve, reject) => {
-    let isReady = false;
+    let isSettled = false;
+    const buffers = new Map();
 
-    const markReady = (text) => {
-      if (isReady) {
+    const settle = (callback, value) => {
+      if (isSettled) {
         return;
       }
-      if (readinessRegexes.some((regex) => regex.test(text))) {
-        isReady = true;
-        resolve();
+      isSettled = true;
+      callback(value);
+    };
+
+    const inspectLine = (line) => {
+      if (
+        !isSettled &&
+        readinessRegexes.some((readinessRegex) => readinessRegex.test(line))
+      ) {
+        settle(resolve);
       }
     };
 
-    forwardProcessOutput(childProcess.stdout, process.stdout, markReady);
-    forwardProcessOutput(childProcess.stderr, process.stderr, markReady);
+    const inspectStream = (stream) => {
+      if (!stream) {
+        return;
+      }
+      buffers.set(stream, "");
+      stream.on("data", (chunk) => {
+        const buffered = buffers.get(stream) + chunk.toString();
+        const lines = buffered.split(/\r?\n/);
+        buffers.set(stream, lines.pop() ?? "");
+        for (const line of lines) {
+          inspectLine(line);
+        }
+      });
+      stream.on("end", () => {
+        const buffered = buffers.get(stream);
+        if (buffered) {
+          inspectLine(buffered);
+        }
+      });
+    };
+
+    inspectStream(childProcess.stdout);
+    inspectStream(childProcess.stderr);
 
     childProcess.on("exit", (code) => {
-      if (!isReady) {
-        reject(
+      if (!isSettled) {
+        settle(
+          reject,
           new Error(`${processName} exited before reporting ready (exit code: ${code})`)
         );
       }
     });
 
     childProcess.on("error", (err) => {
-      if (!isReady) {
-        reject(err);
+      if (!isSettled) {
+        settle(reject, err);
       }
     });
+  });
+};
+
+const waitForProcessHttp = (
+  processName,
+  childProcess,
+  port,
+  path,
+  host = "127.0.0.1",
+  timeoutMs = 60_000
+) => {
+  return new Promise((resolve, reject) => {
+    let isSettled = false;
+    let retryTimer;
+    const deadline = Date.now() + timeoutMs;
+
+    const settle = (callback, value) => {
+      if (isSettled) {
+        return;
+      }
+      isSettled = true;
+      if (retryTimer) {
+        clearTimeout(retryTimer);
+      }
+      callback(value);
+    };
+
+    const retry = () => {
+      if (Date.now() >= deadline) {
+        settle(
+          reject,
+          new Error(
+            `${processName} did not respond at http://${host}:${port}${path} within ${timeoutMs}ms`
+          )
+        );
+        return;
+      }
+      retryTimer = setTimeout(checkHttp, 250);
+    };
+
+    const checkHttp = () => {
+      let handled = false;
+      const req = request(
+        { host, port, path, method: "GET", timeout: 1_000 },
+        (response) => {
+          response.resume();
+          finishAttempt(true);
+        }
+      );
+
+      const finishAttempt = (isReady) => {
+        if (handled) {
+          return;
+        }
+        handled = true;
+        req.destroy();
+        if (isReady) {
+          settle(resolve);
+        } else if (!isSettled) {
+          retry();
+        }
+      };
+
+      req.once("error", () => finishAttempt(false));
+      req.once("timeout", () => finishAttempt(false));
+      req.end();
+    };
+
+    childProcess.on("exit", (code) => {
+      if (!isSettled) {
+        settle(
+          reject,
+          new Error(
+            `${processName} exited before responding at http://${host}:${port}${path} (exit code: ${code})`
+          )
+        );
+      }
+    });
+
+    childProcess.on("error", (err) => {
+      if (!isSettled) {
+        settle(reject, err);
+      }
+    });
+
+    checkHttp();
   });
 };
 
@@ -500,16 +629,37 @@ const startServers = async (nginxReadyPromise) => {
   };
   watchManagedProcess("Next.js", nextjsProcess, restartNextjs);
 
-  const shouldStartOllamaRuntime = shouldStartOllama();
-  const ollamaInstalled = isOllamaInstalled();
-
-  const fastApiReadyPromise = waitForProcessReady("FastAPI", fastApiProcess, [
-    /Application startup complete\./i,
-  ]);
-  const nextjsReadyPromise = waitForProcessReady("Next.js", nextjsProcess, [
+  const nextjsReadyPromise = waitForProcessOutputLine("Next.js", nextjsProcess, [
     /Ready in\s+\d+/i,
     /started server on/i,
   ]);
+  const fastApiReadyPromise = isDev
+    ? waitForProcessOutputLine("FastAPI", fastApiProcess, [
+        /Application startup complete\./i,
+      ])
+    : waitForProcessHttp(
+        "FastAPI",
+        fastApiProcess,
+        fastapiPort,
+        "/api/v1/auth/status"
+      );
+
+  const suppressStartupUrls = !isDev;
+  forwardProcessOutput(fastApiProcess.stdout, process.stdout, {
+    suppressStartupUrls,
+  });
+  forwardProcessOutput(fastApiProcess.stderr, process.stderr, {
+    suppressStartupUrls,
+  });
+  forwardProcessOutput(nextjsProcess.stdout, process.stdout, {
+    suppressStartupUrls,
+  });
+  forwardProcessOutput(nextjsProcess.stderr, process.stderr, {
+    suppressStartupUrls,
+  });
+
+  const shouldStartOllamaRuntime = shouldStartOllama();
+  const ollamaInstalled = isOllamaInstalled();
 
   if (shouldStartOllamaRuntime && ollamaInstalled) {
     const ollamaProcess = spawn("ollama", ["serve"], {
@@ -534,9 +684,9 @@ const startServers = async (nginxReadyPromise) => {
   try {
     await Promise.all([fastApiReadyPromise, nextjsReadyPromise, nginxReadyPromise]);
     printPresentonStartupBanner({
+      mode: isDev ? "development" : "production",
       nextPort: nextjsPort,
       fastapiPort,
-      nginxInternalPort: nginxListenPort,
     });
   } catch (err) {
     console.warn(`Skipping startup banner: ${err.message}`);
