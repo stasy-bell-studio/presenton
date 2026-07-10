@@ -18,6 +18,7 @@ from services.chat.schemas import (
     DeleteSlideInput,
     DeleteOutlineInput,
     GenerateAssetsInput,
+    GetAvailableBlocksInput,
     GetContentSchemaFromLayoutIdInput,
     GetSlideAtIndexInput,
     NoArgsInput,
@@ -45,6 +46,7 @@ CHART_INSERT_TOOL_FIELDS = {
 }
 TABLE_INSERT_TOOL_FIELDS = CHART_INSERT_TOOL_FIELDS
 IMAGE_INSERT_TOOL_FIELDS = CHART_INSERT_TOOL_FIELDS
+BLOCK_PRIORITIZED_INSERT_TYPES = {"chart", "table"}
 JSON_OBJECT_STRING_FIELDS = {
     "addNewSlideLayout": ("content",),
     "saveSlide": ("content",),
@@ -92,6 +94,7 @@ class ChatTools:
             "searchSlide": self._search_slides,
             "getSlideAtIndex": self._get_slide_at_index,
             "getAvailableLayouts": self._get_available_layouts,
+            "getAvailableBlocks": self._get_available_blocks,
             "getContentSchemaFromLayoutId": self._get_content_schema_from_layout_id,
             "generateAssets": self._generate_assets,
             "saveSlide": self._save_slide,
@@ -169,6 +172,18 @@ class ChatTools:
                 strict=False,
             ),
             Tool(
+                name="getAvailableBlocks",
+                description=(
+                    "Search reusable template component blocks without fetching a whole layout. "
+                    "Use this before addComponent/createComponent when the user asks to add "
+                    "a block such as a table, chart, card, callout, metric, image panel, "
+                    "or repeated content item. Set includeFullContent=true only when exact "
+                    "component JSON is needed."
+                ),
+                schema=GetAvailableBlocksInput,
+                strict=False,
+            ),
+            Tool(
                 name="getContentSchemaFromLayoutId",
                 description=(
                     "Return the exact JSON content schema for one layout id. "
@@ -242,10 +257,12 @@ class ChatTools:
                 name="addElement",
                 description=(
                     "Add one rendered UI element to a slide, either inside a componentId "
-                    "or as a new free component when componentId is null. Chart elements "
-                    "must include numeric data as categories plus series.values, or legacy "
-                    "data rows with label/value. Image elements must include data set to "
-                    "a URL returned by generateAssets."
+                    "or as a new free component when componentId is null. Do not use this "
+                    "for new table/chart requests when a reusable block exists; use "
+                    "getAvailableBlocks and addComponent/createComponent instead. Chart "
+                    "elements must include numeric data as categories plus series.values, "
+                    "or legacy data rows with label/value. Image elements must include "
+                    "data set to a URL returned by generateAssets."
                 ),
                 schema=AddElementInput,
                 strict=False,
@@ -276,7 +293,8 @@ class ChatTools:
                     "JSON must include id, description, position, size, and elements. Chart "
                     "elements must include numeric data as categories plus series.values, or "
                     "legacy data rows with label/value. Image elements must include data "
-                    "set to a URL returned by generateAssets."
+                    "set to a URL returned by generateAssets. For table/chart additions "
+                    "adapt a component returned by getAvailableBlocks and pass sourceBlockId."
                 ),
                 schema=AddSlideComponentInput,
                 strict=False,
@@ -287,7 +305,9 @@ class ChatTools:
                     "Create a grouped rendered UI component from provided component JSON "
                     "and add it to a slide. Chart elements must include numeric data as "
                     "categories plus series.values, or legacy data rows with label/value. "
-                    "Image elements must include data set to a URL returned by generateAssets."
+                    "Image elements must include data set to a URL returned by generateAssets. "
+                    "For table/chart additions adapt a component returned by "
+                    "getAvailableBlocks and pass sourceBlockId."
                 ),
                 schema=AddSlideComponentInput,
                 strict=False,
@@ -565,6 +585,18 @@ class ChatTools:
             "layouts": layouts,
         }
 
+    async def _get_available_blocks(self, args: dict[str, Any]) -> dict[str, Any]:
+        payload = GetAvailableBlocksInput(**args)
+        max_results = payload.max_results if payload.max_results is not None else 20
+        return await self._memory.get_available_blocks(
+            query=payload.query,
+            layout_id=payload.layout_id,
+            element_type=payload.element_type,
+            block_id=payload.block_id,
+            include_full_content=bool(payload.include_full_content),
+            max_results=max_results,
+        )
+
     async def _get_template_summary(self, _: dict[str, Any]) -> dict[str, Any]:
         outline = await self._get_presentation_outline({})
         layouts = await self._get_available_layouts({})
@@ -676,6 +708,11 @@ class ChatTools:
         element = json.loads(json.dumps(parsed, ensure_ascii=False))
         if not isinstance(element, dict):
             raise ValueError("'element' must be a JSON object.")
+        await self._require_reusable_block_first(
+            tree=element,
+            source_block_id=None,
+            primitive_tool="addElement",
+        )
         return await self._memory.add_slide_ui_element(
             index=payload.index,
             element=element,
@@ -787,6 +824,11 @@ class ChatTools:
         if not isinstance(component_parsed, dict):
             raise ValueError("'component' must be a JSON object.")
         component_payload = json.loads(json.dumps(component_parsed, ensure_ascii=False))
+        await self._require_reusable_block_first(
+            tree=component_payload,
+            source_block_id=payload.source_block_id,
+            primitive_tool="addComponent",
+        )
         return await self._memory.add_slide_ui_component(
             index=payload.index,
             component=component_payload,
@@ -819,6 +861,103 @@ class ChatTools:
             return normalized
 
         raise ValueError("Tool arguments must be a JSON object.")
+
+    async def _require_reusable_block_first(
+        self,
+        *,
+        tree: dict[str, Any],
+        source_block_id: str | None,
+        primitive_tool: str,
+    ) -> None:
+        requested_types = self._block_prioritized_element_types(tree)
+        if not requested_types:
+            return
+
+        if source_block_id:
+            block_result = await self._memory.get_available_blocks(
+                block_id=source_block_id,
+                include_full_content=False,
+                max_results=1,
+            )
+            blocks = (
+                block_result.get("blocks")
+                if isinstance(block_result, dict)
+                else None
+            )
+            block = blocks[0] if isinstance(blocks, list) and blocks else None
+            if not isinstance(block, dict):
+                raise ValueError(
+                    "sourceBlockId was provided but no matching reusable block was found. "
+                    "Call getAvailableBlocks again and use a returned block_id."
+                )
+            block_types = {
+                str(item).lower()
+                for item in block.get("element_types", [])
+                if item is not None
+            }
+            if requested_types.isdisjoint(block_types):
+                raise ValueError(
+                    "sourceBlockId does not match the table/chart type being inserted. "
+                    "Use a block_id whose element_types include the requested type."
+                )
+            return
+
+        reusable = await self._first_available_reusable_block(requested_types)
+        if reusable is None:
+            return
+
+        element_type, block = reusable
+        block_id = str(block.get("block_id") or "")
+        component_id = str(block.get("component_id") or "")
+        layout_id = str(block.get("layout_id") or "")
+        raise ValueError(
+            f"Reusable block available for {element_type} insertion "
+            f"(block_id='{block_id}', component_id='{component_id}', layout_id='{layout_id}'). "
+            f"Do not use {primitive_tool} to create this as a primitive. "
+            "Call getAvailableBlocks with that blockId and includeFullContent=true, "
+            "adapt the returned component JSON with the requested content, then call "
+            f"addComponent/createComponent with sourceBlockId='{block_id}'."
+        )
+
+    async def _first_available_reusable_block(
+        self,
+        requested_types: set[str],
+    ) -> tuple[str, dict[str, Any]] | None:
+        for element_type in sorted(requested_types):
+            block_result = await self._memory.get_available_blocks(
+                element_type=element_type,
+                include_full_content=False,
+                max_results=1,
+            )
+            blocks = (
+                block_result.get("blocks")
+                if isinstance(block_result, dict)
+                else None
+            )
+            block = blocks[0] if isinstance(blocks, list) and blocks else None
+            if isinstance(block, dict):
+                return element_type, block
+        return None
+
+    @staticmethod
+    def _block_prioritized_element_types(tree: Any) -> set[str]:
+        found: set[str] = set()
+
+        def visit(value: Any) -> None:
+            if isinstance(value, dict):
+                element_type = value.get("type")
+                if isinstance(element_type, str):
+                    normalized = element_type.strip().lower()
+                    if normalized in BLOCK_PRIORITIZED_INSERT_TYPES:
+                        found.add(normalized)
+                for nested in value.values():
+                    visit(nested)
+            elif isinstance(value, list):
+                for nested in value:
+                    visit(nested)
+
+        visit(tree)
+        return found
 
     @staticmethod
     def _element_style_patch_from_update_payload(
@@ -1403,8 +1542,34 @@ class ChatTools:
         expected: dict[str, Any] = {}
         retryable = True
 
-        if tool_name not in CHART_INSERT_TOOL_FIELDS and tool_name not in JSON_OBJECT_STRING_FIELDS:
+        if (
+            tool_name not in CHART_INSERT_TOOL_FIELDS
+            and tool_name not in JSON_OBJECT_STRING_FIELDS
+        ):
             guidance.append("Review the tool schema and retry with corrected arguments.")
+
+        if "reusable block available" in normalized_error:
+            guidance.append(
+                "Use getAvailableBlocks with includeFullContent=true for the "
+                "returned block_id, adapt that component JSON, then retry with "
+                "addComponent/createComponent and sourceBlockId."
+            )
+            expected["block_workflow"] = {
+                "discovery": {
+                    "tool": "getAvailableBlocks",
+                    "arguments": {
+                        "blockId": "returned block_id",
+                        "includeFullContent": True,
+                    },
+                },
+                "insert": {
+                    "tool": "addComponent",
+                    "arguments": {
+                        "component": "JSON string adapted from returned block.component",
+                        "sourceBlockId": "returned block_id",
+                    },
+                },
+            }
 
         json_fields = JSON_OBJECT_STRING_FIELDS.get(tool_name, ())
         if json_fields:

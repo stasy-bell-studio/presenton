@@ -109,6 +109,13 @@ type ComponentResizeMode =
   | "resize-element-bounds"
   | "resize-frame";
 
+type ComponentTransformBox = Box & {
+  scaleX: number;
+  scaleY: number;
+  rawWidth: number;
+  rawHeight: number;
+};
+
 const HORIZONTAL_RESIZE_ANCHORS = new Set<ComponentTransformAnchor>([
   "middle-left",
   "middle-right",
@@ -169,22 +176,92 @@ function componentResizeModeForTransform(
 }
 
 function componentBoxFromTransform(
+  component: RawComponent,
   box: Box,
   scaleX: number,
   scaleY: number,
   anchor: ComponentTransformAnchor | null,
-): Box & { scaleX: number; scaleY: number } {
+): ComponentTransformBox {
   const isVerticalOnly = anchor ? VERTICAL_RESIZE_ANCHORS.has(anchor) : false;
   const isHorizontalOnly = anchor ? HORIZONTAL_RESIZE_ANCHORS.has(anchor) : false;
   const nextScaleX = isVerticalOnly || anchor === "rotater" ? 1 : scaleX;
   const nextScaleY = isHorizontalOnly || anchor === "rotater" ? 1 : scaleY;
+  const rawWidth = Math.max(1, box.width * nextScaleX);
+  const rawHeight = Math.max(1, box.height * nextScaleY);
+  const minimumSize = minimumComponentSizeForElementBoundsResize(component);
+  const width = isHorizontalOnly ? Math.max(rawWidth, minimumSize.width) : rawWidth;
+  const height = isVerticalOnly ? Math.max(rawHeight, minimumSize.height) : rawHeight;
 
   return {
     ...box,
-    width: Math.max(1, box.width * nextScaleX),
-    height: Math.max(1, box.height * nextScaleY),
-    scaleX: nextScaleX,
-    scaleY: nextScaleY,
+    width,
+    height,
+    scaleX: box.width > 0 ? width / box.width : 1,
+    scaleY: box.height > 0 ? height / box.height : 1,
+    rawWidth,
+    rawHeight,
+  };
+}
+
+function minimumComponentSizeForElementBoundsResize(component: RawComponent) {
+  let width = 1;
+  let height = 1;
+
+  const visitElement = (
+    element: RawElement,
+    box: Box,
+    offsetX: number,
+    offsetY: number,
+  ) => {
+    const x = offsetX + box.x;
+    const y = offsetY + box.y;
+    if (x > 0) width = Math.max(width, x + box.width);
+    if (y > 0) height = Math.max(height, y + box.height);
+
+    const childInfo = childArrayInfo(element);
+    if (!childInfo) return;
+    layoutChildren(element, childInfo.items, box).forEach((childLayout) => {
+      visitElement(
+        childLayout.child,
+        childLayout.box ?? elementBox(childLayout.child),
+        x,
+        y,
+      );
+    });
+  };
+
+  readArray(component.elements)
+    .filter(isRecord)
+    .forEach((element) => {
+      visitElement(element as RawElement, elementBox(element), 0, 0);
+    });
+
+  return { width, height };
+}
+
+function positionFromComponentTransform(
+  node: Konva.Node,
+  nextBox: ComponentTransformBox,
+  anchor: ComponentTransformAnchor | null,
+): Point {
+  const rawPosition = positionFromNodeInParent(node, STAGE_BOX, {
+    ...nextBox,
+    width: nextBox.rawWidth,
+    height: nextBox.rawHeight,
+  });
+  let x = rawPosition.x;
+  let y = rawPosition.y;
+
+  if (anchor === "middle-left") {
+    x = rawPosition.x + nextBox.rawWidth - nextBox.width;
+  }
+  if (anchor === "top-center") {
+    y = rawPosition.y + nextBox.rawHeight - nextBox.height;
+  }
+
+  return {
+    x: clamp(x, 0, Math.max(0, STAGE_BOX.width - nextBox.width)),
+    y: clamp(y, 0, Math.max(0, STAGE_BOX.height - nextBox.height)),
   };
 }
 
@@ -196,14 +273,11 @@ function componentFromNodeTransform(
   const box = componentBox(component);
   const scaleX = node.scaleX();
   const scaleY = node.scaleY();
-  const nextBox = componentBoxFromTransform(box, scaleX, scaleY, anchor);
+  const nextBox = componentBoxFromTransform(component, box, scaleX, scaleY, anchor);
   const resizeMode = componentResizeModeForTransform(anchor, scaleX, scaleY);
   node.scaleX(1);
   node.scaleY(1);
-  const position = positionFromNodeInParent(node, STAGE_BOX, {
-    ...box,
-    ...nextBox,
-  });
+  const position = positionFromComponentTransform(node, nextBox, anchor);
   const nextComponentBox = {
     ...position,
     width: nextBox.width,

@@ -1914,6 +1914,7 @@ function TemplateV2KonvaSlideComponent({
               selectedKey={selectedKey}
               selectedKeys={selectedKeys}
               selectionKind={selection?.kind ?? null}
+              horizontalResizeOnly={editorToolbarTarget?.element.type === "line"}
               suppressSelectedOutline={Boolean(
                 selectedTableCell ||
                   inlineEdit ||

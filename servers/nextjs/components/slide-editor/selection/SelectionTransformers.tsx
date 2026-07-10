@@ -27,6 +27,7 @@ const SHADOW_EVENT_NAMESPACE = ".presentonSelectionShadows";
 const ROTATION_ANCHOR_EVENT_NAMESPACE = ".presentonSelectionRotationAnchor";
 const MULTI_SELECTION_GROUP_DASH = [5, 5];
 const MULTI_SELECTION_MEMBER_DASH = [7, 4];
+const HORIZONTAL_ONLY_ANCHORS = ["middle-left", "middle-right"];
 let refreshCwIconPaths: Path2D[] | null = null;
 
 type SelectionKind = "component" | "multi-component" | "element" | null;
@@ -58,6 +59,7 @@ type TemplateV2SelectionTransformersProps = {
   selectedKey: string | null;
   selectedKeys?: string[];
   selectionKind: SelectionKind;
+  horizontalResizeOnly?: boolean;
   suppressSelectedOutline?: boolean;
 };
 
@@ -303,6 +305,7 @@ export function TemplateV2SelectionTransformers({
   selectedKey,
   selectedKeys,
   selectionKind,
+  horizontalResizeOnly = false,
   suppressSelectedOutline = false,
 }: TemplateV2SelectionTransformersProps) {
   const selectedTransformerRef = useRef<Konva.Transformer | null>(null);
@@ -428,7 +431,13 @@ export function TemplateV2SelectionTransformers({
         borderEnabled
         borderStroke={isMultiComponentSelection ? "#D9D9DE" : "#7A5AF8"}
         borderStrokeWidth={1}
-        enabledAnchors={selectionKind === "component" ? undefined : []}
+        enabledAnchors={
+          selectionKind === "component"
+            ? horizontalResizeOnly
+              ? HORIZONTAL_ONLY_ANCHORS
+              : undefined
+            : []
+        }
         resizeEnabled={selectionKind === "component"}
         rotateAnchorAngle={rotationAnchorPlacement.angle}
         rotateAnchorOffset={rotationAnchorPlacement.offset}
