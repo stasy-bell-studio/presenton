@@ -186,6 +186,53 @@ def test_apply_template_v2_content_to_ui_uses_schema_content_keys():
     assert ui["components"][0]["elements"][0]["runs"][0]["text"] == "Old headline"
 
 
+def test_apply_template_v2_content_to_ui_handles_empty_text_runs():
+    ui = {
+        "id": "layout-1",
+        "components": [
+            {
+                "id": "hero",
+                "elements": [
+                    {
+                        "type": "text",
+                        "decorative": False,
+                        "name": "headline",
+                        "font": {"size": 24},
+                        "runs": [],
+                    },
+                    {
+                        "type": "table",
+                        "decorative": False,
+                        "name": "metrics",
+                        "columns": [{"font": {"size": 10}, "runs": []}],
+                        "rows": [[{"font": {"size": 9}, "runs": []}]],
+                    },
+                ],
+            }
+        ],
+    }
+    content = {
+        "hero": {
+            "headline": "Generated headline",
+            "metrics": {
+                "columns": ["Metric"],
+                "rows": [["Revenue"]],
+            },
+        }
+    }
+
+    hydrated = presentation_endpoint._apply_template_v2_content_to_ui(ui, content)
+
+    elements = hydrated["components"][0]["elements"]
+    assert elements[0]["runs"] == [{"text": "Generated headline", "font": {"size": 24}}]
+    assert elements[1]["columns"][0]["runs"] == [
+        {"text": "Metric", "font": {"size": 10}}
+    ]
+    assert elements[1]["rows"][0][0]["runs"] == [
+        {"text": "Revenue", "font": {"size": 9}}
+    ]
+
+
 def test_chat_template_v2_content_hydration_updates_nested_blocks_and_tables():
     ui = {
         "id": "layout-1",

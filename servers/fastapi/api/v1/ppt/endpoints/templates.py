@@ -209,10 +209,23 @@ def _template_v2_task_progress_data(
     remaining_layouts: int,
     name: str | None = None,
     thumbnail: str | None = None,
+    completed_layout_indices: set[int] | None = None,
 ) -> dict[str, Any]:
+    total_layouts = max(created_layouts, 0) + max(remaining_layouts, 0)
+    if completed_layout_indices is None:
+        completed_layout_indices = set(range(max(created_layouts, 0)))
     return {
         "created_layouts": max(created_layouts, 0),
         "remaining_layouts": max(remaining_layouts, 0),
+        "slide_layout_statuses": [
+            {
+                "index": index,
+                "status": "completed"
+                if index in completed_layout_indices
+                else "pending",
+            }
+            for index in range(total_layouts)
+        ],
         "name": name,
         "thumbnail": thumbnail,
     }
@@ -331,6 +344,145 @@ async def _merge_generated_components(layouts: SlideLayouts) -> MergedComponents
         len(merged_components.components),
     )
     return merged_components
+
+
+async def _commit_template_v2_task_progress(
+    task: AsyncTaskModel,
+    sql_session: AsyncSession,
+    *,
+    completed_layout_indices: set[int],
+    total_layouts: int,
+    name: str | None,
+    thumbnail: str | None,
+) -> None:
+    task.data = _template_v2_task_progress_data(
+        created_layouts=len(completed_layout_indices),
+        remaining_layouts=total_layouts - len(completed_layout_indices),
+        completed_layout_indices=completed_layout_indices,
+        name=name,
+        thumbnail=thumbnail,
+    )
+    task.updated_at = datetime.now()
+    sql_session.add(task)
+    await sql_session.commit()
+
+
+def _ensure_unique_async_slide_layout_ids(
+    layouts: list[SlideLayout],
+) -> list[SlideLayout]:
+    used_ids: set[str] = set()
+    unique_layouts: list[SlideLayout] = []
+    for index, layout in enumerate(layouts):
+        if layout.id not in used_ids:
+            used_ids.add(layout.id)
+            unique_layouts.append(layout)
+            continue
+
+        suffix = index + 1
+        candidate_id = f"{layout.id}_{suffix}"
+        while candidate_id in used_ids:
+            suffix += 1
+            candidate_id = f"{layout.id}_{suffix}"
+        used_ids.add(candidate_id)
+        unique_layouts.append(
+            layout.model_copy(deep=True, update={"id": candidate_id})
+        )
+    return unique_layouts
+
+
+async def _generate_slide_layouts_with_task_progress(
+    raw_layouts: RawSlideLayouts,
+    slide_image_urls: list[str],
+    fonts: dict[str, str] | None,
+    task: AsyncTaskModel,
+    sql_session: AsyncSession,
+    *,
+    name: str | None,
+    thumbnail: str | None,
+) -> SlideLayouts:
+    if not raw_layouts.layouts:
+        raise ValueError("layouts must contain at least one slide layout")
+    if len(slide_image_urls) != len(raw_layouts.layouts):
+        raise ValueError("slide_image_urls must contain one image for each layout")
+
+    slide_count = len(raw_layouts.layouts)
+    max_workers = min(MAX_PARALLEL_SLIDE_LAYOUTS, slide_count)
+    LOGGER.info(
+        "[templates.v2.create.async] slide layout generation start "
+        "task_id=%s slides=%d max_parallel=%d",
+        task.id,
+        slide_count,
+        max_workers,
+    )
+    loop = asyncio.get_running_loop()
+    completed_layout_indices: set[int] = set()
+    layouts_by_index: dict[int, SlideLayout] = {}
+
+    async def generate_one(index: int, executor: ThreadPoolExecutor):
+        generated_layout = await loop.run_in_executor(
+            executor,
+            partial(
+                generate_slide_layout,
+                raw_layouts.layouts[index],
+                index,
+                slide_image_urls[index],
+                fonts,
+            ),
+        )
+        layout = (
+            generated_layout
+            if isinstance(generated_layout, SlideLayout)
+            else SlideLayout.model_validate(generated_layout)
+        )
+        return index, layout
+
+    with ThreadPoolExecutor(
+        max_workers=max_workers,
+        thread_name_prefix="template-v2-slide-layout",
+    ) as executor:
+        pending_tasks = [
+            asyncio.create_task(generate_one(index, executor))
+            for index in range(slide_count)
+        ]
+        try:
+            for completed_task in asyncio.as_completed(pending_tasks):
+                index, layout = await completed_task
+                layouts_by_index[index] = layout
+                completed_layout_indices.add(index)
+                await _commit_template_v2_task_progress(
+                    task,
+                    sql_session,
+                    completed_layout_indices=completed_layout_indices,
+                    total_layouts=slide_count,
+                    name=name,
+                    thumbnail=thumbnail,
+                )
+                LOGGER.info(
+                    "[templates.v2.create.async] slide layout complete "
+                    "task_id=%s slide=%d/%d components=%d completed=%d/%d",
+                    task.id,
+                    index + 1,
+                    slide_count,
+                    len(layout.components),
+                    len(completed_layout_indices),
+                    slide_count,
+                )
+        except Exception:
+            for pending_task in pending_tasks:
+                pending_task.cancel()
+            raise
+
+    ordered_layouts = [layouts_by_index[index] for index in range(slide_count)]
+    unique_layouts = _ensure_unique_async_slide_layout_ids(ordered_layouts)
+    layouts = _with_randomized_layout_ids(SlideLayouts(layouts=unique_layouts))
+    LOGGER.info(
+        "[templates.v2.create.async] slide layout generation complete "
+        "task_id=%s slides=%d components=%d",
+        task.id,
+        len(layouts.layouts),
+        sum(len(layout.components) for layout in layouts.layouts),
+    )
+    return layouts
 
 
 async def _run_template_generation_thread(func: Any, *args: Any) -> Any:
@@ -744,21 +896,16 @@ async def init_template_v2(
     return template.id
 
 
-async def _create_template_v2_sync(
-    request: CreateTemplateV2Request = Body(...),
-    sql_session: AsyncSession = Depends(get_async_session),
-):
-    pptx_path, raw_layouts, raw_layouts_json, available_fonts = (
-        await _prepare_template_v2_source(request, operation="create")
-    )
-    generated_layouts = await _generate_slide_layouts(
-        raw_layouts,
-        request.slide_image_urls,
-        available_fonts,
-    )
-    generated_layouts = _with_randomized_layout_ids(generated_layouts)
-    merged_components = await _merge_generated_components(generated_layouts)
-    template = TemplateV2(
+def _build_created_template_v2(
+    request: CreateTemplateV2Request,
+    *,
+    pptx_path: str,
+    raw_layouts_json: dict[str, Any],
+    available_fonts: dict[str, str],
+    generated_layouts: SlideLayouts,
+    merged_components: MergedComponents,
+) -> TemplateV2:
+    return TemplateV2(
         name=(request.name or "").strip() or _derive_template_name(
             request.pptx_url, pptx_path
         ),
@@ -774,6 +921,30 @@ async def _create_template_v2_sync(
             "images": _collect_image_urls_from_layouts(raw_layouts_json),
         },
     )
+
+
+async def _create_template_v2_sync(
+    request: CreateTemplateV2Request = Body(...),
+    sql_session: AsyncSession = Depends(get_async_session),
+):
+    pptx_path, raw_layouts, raw_layouts_json, available_fonts = (
+        await _prepare_template_v2_source(request, operation="create")
+    )
+    generated_layouts = await _generate_slide_layouts(
+        raw_layouts,
+        request.slide_image_urls,
+        available_fonts,
+    )
+    generated_layouts = _with_randomized_layout_ids(generated_layouts)
+    merged_components = await _merge_generated_components(generated_layouts)
+    template = _build_created_template_v2(
+        request,
+        pptx_path=pptx_path,
+        raw_layouts_json=raw_layouts_json,
+        available_fonts=available_fonts,
+        generated_layouts=generated_layouts,
+        merged_components=merged_components,
+    )
     LOGGER.info(
         "[templates.v2.create] persisting template name=%s slides=%d images=%d",
         template.name,
@@ -785,6 +956,77 @@ async def _create_template_v2_sync(
     await sql_session.refresh(template)
     LOGGER.info(
         "[templates.v2.create] template persisted template_id=%s name=%s",
+        template.id,
+        template.name,
+    )
+    return template
+
+
+async def _create_template_v2_with_task_progress(
+    request: CreateTemplateV2Request,
+    task: AsyncTaskModel,
+    sql_session: AsyncSession,
+) -> TemplateV2:
+    pptx_path, raw_layouts, raw_layouts_json, available_fonts = (
+        await _prepare_template_v2_source(request, operation="create")
+    )
+    name = (request.name or "").strip() or _derive_template_name(
+        request.pptx_url, pptx_path
+    )
+    thumbnail = _template_v2_request_thumbnail(request)
+    await _commit_template_v2_task_progress(
+        task,
+        sql_session,
+        completed_layout_indices=set(),
+        total_layouts=len(raw_layouts.layouts),
+        name=name,
+        thumbnail=thumbnail,
+    )
+    try:
+        generated_layouts = await _generate_slide_layouts_with_task_progress(
+            raw_layouts,
+            request.slide_image_urls,
+            available_fonts,
+            task,
+            sql_session,
+            name=name,
+            thumbnail=thumbnail,
+        )
+    except (ValidationError, ValueError) as exc:
+        LOGGER.exception(
+            "[templates.v2.create.async] slide layout generation produced "
+            "invalid output task_id=%s slides=%d",
+            task.id,
+            len(raw_layouts.layouts),
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Slide layout generation produced invalid output",
+        ) from exc
+    merged_components = await _merge_generated_components(generated_layouts)
+    template = _build_created_template_v2(
+        request,
+        pptx_path=pptx_path,
+        raw_layouts_json=raw_layouts_json,
+        available_fonts=available_fonts,
+        generated_layouts=generated_layouts,
+        merged_components=merged_components,
+    )
+    LOGGER.info(
+        "[templates.v2.create.async] persisting template task_id=%s name=%s "
+        "slides=%d images=%d",
+        task.id,
+        template.name,
+        len(raw_layouts.layouts),
+        len(template.assets.get("images", [])),
+    )
+    sql_session.add(template)
+    await sql_session.commit()
+    await sql_session.refresh(template)
+    LOGGER.info(
+        "[templates.v2.create.async] template persisted task_id=%s "
+        "template_id=%s name=%s",
+        task.id,
         template.id,
         template.name,
     )
@@ -817,7 +1059,12 @@ async def _run_create_template_v2_task(
             sql_session.add(task)
             await sql_session.commit()
 
-            template = await _create_template_v2_sync(request, sql_session)
+            task.message = "Generating slide layouts"
+            template = await _create_template_v2_with_task_progress(
+                request,
+                task,
+                sql_session,
+            )
             created_layouts = _count_layouts(template.layouts)
 
             task.status = "completed"

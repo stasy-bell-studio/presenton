@@ -798,8 +798,7 @@ def _apply_template_v2_text_content(
         return copy.deepcopy(element)
 
     updated = copy.deepcopy(element)
-    runs = element.get("runs")
-    first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
+    first_run = _first_template_v2_text_run(element.get("runs"))
     updated["runs"] = _template_v2_text_runs_from_markdown(
         text,
         first_run,
@@ -978,8 +977,7 @@ def _replace_template_v2_table_cell_text(
         }
 
     updated = copy.deepcopy(cell)
-    runs = cell.get("runs")
-    first_run = runs[0] if isinstance(runs, list) and isinstance(runs[0], dict) else {}
+    first_run = _first_template_v2_text_run(cell.get("runs"))
     run_font = first_run.get("font") if isinstance(first_run.get("font"), dict) else None
     next_font = run_font or cell.get("font") or font
     updated["color"] = cell.get("color") or cell.get("fill") or GENERATED_TABLE_CELL_FILL
@@ -993,6 +991,12 @@ def _replace_template_v2_table_cell_text(
     updated.pop("text", None)
     updated.pop("fill", None)
     return updated
+
+
+def _first_template_v2_text_run(runs: Any) -> dict[str, Any]:
+    if isinstance(runs, list) and runs and isinstance(runs[0], dict):
+        return runs[0]
+    return {}
 
 
 def _template_v2_text_runs_from_markdown(

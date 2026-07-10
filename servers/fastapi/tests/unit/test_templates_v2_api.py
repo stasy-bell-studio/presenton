@@ -1,5 +1,6 @@
 import asyncio
 import uuid
+from copy import deepcopy
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -14,6 +15,7 @@ from api.v1.ppt.endpoints.templates import (
     PatchTemplateV2SlideLayoutRequest,
     UpdateTemplateV2MetadataRequest,
     _create_template_v2_sync,
+    _run_create_template_v2_task,
     create_template_v2_slide_layouts,
     create_template_v2,
     delete_template_v2,
@@ -24,6 +26,7 @@ from api.v1.ppt.endpoints.templates import (
     patch_template_v2_slide_layout,
     update_template_v2_metadata,
 )
+from models.sql.async_task import AsyncTaskModel
 from models.sql.template_v2 import TemplateV2
 from services.export_task_service import PptxToJsonDocument
 from templates.v2.models.layouts import MergedComponents, SlideLayouts
@@ -97,6 +100,19 @@ MERGED_COMPONENTS = MergedComponents.model_validate(
 )
 
 
+def _two_raw_layouts():
+    return {
+        "layouts": [
+            RAW_LAYOUTS["layouts"][0],
+            {
+                **RAW_LAYOUTS["layouts"][0],
+                "id": "slide_2",
+                "description": "Full slide layout converted from PPTX slide 2.",
+            },
+        ]
+    }
+
+
 def _two_template_layouts():
     return {
         "layouts": [
@@ -153,6 +169,43 @@ class _ListSession:
                 )
             ]
         )
+
+
+class _TemplateTaskSession:
+    def __init__(self, task: AsyncTaskModel):
+        self.task = task
+        self.added = []
+        self.commit_snapshots = []
+
+    async def get(self, _model, key):
+        return self.task if key == self.task.id else None
+
+    def add(self, obj):
+        self.added.append(obj)
+
+    async def commit(self):
+        self.commit_snapshots.append(
+            {
+                "status": self.task.status,
+                "message": self.task.message,
+                "data": deepcopy(self.task.data),
+                "error": deepcopy(self.task.error),
+            }
+        )
+
+    async def refresh(self, _obj):
+        return None
+
+
+class _TemplateTaskSessionContext:
+    def __init__(self, session: _TemplateTaskSession):
+        self.session = session
+
+    async def __aenter__(self):
+        return self.session
+
+    async def __aexit__(self, *_args):
+        return False
 
 
 def test_create_template_v2_converts_generates_and_persists(tmp_path, fake_async_session):
@@ -338,12 +391,85 @@ def test_create_template_v2_async_enqueues_task(fake_async_session):
     assert task.data == {
         "created_layouts": 0,
         "remaining_layouts": 1,
+        "slide_layout_statuses": [{"index": 0, "status": "pending"}],
         "name": "template",
         "thumbnail": "/app_data/images/slide-1.png",
     }
     assert fake_async_session.added == [task]
     assert fake_async_session.commit_count == 1
     assert len(background_tasks.tasks) == 1
+
+
+def test_create_template_v2_async_task_updates_slide_status_before_batch_completes(
+    tmp_path,
+):
+    pptx_path = tmp_path / "template.pptx"
+    pptx_path.write_bytes(b"pptx")
+    task = AsyncTaskModel(
+        id="task-template-create",
+        type="template.create",
+        status="pending",
+    )
+    session = _TemplateTaskSession(task)
+    generated_layouts = _two_template_layouts()["layouts"]
+
+    def fake_generate_slide_layout(_raw_layout, index, _slide_image_url, _fonts):
+        return generated_layouts[index]
+
+    with patch(
+        "api.v1.ppt.endpoints.templates.async_session_maker",
+        new=lambda: _TemplateTaskSessionContext(session),
+    ), patch(
+        "api.v1.ppt.endpoints.templates.resolve_app_path_to_filesystem",
+        return_value=str(pptx_path),
+    ), patch(
+        "api.v1.ppt.endpoints.templates.EXPORT_TASK_SERVICE.convert_pptx_to_json",
+        new=AsyncMock(return_value=PptxToJsonDocument(**_two_raw_layouts())),
+    ), patch(
+        "api.v1.ppt.endpoints.templates.generate_slide_layout",
+        new=Mock(side_effect=fake_generate_slide_layout),
+    ), patch(
+        "api.v1.ppt.endpoints.templates.merge_similar_components",
+        new=Mock(return_value=MERGED_COMPONENTS),
+    ), patch(
+        "api.v1.ppt.endpoints.templates.random.randint",
+        side_effect=[4801, 4802],
+    ):
+        asyncio.run(
+            _run_create_template_v2_task(
+                task.id,
+                CreateTemplateV2Request(
+                    pptx_url="/app_data/uploads/template.pptx",
+                    slide_image_urls=[
+                        "/app_data/images/slide-1.png",
+                        "/app_data/images/slide-2.png",
+                    ],
+                ),
+            )
+        )
+
+    in_progress_slide_snapshot = next(
+        snapshot
+        for snapshot in session.commit_snapshots
+        if snapshot["status"] == "processing"
+        and snapshot["data"]
+        and snapshot["data"]["created_layouts"] == 1
+    )
+    slide_statuses = in_progress_slide_snapshot["data"]["slide_layout_statuses"]
+    assert in_progress_slide_snapshot["message"] == "Generating slide layouts"
+    assert in_progress_slide_snapshot["data"]["remaining_layouts"] == 1
+    assert sum(status["status"] == "completed" for status in slide_statuses) == 1
+    assert sum(status["status"] == "pending" for status in slide_statuses) == 1
+
+    assert task.status == "completed"
+    assert task.message == "Template creation completed"
+    assert task.data["slide_layout_statuses"] == [
+        {"index": 0, "status": "completed"},
+        {"index": 1, "status": "completed"},
+    ]
+    persisted_template = next(obj for obj in session.added if isinstance(obj, TemplateV2))
+    assert persisted_template.layouts["layouts"][0]["id"] == "slide_1_4801"
+    assert persisted_template.layouts["layouts"][1]["id"] == "slide_2_4802"
 
 
 def test_template_v2_request_ids_accept_non_uuid_strings():
