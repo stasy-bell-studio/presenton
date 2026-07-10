@@ -1105,12 +1105,13 @@ function RawRichTextElement({
         return line.map((segment, segmentIndex) => {
           const segmentX = x;
           x += segment.width;
+          // Keep width automatic. The custom layout owns the x advance; a fixed
+          // tight width lets Konva re-wrap and clip the final glyph.
           return (
             <Text
               key={`${lineIndex}:${segmentIndex}`}
               x={segmentX}
               y={lineY}
-              width={segment.width}
               height={lineMetric.height}
               text={segment.text}
               fill={textFill(segment.font)}
