@@ -955,7 +955,7 @@ def test_direct_generation_prompt_uses_decorative_element_metadata():
     )
     assert "`decorative=true`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     assert "`decorative=false`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
-    assert "Do not set `decorative` on `container`" in (
+    assert "If removal changes meaning, it is content" in (
         GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     )
 

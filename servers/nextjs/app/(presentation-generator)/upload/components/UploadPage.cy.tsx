@@ -4,6 +4,7 @@ import { mount } from 'cypress/react'
 import { store } from '@/store/store'
 import { Provider } from 'react-redux'
 import { AppRouterContext } from 'next/dist/shared/lib/app-router-context.shared-runtime'
+import { Toaster } from '@/components/ui/sonner'
 
 // Import global styles
 import '@/app/globals.css'
@@ -33,6 +34,7 @@ Cypress.Commands.add('mount', (component, options = {}) => {
     <AppRouterContext.Provider value={router}>
       <Provider store={store}>
         {children}
+        <Toaster position="top-center" />
       </Provider>
     </AppRouterContext.Provider>
   )
@@ -47,10 +49,7 @@ Cypress.Commands.add('mount', (component, options = {}) => {
 
 // Helper function to check for toast message
 const checkToast = (message: string) => {
-  // Wait for toast to appear and check its content
-  cy.get('[role="status"]', { timeout: 5000 })
-    .should('exist')
-    .and('contain', message)
+  cy.get('[data-sonner-toast]', { timeout: 5000 }).should('contain', message)
 }
 
 describe('<UploadPage />', () => {
@@ -95,14 +94,13 @@ describe('<UploadPage />', () => {
     it('should allow selecting language', () => {
       // Force click to handle any overlay issues
       cy.get('[data-testid="language-select"]').click({ force: true })
-      // Wait for content to be visible and click Simplified Chinese
-      cy.get('[role="option"]').contains('Chinese (Simplified - 中文, 汉语)').should('be.visible').click()
+      cy.contains('[role="option"]', 'Chinese (Simplified - 中文, 汉语)').click({ force: true })
       // Verify selection
       cy.get('[data-testid="language-select"]').should('contain', 'Chinese (Simplified - 中文, 汉语)')
 
       // Now test Traditional Chinese as well
       cy.get('[data-testid="language-select"]').click({ force: true })
-      cy.get('[role="option"]').contains('Chinese (Traditional - 中文, 漢語)').should('be.visible').click()
+      cy.contains('[role="option"]', 'Chinese (Traditional - 中文, 漢語)').click({ force: true })
       cy.get('[data-testid="language-select"]').should('contain', 'Chinese (Traditional - 中文, 漢語)')
     })
   })

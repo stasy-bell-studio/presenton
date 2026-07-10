@@ -338,6 +338,7 @@ def test_get_component_schema_extracts_generated_component_content():
                 "additionalProperties": False,
                 "properties": {
                     "title": {"type": ["string", "null"]},
+                    "title_color": {"type": ["string", "null"]},
                     "categories": {
                         "type": "array",
                         "items": {"type": "string"},
