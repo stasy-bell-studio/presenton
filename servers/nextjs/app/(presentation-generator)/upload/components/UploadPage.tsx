@@ -441,7 +441,7 @@ const UploadPage = () => {
   };
 
   return (
-    <Wrapper className="pb-10 lg:max-w-[65%] xl:max-w-[60%]">
+    <Wrapper className="pb-10 lg:max-w-[65%] xl:max-w-[60%] min-[1800px]:max-w-[1180px] min-[2200px]:max-w-[1520px]">
       <OverlayLoader
         show={loadingState.isLoading}
         text={loadingState.message}
@@ -450,7 +450,7 @@ const UploadPage = () => {
         extra_info={loadingState.extra_info}
       />
       <div className="rounded-2xl " >
-        <div className="flex flex-col gap-4 md:items-center md:flex-row justify-between px-4 ">
+        <div className="flex flex-col gap-4 px-4 md:flex-row md:items-center md:justify-between min-[1800px]:gap-5 min-[1800px]:px-5 min-[2200px]:gap-6 min-[2200px]:px-6">
           <CurrentConfig webSearchEnabled={config.webSearch} />
           <ConfigurationSelects
             config={config}
@@ -458,7 +458,7 @@ const UploadPage = () => {
           />
         </div>
 
-        <div className="p-4 ">
+        <div className="p-4 min-[1800px]:p-5 min-[2200px]:p-6">
 
           <div className="relative">
             <PromptInput
@@ -468,24 +468,24 @@ const UploadPage = () => {
             />
           </div>
         </div>
-        <div className="p-4 ">
-          <h3 className="text-sm font-medium text-[#333333] mb-2">Attachments (optional)</h3>
+        <div className="p-4 min-[1800px]:p-5 min-[2200px]:p-6">
+          <h3 className="mb-2 text-sm font-medium text-[#333333] min-[1800px]:text-base min-[2200px]:text-lg">Attachments (optional)</h3>
           <SupportingDoc
             files={[...files]}
             onFilesChange={setFiles}
           />
         </div>
 
-        <div className="p-4">
+        <div className="p-4 min-[1800px]:p-5 min-[2200px]:p-6">
           <Button
             onClick={handleGeneratePresentation}
             style={{
               background: "linear-gradient(270deg, #D5CAFC 2.4%, #E3D2EB 27.88%, #F4DCD3 69.23%, #FDE4C2 100%)"
             }}
-            className="w-fit mr-0 ml-auto rounded-[28px] flex items-center justify-center py-5 px-4  text-[#101323] font-syne font-semibold text-xs  "
+            className="ml-auto mr-0 flex w-fit items-center justify-center rounded-[28px] px-4 py-5 font-syne text-xs font-semibold text-[#101323] min-[1800px]:px-5 min-[1800px]:py-5 min-[1800px]:text-sm min-[2200px]:px-6 min-[2200px]:py-6 min-[2200px]:text-base"
           >
             <span>Get Started</span>
-            <ChevronRight className="!w-5 !h-5 " />
+            <ChevronRight className="!h-5 !w-5 min-[1800px]:!h-6 min-[1800px]:!w-6" />
           </Button>
         </div>
       </div>

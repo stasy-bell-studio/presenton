@@ -112,9 +112,10 @@ const SlideCountSelect: React.FC<{
           name="slides"
           data-testid="slides-select"
           aria-expanded={open}
-          className=" overflow-hidden font-syne font-medium  bg-white text-[#191919]  focus-visible:ring-[#5146E5]/30 flex justify-between items-center gap-2 h-[34px] rounded-full px-3.5 ring-1 ring-inset ring-slate-200 shadow-sm"
+          className="flex h-[34px] items-center justify-between gap-2 overflow-hidden rounded-full bg-white px-3.5 font-syne font-medium text-[#191919] shadow-sm ring-1 ring-inset ring-slate-200 focus-visible:ring-[#5146E5]/30 min-[1800px]:h-10 min-[1800px]:px-4 min-[2200px]:h-11 min-[2200px]:px-5"
         >
           <svg
+            className="h-3.5 w-3.5 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5"
             xmlns="http://www.w3.org/2000/svg"
             width="14"
             height="14"
@@ -135,12 +136,12 @@ const SlideCountSelect: React.FC<{
             />
           </svg>
           <span className="flex flex-1 items-center gap-2.5">
-            <span className="text-xs font-medium ">{displayLabel}</span>
+            <span className="text-xs font-medium min-[1800px]:text-sm min-[2200px]:text-base">{displayLabel}</span>
           </span>
-          <ChevronUp className="ml-2 h-4 w-4 shrink-0" />
+          <ChevronUp className="ml-2 h-4 w-4 shrink-0 min-[1800px]:h-5 min-[1800px]:w-5" />
         </button>
       </PopoverTrigger>
-      <PopoverContent className="w-[140px] p-0 font-syne" align="end">
+      <PopoverContent className="w-[140px] p-0 font-syne min-[1800px]:w-[160px] min-[2200px]:w-[180px]" align="end">
         <div
           className="sticky top-0 z-10 bg-white p-2 border-b"
           onMouseDown={(e) => e.stopPropagation()}
@@ -172,9 +173,9 @@ const SlideCountSelect: React.FC<{
                 }
               }}
               placeholder="--"
-              className="h-8 w-16 px-2 text-sm"
+              className="h-8 w-16 px-2 text-sm min-[1800px]:h-9 min-[1800px]:w-20 min-[1800px]:text-base"
             />
-            <span className="text-sm font-medium">slides</span>
+            <span className="text-sm font-medium min-[1800px]:text-base">slides</span>
           </div>
         </div>
         <Command>
@@ -197,7 +198,7 @@ const SlideCountSelect: React.FC<{
                     isSelectingPresetRef.current = false;
                     onOpenChange(false);
                   }}
-                  className="font-syne text-sm font-medium"
+                  className="font-syne text-sm font-medium min-[1800px]:text-base"
                 >
                   <Check
                     className={cn(
@@ -232,18 +233,18 @@ const LanguageSelect: React.FC<{
         name="language"
         data-testid="language-select"
         aria-expanded={open}
-        className="max-w-[160px] flex items-center bg-white gap-2 overflow-hidden h-[34px]  font-syne font-semibold  text-[#191919]  rounded-full px-3.5 ring-1 ring-inset ring-slate-200 shadow-sm"
+        className="flex h-[34px] max-w-[160px] items-center gap-2 overflow-hidden rounded-full bg-white px-3.5 font-syne font-semibold text-[#191919] shadow-sm ring-1 ring-inset ring-slate-200 min-[1800px]:h-10 min-[1800px]:max-w-[190px] min-[1800px]:px-4 min-[2200px]:h-11 min-[2200px]:max-w-[220px] min-[2200px]:px-5"
       >
-        <Languages className="w-3.5 h-3.5 flex-shrink-0" />
-        <span className="text-xs  font-medium truncate   flex-1">
+        <Languages className="h-3.5 w-3.5 flex-shrink-0 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5" />
+        <span className="flex-1 truncate text-xs font-medium min-[1800px]:text-sm min-[2200px]:text-base">
           {value || "Select language"}
         </span>
         {/* <span className="w-[50%] text-left">
         </span> */}
-        <ChevronUp className="ml-2 w-4 h-4 flex-shrink-0" />
+        <ChevronUp className="ml-2 h-4 w-4 flex-shrink-0 min-[1800px]:h-5 min-[1800px]:w-5" />
       </button>
     </PopoverTrigger>
-    <PopoverContent className="w-[300px] p-0" align="end">
+    <PopoverContent className="w-[300px] p-0 min-[1800px]:w-[340px] min-[2200px]:w-[380px]" align="end">
       <Command>
         <CommandInput
           placeholder="Search language..."
@@ -287,7 +288,7 @@ export function ConfigurationSelects({
   const [openLanguage, setOpenLanguage] = useState(false);
 
   return (
-    <div className="flex flex-wrap order-1 gap-4 items-center">
+    <div className="order-1 flex flex-wrap items-center gap-4 min-[1800px]:gap-5">
       <SlideCountSelect
         value={config.slides}
         onValueChange={(value) => onConfigChange("slides", value)}
