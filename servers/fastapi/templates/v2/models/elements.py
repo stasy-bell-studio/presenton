@@ -71,7 +71,6 @@ class ChartType(str, Enum):
     STACKED_BAR = "stacked_bar"
     HORIZONTAL_STACKED_BAR = "horizontal_stacked_bar"
     SCATTER = "scatter"
-    BUBBLE = "bubble"
     RADAR = "radar"
     POLAR_AREA = "polar_area"
 
