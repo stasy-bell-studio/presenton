@@ -9,7 +9,10 @@ import type {
   Plugin,
 } from "chart.js";
 import { Group, Image as KonvaImage, Rect } from "react-konva";
-import { normalizeChartTypeName } from "@/components/slide-editor/charts/chart-data";
+import {
+  ellipsizeChartText,
+  normalizeChartTypeName,
+} from "@/components/slide-editor/charts/chart-data";
 import type { DataLabelPosition } from "@/components/slide-editor/types";
 import {
   asRecord,
@@ -78,6 +81,10 @@ const DEFAULT_CHART_COLORS = [
 
 const CHART_FONT_FAMILY = "Inter, Arial, sans-serif";
 const DATA_LABEL_POSITIONS = new Set(["base", "mid", "top", "outside"]);
+const CHART_TITLE_DISPLAY_MAX_LENGTH = 44;
+const CHART_AXIS_TITLE_DISPLAY_MAX_LENGTH = 36;
+const CHART_AXIS_TICK_DISPLAY_MAX_LENGTH = 22;
+const CHART_LEGEND_DISPLAY_MAX_LENGTH = 28;
 
 export function TemplateV2ChartJsElement({
   element,
@@ -298,7 +305,7 @@ function createChartJsConfig(
   return {
     type: kind.chartJsType,
     data: {
-      labels: categories,
+      labels: categories.map((category) => displayChartCategoryLabel(category)),
       datasets: chartDatasets,
     },
     options: {
@@ -347,7 +354,12 @@ function createChartJsConfig(
             bottom: Math.max(16, titleFontSize * 0.8),
             top: 0,
           },
-          text: title.split(/\r?\n/).filter(Boolean),
+          text: title
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) =>
+              ellipsizeChartText(line, CHART_TITLE_DISPLAY_MAX_LENGTH),
+            ),
         },
         tooltip: {
           enabled: false,
@@ -392,7 +404,7 @@ function createChartJsDatasets(
         borderWidth: 1,
         data: dataset.values,
         hoverOffset: 0,
-        label: dataset.name,
+        label: displayChartLegendLabel(dataset.name),
       },
     ];
   }
@@ -409,7 +421,7 @@ function createChartJsDatasets(
         borderColor: colors,
         borderWidth: 1,
         data: dataset.values,
-        label: dataset.name,
+        label: displayChartLegendLabel(dataset.name),
       };
     });
   }
@@ -428,7 +440,7 @@ function createChartJsDatasets(
           kind.chartJsType === "bubble"
             ? dataset.points.map((point) => ({ ...point, r: point.r ?? 6 }))
             : dataset.points.map(({ x, y }) => ({ x, y })),
-        label: dataset.name,
+        label: displayChartLegendLabel(dataset.name),
         pointRadius: kind.chartJsType === "scatter" ? 4 : undefined,
         pointHoverRadius: 4,
       };
@@ -466,7 +478,7 @@ function createChartJsDatasets(
       borderWidth: isLineLike ? 3 : 0,
       data: dataset.values,
       fill: kind.area,
-      label: dataset.name,
+      label: displayChartLegendLabel(dataset.name),
       maxBarThickness: 62,
       pointBackgroundColor: datasetCategoryColors ?? color,
       pointBorderColor: "#FFFFFF",
@@ -610,7 +622,10 @@ function chartScales({
         size: fontSize,
         weight: 700,
       },
-      text: kind.horizontal ? yAxisTitle : xAxisTitle,
+      text: ellipsizeChartText(
+        kind.horizontal ? yAxisTitle : xAxisTitle,
+        CHART_AXIS_TITLE_DISPLAY_MAX_LENGTH,
+      ),
     },
     type: "category",
   };
@@ -648,7 +663,10 @@ function chartScales({
         size: fontSize,
         weight: 700,
       },
-      text: kind.horizontal ? xAxisTitle : yAxisTitle,
+      text: ellipsizeChartText(
+        kind.horizontal ? xAxisTitle : yAxisTitle,
+        CHART_AXIS_TITLE_DISPLAY_MAX_LENGTH,
+      ),
     },
     type: "linear",
   };
@@ -674,7 +692,10 @@ function chartScales({
         title: {
           ...linearAxis.title,
           display: showXAxis && Boolean(xAxisTitle),
-          text: xAxisTitle,
+          text: ellipsizeChartText(
+            xAxisTitle,
+            CHART_AXIS_TITLE_DISPLAY_MAX_LENGTH,
+          ),
         },
       },
       y: {
@@ -696,7 +717,10 @@ function chartScales({
         title: {
           ...linearAxis.title,
           display: showYAxis && Boolean(yAxisTitle),
-          text: yAxisTitle,
+          text: ellipsizeChartText(
+            yAxisTitle,
+            CHART_AXIS_TITLE_DISPLAY_MAX_LENGTH,
+          ),
         },
       },
     };
@@ -1599,6 +1623,14 @@ function formatChartValue(value: number) {
 function formatAxisTick(value: string | number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? formatChartValue(numeric) : String(value);
+}
+
+function displayChartCategoryLabel(value: string) {
+  return ellipsizeChartText(value, CHART_AXIS_TICK_DISPLAY_MAX_LENGTH);
+}
+
+function displayChartLegendLabel(value: string) {
+  return ellipsizeChartText(value, CHART_LEGEND_DISPLAY_MAX_LENGTH);
 }
 
 function safeChartColor(

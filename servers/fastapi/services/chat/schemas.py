@@ -706,7 +706,10 @@ class UpdateSlideComponentInput(OpenAIStrictSchemaModel):
     )
     size: SlideElementSizeInput | None = Field(
         ...,
-        description="Optional component size update for resize/shrink/grow requests.",
+        description=(
+            "Optional component size update for resize/shrink/grow requests. "
+            "The component's contained elements scale with this size."
+        ),
     )
 
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
@@ -834,7 +837,10 @@ class UpdateComponentInput(OpenAIStrictSchemaModel):
     )
     size: SlideElementSizeInput | None = Field(
         ...,
-        description="Optional component size update for resize/shrink/grow requests.",
+        description=(
+            "Optional component size update for resize/shrink/grow requests. "
+            "The component's contained elements scale with this size."
+        ),
     )
     component: str | None = Field(
         ...,

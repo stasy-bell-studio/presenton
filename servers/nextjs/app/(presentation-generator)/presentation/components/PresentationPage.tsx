@@ -142,6 +142,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const [selectedSlide, setSelectedSlide] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isChatSending, setIsChatSending] = useState(false);
+  const [isChatMutating, setIsChatMutating] = useState(false);
   const [isFollowModeEnabled, setIsFollowModeEnabled] = useState(true);
   const [agentFocusedSlide, setAgentFocusedSlide] = useState<number | null>(
     null
@@ -382,6 +383,10 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     setAgentFocusEventId(null);
   }, []);
 
+  const handleChatMutationStateChange = useCallback((mutating: boolean) => {
+    setIsChatMutating(mutating);
+  }, []);
+
   const handleAgentSlideFocus = useCallback(
     ({ slideIndex, eventId }: { slideIndex: number; eventId: string }) => {
       if (slideIndex < 0) {
@@ -397,7 +402,11 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   );
 
   const totalSlides = presentationData?.slides?.length ?? 0;
-  const highlightedSlideIndex = glowingSlideIndex;
+  // Mutation traces normally identify the exact slide. Fall back to the slide
+  // the user is viewing so an active edit never happens without feedback.
+  const updatingSlideIndex = isChatMutating
+    ? agentFocusedSlide ?? selectedSlide
+    : null;
 
   useEffect(() => {
     if (totalSlides <= 0 || selectedSlide <= totalSlides - 1) {
@@ -661,8 +670,8 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                               dismissTemplatePromptOverlay(slide?.id)
                             }
                             isChatEditing={
-                              highlightedSlideIndex !== null &&
-                              index === highlightedSlideIndex
+                              updatingSlideIndex !== null &&
+                              index === updatingSlideIndex
                             }
                           />
                           // <div></div>
@@ -681,6 +690,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
               presentationData={presentationData}
               onPresentationChanged={handlePresentationChanged}
               onChatSendingStateChange={handleChatSendingStateChange}
+              onChatMutationStateChange={handleChatMutationStateChange}
               onFollowModeChange={setIsFollowModeEnabled}
               onAgentSlideFocus={handleAgentSlideFocus}
             />

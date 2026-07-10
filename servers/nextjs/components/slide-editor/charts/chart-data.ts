@@ -20,6 +20,8 @@ export type ChartColorTarget = {
   mode: ChartColorTargetMode;
 };
 
+export const CHART_TEXT_MAX_LENGTH = 128;
+
 export const DEFAULT_CHART_COLORS = [
   "7F22FE",
   "155DFC",
@@ -30,6 +32,15 @@ export const DEFAULT_CHART_COLORS = [
   "8B5CF6",
   "64748B",
 ];
+
+export function limitChartText(value: string) {
+  return value.slice(0, CHART_TEXT_MAX_LENGTH);
+}
+
+export function ellipsizeChartText(value: string, maxLength = 28) {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
 
 export const CHART_SYSTEM_COLORS = [
   "000000",

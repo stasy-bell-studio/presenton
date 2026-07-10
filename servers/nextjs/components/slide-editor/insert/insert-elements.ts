@@ -265,6 +265,59 @@ function chartData(
   }));
 }
 
+function chartExample(chartType: ChartType) {
+  switch (chartType) {
+    case "donut":
+      return {
+        title: "Revenue Share by Segment",
+        categories: ["Enterprise", "Mid-market", "Small business", "Consumer"],
+        values: [42, 28, 18, 12],
+        seriesName: "Revenue Share",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A"],
+      };
+    case "horizontal_bar":
+      return {
+        title: "Qualified Leads by Channel",
+        categories: ["Email", "Search", "Social", "Referral"],
+        values: [68, 54, 47, 38],
+        seriesName: "Qualified Leads",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A"],
+      };
+    case "polar_area":
+      return {
+        title: "Support Tickets by Priority",
+        categories: ["Critical", "High", "Medium", "Low"],
+        values: [18, 32, 46, 24],
+        seriesName: "Ticket Volume",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A"],
+      };
+    case "radar":
+      return {
+        title: "Product Readiness Score",
+        categories: ["Design", "Reliability", "Speed", "Security", "Usability"],
+        values: [82, 74, 88, 69, 91],
+        seriesName: "Readiness Score",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A", "06B6D4"],
+      };
+    case "scatter":
+      return {
+        title: "Campaign Conversion Results",
+        categories: ["Campaign A", "Campaign B", "Campaign C", "Campaign D"],
+        values: [42, 57, 63, 76],
+        seriesName: "Conversions",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A"],
+      };
+    default:
+      return {
+        title: "Quarterly Revenue Trend",
+        categories: ["Q1", "Q2", "Q3", "Q4"],
+        values: [38, 54, 47, 68],
+        seriesName: "Revenue",
+        colors: ["7F22FE", "155DFC", "F59E0B", "12B76A"],
+      };
+  }
+}
+
 function makeChartElement(chartType: ChartType): SlideElement {
   if (chartType === "bar") {
     const categories = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -284,7 +337,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       position: { ...DEFAULT_CHART_INSERT_POSITION },
       size: { ...DEFAULT_CHART_INSERT_SIZE },
       chart_type: "bar",
-      title: "Weekly Report\nJun 10-12",
+      title: "Weekly Website Visits\nJun 10-16",
       color: "4D20C5",
       axis_color: "D8D8D8",
       grid_color: "D8D8D8",
@@ -294,7 +347,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       x_axis: true,
       y_axis: true,
       categories,
-      series: [{ name: "Students Number", values }],
+      series: [{ name: "Visits", values }],
       colors,
       data: chartData(categories, values, colors),
     };
@@ -302,7 +355,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
 
   if (chartType === "line") {
     const categories = ["2021", "2022", "2023", "2024", "2025", "2026"];
-    const values = [15, 45, 85, 50, 15, 55];
+    const values = [15, 45, 85, 50, 75, 95];
     const colors = [
       "4D20C5",
       "155DFC",
@@ -317,7 +370,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       position: { ...DEFAULT_CHART_INSERT_POSITION },
       size: { ...DEFAULT_CHART_INSERT_SIZE },
       chart_type: "line",
-      title: "Enrollment Over Years\n2021-2026",
+      title: "Revenue Growth\n2021-2026",
       color: "4D20C5",
       axis_color: "D8D8D8",
       grid_color: "D8D8D8",
@@ -327,7 +380,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       x_axis: true,
       y_axis: false,
       categories,
-      series: [{ name: "Students Number", values }],
+      series: [{ name: "Revenue", values }],
       colors,
       data: chartData(categories, values, colors),
     };
@@ -335,7 +388,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
 
   if (chartType === "area") {
     const categories = ["2021", "2022", "2023", "2024", "2025", "2026"];
-    const values = [25, 74, 46, 57, 62, 67];
+    const values = [25, 48, 46, 57, 62, 78];
     const colors = [
       "4D20C5",
       "155DFC",
@@ -350,7 +403,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       position: { ...DEFAULT_CHART_INSERT_POSITION },
       size: { ...DEFAULT_CHART_INSERT_SIZE },
       chart_type: "area",
-      title: "Enrollment Over Years\n2021-2026",
+      title: "Monthly Active Users\n2021-2026",
       color: "7555F6",
       axis_color: "D8D8D8",
       grid_color: "D8D8D8",
@@ -360,36 +413,35 @@ function makeChartElement(chartType: ChartType): SlideElement {
       x_axis: true,
       y_axis: false,
       categories,
-      series: [{ name: "Students Number", values }],
+      series: [{ name: "Active Users", values }],
       colors,
       data: chartData(categories, values, colors),
     };
   }
 
   if (chartType === "pie") {
-    const categories = ["Category A", "Category B", "Category C"];
-    const values = [55, 25, 20];
-    const colors = ["7555F6", "AA9AF8", "E7E3FA"];
+    const categories = ["Product", "Services", "Support", "Training"];
+    const values = [45, 30, 15, 10];
+    const colors = ["7555F6", "155DFC", "F59E0B", "12B76A"];
 
     return {
       type: "chart",
       position: { ...DEFAULT_CHART_INSERT_POSITION },
       size: { ...DEFAULT_CHART_INSERT_SIZE },
       chart_type: "pie",
-      title: "Weekly Report\nJun 10-12",
+      title: "Revenue Mix by Offering",
       color: "7555F6",
       axis_color: "D8D8D8",
       grid_color: "D8D8D8",
       data_labels: "top",
       categories,
-      series: [{ name: "Weekly Report", values }],
+      series: [{ name: "Revenue Share", values }],
       colors,
       data: chartData(categories, values, colors),
     };
   }
 
   if (chartType === "stacked_bar" || chartType === "horizontal_stacked_bar") {
-    const label = chartLabel(chartType);
     const categories = ["Q1", "Q2", "Q3", "Q4"];
     const values = [38, 54, 47, 68];
     const secondaryValues = [24, 36, 31, 42];
@@ -400,7 +452,7 @@ function makeChartElement(chartType: ChartType): SlideElement {
       position: { ...DEFAULT_CHART_INSERT_POSITION },
       size: { width: 538, height: 410 },
       chart_type: chartType,
-      title: label,
+      title: "Quarterly Revenue by Segment",
       color: "7F22FE",
       axis_color: "D0D5DD",
       grid_color: "D0D5DD",
@@ -410,25 +462,23 @@ function makeChartElement(chartType: ChartType): SlideElement {
       y_axis_grid: true,
       categories,
       series: [
-        { name: "Product", values },
-        { name: "Services", values: secondaryValues },
+        { name: "New Business", values },
+        { name: "Expansion", values: secondaryValues },
       ],
       colors,
       data: chartData(categories, values, colors),
     };
   }
 
-  const label = chartLabel(chartType);
-  const categories = ["Q1", "Q2", "Q3", "Q4"];
-  const values = [38, 54, 47, 68];
-  const colors = ["7F22FE", "155DFC", "F59E0B", "12B76A"];
+  const { title, categories, values, seriesName, colors } =
+    chartExample(chartType);
 
   return {
     type: "chart",
     position: { ...DEFAULT_CHART_INSERT_POSITION },
     size: { width: 538, height: 410 },
     chart_type: chartType,
-    title: label,
+    title,
     color: "7F22FE",
     axis_color: "D0D5DD",
     grid_color: "D0D5DD",
@@ -436,31 +486,10 @@ function makeChartElement(chartType: ChartType): SlideElement {
     x_axis_grid: true,
     y_axis_grid: true,
     categories,
-    series: [{ name: label, values }],
+    series: [{ name: seriesName, values }],
     colors,
     data: chartData(categories, values, colors),
   };
-}
-
-function chartLabel(chartType: ChartType) {
-  switch (chartType) {
-    case "horizontal_bar":
-      return "Horizontal bar";
-    case "donut":
-      return "Donut chart";
-    case "polar_area":
-      return "Polar area chart";
-    case "radar":
-      return "Radar chart";
-    case "scatter":
-      return "Scatter chart";
-    case "stacked_bar":
-      return "Stacked bar chart";
-    case "horizontal_stacked_bar":
-      return "Horizontal stack bar";
-    default:
-      return "Chart";
-  }
 }
 
 export function createChartInsertElements(kind?: string): SlideElement[] {

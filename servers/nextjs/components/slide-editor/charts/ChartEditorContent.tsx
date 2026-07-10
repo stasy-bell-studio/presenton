@@ -22,12 +22,15 @@ import {
   sanitizeNumericInput,
 } from "@/components/slide-editor/toolbar/numericInput";
 import {
+  CHART_TEXT_MAX_LENGTH,
   DEFAULT_CHART_COLORS,
   appendChartColorTarget,
   chartColorTargetMode,
   chartDataFromSeriesWithColors,
   chartSupportsMultipleSeries,
+  ellipsizeChartText,
   extendChartColors,
+  limitChartText,
   resolvedChartColorTargets,
   resolvedChartCategories,
   updateChartColorTarget,
@@ -303,9 +306,12 @@ function MiniDataTable({
               {visibleSeries.map((item) => (
                 <th
                   key={item.name}
-                  className="min-w-[120px] border-b border-r border-[#E6E6EA] bg-[#F3F4F7] px-3 py-3 text-left font-medium"
+                  className="min-w-[120px] max-w-[180px] border-b border-r border-[#E6E6EA] bg-[#F3F4F7] px-3 py-3 text-left font-medium"
+                  title={item.name}
                 >
-                  {item.name}
+                  <span className="block truncate">
+                    {ellipsizeChartText(item.name)}
+                  </span>
                 </th>
               ))}
             </tr>
@@ -313,8 +319,13 @@ function MiniDataTable({
           <tbody>
             {categories.slice(0, 5).map((category, rowIndex) => (
               <tr key={`${category}-${rowIndex}`}>
-                <td className="sticky left-0 border-b border-r border-[#E6E6EA] bg-[#F7F7FA] px-3 py-3 font-medium">
-                  {category}
+                <td
+                  className="sticky left-0 max-w-[180px] border-b border-r border-[#E6E6EA] bg-[#F7F7FA] px-3 py-3 font-medium"
+                  title={category}
+                >
+                  <span className="block truncate">
+                    {ellipsizeChartText(category)}
+                  </span>
                 </td>
                 {visibleSeries.map((item, seriesIndex) => (
                   <td
@@ -690,15 +701,19 @@ function TextField({
   placeholder?: string;
   value: string;
 }) {
-  const [draftValue, setDraftValue] = useState(value);
+  const [draftValue, setDraftValue] = useState(() => limitChartText(value));
 
   useEffect(() => {
-    setDraftValue(value);
+    setDraftValue(limitChartText(value));
   }, [value]);
 
   const commitValue = () => {
-    if (draftValue !== value) {
-      onChange(draftValue);
+    const nextValue = limitChartText(draftValue);
+    if (nextValue !== draftValue) {
+      setDraftValue(nextValue);
+    }
+    if (nextValue !== value) {
+      onChange(nextValue);
     }
   };
 
@@ -706,11 +721,13 @@ function TextField({
     <label className="block text-[12px] font-medium text-[#686873]">
       {label}
       <input
-        className="mt-1.5 h-9 w-full rounded-lg border border-[#E6E6EA] bg-white px-3 text-[12px] text-[#191919] outline-none transition placeholder:text-[#A6A6AF] focus:border-[#7C51F8]"
+        className="mt-1.5 h-9 w-full truncate rounded-lg border border-[#E6E6EA] bg-white px-3 text-[12px] text-[#191919] outline-none transition placeholder:text-[#A6A6AF] focus:border-[#7C51F8]"
+        maxLength={CHART_TEXT_MAX_LENGTH}
         placeholder={placeholder}
+        spellCheck={false}
         value={draftValue}
         onBlur={commitValue}
-        onChange={(event) => setDraftValue(event.target.value)}
+        onChange={(event) => setDraftValue(limitChartText(event.target.value))}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.currentTarget.blur();
@@ -836,10 +853,11 @@ function ChartDataModal({
   ) => {
     setDraftChart((currentChart) => {
       const normalizedCategories = nextCategories.slice(0, 24);
+      const limitedCategories = normalizedCategories.map(limitChartText);
       const normalized = nextSeries
         .map((item) => ({
-          name: item.name,
-          values: normalizeValues(item.values, normalizedCategories.length),
+          name: limitChartText(item.name ?? ""),
+          values: normalizeValues(item.values, limitedCategories.length),
         }))
         .slice(
           0,
@@ -847,7 +865,7 @@ function ChartDataModal({
         );
       const colorMode = chartColorTargetMode({
         ...currentChart,
-        categories: normalizedCategories,
+        categories: limitedCategories,
         series: normalized,
       });
       const minimumColorCount = Math.max(
@@ -864,12 +882,12 @@ function ChartDataModal({
 
       return {
         ...currentChart,
-        categories: normalizedCategories,
+        categories: limitedCategories,
         color: colors[0] ?? currentChart.color,
         series: normalized,
         colors,
         data: chartDataFromSeriesWithColors(
-          normalizedCategories,
+          limitedCategories,
           normalized,
           colors,
           colorMode === "category",
@@ -918,7 +936,7 @@ function ChartDataModal({
                 type="button"
                 className="h-8 min-w-[76px] rounded-full bg-[linear-gradient(100deg,#FFE6A6_0%,#D8B4FE_100%)] px-5 text-[12px] font-semibold text-[#191919] transition hover:brightness-95"
                 onClick={() => {
-                  onChange(draftChart);
+                  onChange(sanitizeChartTextFields(draftChart));
                   onClose();
                 }}
               >
@@ -1068,19 +1086,21 @@ function EditableDataTable({
   const dataGridTemplateColumns = `${categoryColumnWidth}px repeat(${safeSeries.length}, minmax(${seriesColumnWidth}px, 1fr)) ${actionColumnWidth}px`;
 
   const updateCategory = (rowIndex: number, value: string) => {
+    const nextValue = limitChartText(value);
     onUpdate(
       safeCategories.map((category, index) =>
-        index === rowIndex ? value : category,
+        index === rowIndex ? nextValue : category,
       ),
       safeSeries,
       colors,
     );
   };
   const updateSeriesName = (seriesIndex: number, name: string) => {
+    const nextName = limitChartText(name);
     onUpdate(
       safeCategories,
       safeSeries.map((item, index) =>
-        index === seriesIndex ? { ...item, name } : item,
+        index === seriesIndex ? { ...item, name: nextName } : item,
       ),
       colors,
     );
@@ -1222,7 +1242,9 @@ function EditableDataTable({
           style={{ left: seriesMenu.left }}
         >
           <input
-            className="h-full min-w-0 flex-1 bg-transparent text-[12px] font-medium outline-none"
+            className="h-full min-w-0 flex-1 truncate bg-transparent text-[12px] font-medium outline-none"
+            maxLength={CHART_TEXT_MAX_LENGTH}
+            spellCheck={false}
             value={selectedSeries.name}
             onChange={(event) =>
               updateSeriesName(selectedSeriesIndex, event.target.value)
@@ -1327,6 +1349,7 @@ function EditableDataTable({
                   <button
                     type="button"
                     className="w-full truncate text-center outline-none"
+                    title={item.name}
                     onFocus={(event) =>
                       showSeriesMenu(seriesIndex, event.currentTarget)
                     }
@@ -1350,8 +1373,11 @@ function EditableDataTable({
                     <GripVertical size={13} strokeWidth={2.1} />
                   </span>
                   <input
-                    className="h-7 w-full rounded-md border border-transparent bg-transparent px-0 text-[12px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-2"
+                    className="h-7 w-full truncate rounded-md border border-transparent bg-transparent px-0 text-[12px] font-medium outline-none focus:border-[#7C51F8] focus:bg-white focus:px-2"
+                    maxLength={CHART_TEXT_MAX_LENGTH}
+                    spellCheck={false}
                     value={category}
+                    title={category}
                     onFocus={() => setSelectedRowIndex(rowIndex)}
                     onChange={(event) =>
                       updateCategory(rowIndex, event.target.value)
@@ -1501,7 +1527,7 @@ function ColumnMenuItem({
 
 function safeCategoriesForChart(element: ChartElement) {
   const categories = resolvedChartCategories(element);
-  return categories.length > 0 ? categories : ["Item 1"];
+  return (categories.length > 0 ? categories : ["Item 1"]).map(limitChartText);
 }
 
 function normalizedSeries(element: ChartElement, categoryLength: number) {
@@ -1511,12 +1537,13 @@ function normalizedSeries(element: ChartElement, categoryLength: number) {
       .slice(0, chartSupportsMultipleSeries(element.chart_type) ? 12 : 1)
       .map((series) => ({
         ...series,
+        name: limitChartText(series.name ?? ""),
         values: normalizeValues(series.values, length),
       }));
   }
   return [
     {
-      name: element.title ?? "Series 1",
+      name: limitChartText(element.title ?? "Series 1"),
       values: normalizeValues([], length),
     },
   ];
@@ -1529,11 +1556,12 @@ function normalizeValues(values: number[], length: number) {
 }
 
 function clearChartData(chart: ChartElement): ChartElement {
+  const chartData = chart.data ?? [];
   const sourceCategories =
     chart.categories && chart.categories.length > 0
       ? chart.categories
-      : chart.data.length > 0
-        ? chart.data.map((datum, index) => datum.label || `Item ${index + 1}`)
+      : chartData.length > 0
+        ? chartData.map((datum, index) => datum.label || `Item ${index + 1}`)
         : resolvedChartCategories(chart);
   const sourceSeries =
     chart.series && chart.series.length > 0
@@ -1541,7 +1569,7 @@ function clearChartData(chart: ChartElement): ChartElement {
       : [
         {
           name: chart.title ?? "Series 1",
-          values: chart.data.map((datum) => datum.value),
+          values: chartData.map((datum) => datum.value),
         },
       ];
   const valueLength = Math.min(
@@ -1549,16 +1577,17 @@ function clearChartData(chart: ChartElement): ChartElement {
     Math.max(
       1,
       sourceCategories.length,
-      chart.data.length,
+      chartData.length,
       ...sourceSeries.map((item) => item.values.length),
     ),
   );
   const categories = Array.from(
     { length: valueLength },
-    (_, index) => sourceCategories[index] ?? `Item ${index + 1}`,
+    (_, index) => limitChartText(sourceCategories[index] ?? `Item ${index + 1}`),
   );
   const series = sourceSeries.map((item) => ({
     ...item,
+    name: limitChartText(item.name ?? ""),
     values: Array.from({ length: valueLength }, () => 0),
   }));
   const fallbackColors =
@@ -1572,8 +1601,8 @@ function clearChartData(chart: ChartElement): ChartElement {
     chartColorTargetMode({ ...chart, categories, series }) === "category",
   );
   const data =
-    chart.data.length > 0
-      ? chart.data.map((datum) => ({ ...datum, value: 0 }))
+    chartData.length > 0
+      ? chartData.map((datum) => ({ ...datum, value: 0 }))
       : fallbackData;
 
   return {
@@ -1584,9 +1613,32 @@ function clearChartData(chart: ChartElement): ChartElement {
   };
 }
 
-function chartPreviewElement(chart: ChartElement): ChartElement {
+function sanitizeChartTextFields(chart: ChartElement): ChartElement {
   return {
     ...chart,
+    title: chart.title ? limitChartText(chart.title) : chart.title,
+    x_axis_title: chart.x_axis_title
+      ? limitChartText(chart.x_axis_title)
+      : chart.x_axis_title,
+    y_axis_title: chart.y_axis_title
+      ? limitChartText(chart.y_axis_title)
+      : chart.y_axis_title,
+    categories: chart.categories?.map(limitChartText) ?? chart.categories,
+    series:
+      chart.series?.map((series) => ({
+        ...series,
+        name: limitChartText(series.name ?? ""),
+      })) ?? chart.series,
+    data: (chart.data ?? []).map((datum) => ({
+      ...datum,
+      label: limitChartText(datum.label ?? ""),
+    })),
+  };
+}
+
+function chartPreviewElement(chart: ChartElement): ChartElement {
+  return {
+    ...sanitizeChartTextFields(chart),
     opacity: 1,
     position: { x: 45, y: 45 },
     rotation: 0,
