@@ -240,7 +240,18 @@ const ensurePresentationExportNodeDependencies = async () => {
   }
 };
 
-const forwardProcessOutput = (stream, target, onChunk) => {
+const shouldSuppressStartupLogLine = (line) =>
+  [
+    /\bUvicorn running on\b/i,
+    /https?:\/\/(?:127\.0\.0\.1|localhost|0\.0\.0\.0):(3000|8000)\b/i,
+    /started server on .*:(3000|8000)\b/i,
+  ].some((pattern) => pattern.test(line));
+
+const forwardProcessOutput = (
+  stream,
+  target,
+  { suppressStartupUrls = false } = {}
+) => {
   if (!stream) {
     return;
   }
