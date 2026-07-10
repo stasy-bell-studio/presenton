@@ -62,6 +62,18 @@ export interface AsyncTaskResponse {
     updated_at: string;
 }
 
+export interface TemplateCreateTaskData {
+    created_layouts?: number;
+    remaining_layouts?: number;
+    name?: string;
+    thumbnail?: string | null;
+}
+
+export interface TemplateCreateTaskResponse extends AsyncTaskResponse {
+    type: "template.create";
+    data?: TemplateCreateTaskData | null;
+}
+
 export interface UpdateTemplateMetadataPayload {
     name: string;
     description?: string | null;
@@ -119,6 +131,25 @@ class TemplateService {
             return await ApiResponseHandler.handleResponse(response, "Failed to create template");
         } catch (error) {
             console.error("Failed to create template", error);
+            throw error;
+        }
+    }
+
+    static async getProcessingTemplateCreateTasks(createdAtFrom: Date): Promise<TemplateCreateTaskResponse[]> {
+        try {
+            const params = new URLSearchParams({
+                type: "template.create",
+                status: "processing",
+                order_by: "created_at",
+                order: "desc",
+                limit: "50",
+                offset: "0",
+                created_at: createdAtFrom.toISOString(),
+            });
+            const response = await fetch(getApiUrl(`/api/v1/async-tasks?${params.toString()}`));
+            return await ApiResponseHandler.handleResponse(response, "Failed to get processing template tasks");
+        } catch (error) {
+            console.error("Failed to get processing template tasks", error);
             throw error;
         }
     }

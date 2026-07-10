@@ -7,6 +7,7 @@ import Link from "next/link";
 import { trackEvent, MixpanelEvent } from "@/utils/mixpanel";
 import { useTemplateSummaries, TemplateTab } from "../../../hooks/useTemplateSummaries";
 import {
+  ProcessingTemplateListCard,
   TemplateListCard,
   TemplateTabSwitcher,
   TemplateListLoadingState,
@@ -16,7 +17,12 @@ import {
 const LayoutPreview = () => {
   const [tab, setTab] = useState<TemplateTab>("default");
   const router = useRouter();
-  const { defaultTemplates, customTemplates, loading } = useTemplateSummaries();
+  const {
+    defaultTemplates,
+    customTemplates,
+    processingTemplateTasks,
+    loading,
+  } = useTemplateSummaries({ includeProcessingTemplateTasks: true });
 
   useEffect(() => {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
@@ -93,6 +99,9 @@ const LayoutPreview = () => {
           ) : tab === "custom" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 items-center lg:grid-cols-4 gap-6">
               <CreateCustomTemplate />
+              {processingTemplateTasks.map((task) => (
+                <ProcessingTemplateListCard key={task.id} task={task} />
+              ))}
               {customTemplates.map((template) => (
                 <TemplateListCard
                   key={template.id}

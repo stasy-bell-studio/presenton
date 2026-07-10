@@ -16,6 +16,7 @@ import {
   ChevronRight,
   LayoutPanelTop,
   Loader2,
+  Search,
   Sparkles,
   Trash2,
   Type,
@@ -72,6 +73,10 @@ const studioSteps: { id: StudioStep; label: string }[] = [
 
 const pillGradient =
   "linear-gradient(270deg, #D5CAFC 2.4%, #E3D2EB 27.88%, #F4DCD3 69.23%, #FDE4C2 100%)";
+
+const FONT_FALLBACK_OPTION_HEIGHT = 40;
+const FONT_FALLBACK_MAX_VISIBLE_ROWS = 7;
+const FONT_FALLBACK_OVERSCAN_ROWS = 4;
 
 function getDefaultTemplateName(file: File | null): string {
   if (!file?.name) return "";
@@ -409,6 +414,193 @@ function preferredFallbackFont(
   return googleFontOptions[0] ?? null;
 }
 
+function FontFallbackPicker({
+  fontName,
+  options,
+  selectedOption,
+  disabled,
+  onChange,
+}: {
+  fontName: string;
+  options: GoogleFontOption[];
+  selectedOption?: GoogleFontOption;
+  disabled?: boolean;
+  onChange: (option: GoogleFontOption) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [scrollTop, setScrollTop] = useState(0);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && rootRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setQuery("");
+    setScrollTop(0);
+    if (listRef.current) {
+      listRef.current.scrollTop = 0;
+    }
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, [open]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = useMemo(
+    () =>
+      normalizedQuery
+        ? options.filter((option) =>
+            option.family.toLowerCase().includes(normalizedQuery),
+          )
+        : options,
+    [normalizedQuery, options],
+  );
+  const viewportRows = Math.min(
+    Math.max(filteredOptions.length, 1),
+    FONT_FALLBACK_MAX_VISIBLE_ROWS,
+  );
+  const viewportHeight =
+    filteredOptions.length === 0 ? 80 : viewportRows * FONT_FALLBACK_OPTION_HEIGHT;
+  const firstVisibleIndex = Math.max(
+    0,
+    Math.floor(scrollTop / FONT_FALLBACK_OPTION_HEIGHT) -
+      FONT_FALLBACK_OVERSCAN_ROWS,
+  );
+  const visibleOptionCount =
+    viewportRows + FONT_FALLBACK_OVERSCAN_ROWS * 2 + 1;
+  const visibleOptions = filteredOptions.slice(
+    firstVisibleIndex,
+    firstVisibleIndex + visibleOptionCount,
+  );
+
+  const handleSelect = (option: GoogleFontOption) => {
+    onChange(option);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        className="flex h-10 w-full items-center justify-between gap-3 rounded-lg border border-[#DADDE6] bg-[#FAFBFC] px-3 text-left text-sm font-medium text-[#282A32] outline-none transition hover:border-[#8D7DFF] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <span className="min-w-0 truncate">
+          {selectedOption?.family ?? "Choose fallback"}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-[#61646F]" />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 right-0 top-[44px] z-[80] overflow-hidden rounded-xl border border-[#E4E6EE] bg-white shadow-[0_18px_45px_rgba(16,24,40,0.14)]">
+          <div className="grid h-10 grid-cols-[16px_minmax(0,1fr)_20px] items-center gap-2 border-b border-[#EEF0F5] px-3">
+            <Search className="h-4 w-4 text-[#737784]" />
+            <input
+              ref={inputRef}
+              aria-label={`Search fallback fonts for ${fontName}`}
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setScrollTop(0);
+                if (listRef.current) {
+                  listRef.current.scrollTop = 0;
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setOpen(false);
+                }
+              }}
+              placeholder="Search fonts"
+              className="h-8 min-w-0 border-0 bg-transparent p-0 text-sm font-medium text-[#20222B] outline-none placeholder:text-[#9A9EA9]"
+            />
+            {query ? (
+              <button
+                type="button"
+                aria-label="Clear font search"
+                onClick={() => {
+                  setQuery("");
+                  inputRef.current?.focus();
+                }}
+                className="flex h-6 w-6 items-center justify-center rounded-full text-[#737784] hover:bg-[#F3F4F7] hover:text-[#20222B]"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+          </div>
+
+          <div
+            ref={listRef}
+            role="listbox"
+            aria-label={`Fallback font for ${fontName}`}
+            className="overflow-y-auto [scrollbar-color:#CBD0DC_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD0DC] [&::-webkit-scrollbar-track]:bg-transparent"
+            style={{ height: viewportHeight }}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            {filteredOptions.length === 0 ? (
+              <div className="flex h-20 items-center justify-center text-sm font-medium text-[#777B86]">
+                {options.length === 0 ? "Loading fonts..." : "No fonts found"}
+              </div>
+            ) : (
+              <div
+                className="relative"
+                style={{
+                  height: filteredOptions.length * FONT_FALLBACK_OPTION_HEIGHT,
+                }}
+              >
+                {visibleOptions.map((option, offset) => {
+                  const optionIndex = firstVisibleIndex + offset;
+                  const isSelected = option.family === selectedOption?.family;
+                  return (
+                    <button
+                      key={option.family}
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      title={option.family}
+                      onClick={() => handleSelect(option)}
+                      className={`absolute left-0 right-0 flex h-10 items-center justify-between gap-3 px-3 text-left text-sm transition ${isSelected
+                        ? "bg-[#F4F3FF] font-semibold text-[#5146E5]"
+                        : "bg-white font-medium text-[#242630] hover:bg-[#FAFAFF]"
+                        }`}
+                      style={{
+                        top: optionIndex * FONT_FALLBACK_OPTION_HEIGHT,
+                      }}
+                    >
+                      <span className="min-w-0 truncate">{option.family}</span>
+                      <span className="shrink-0 text-xs font-semibold text-[#8B8E99]">
+                        Aa
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AnalyzePanel({
   fontsData,
   uploadedFonts,
@@ -437,7 +629,6 @@ function AnalyzePanel({
   const pendingMissingFonts = missingFonts.filter(
     (font) => !uploadedFontNames.has(font.name),
   );
-  const showFontAttentionSpinner = pendingMissingFonts.length > 0 && !isUploading;
   const fontsStepComplete =
     missingFonts.length === 0 || pendingMissingFonts.length === 0 || isUploading;
   const availableFontCount = fontsData?.available_fonts.length ?? 0;
@@ -446,6 +637,7 @@ function AnalyzePanel({
     uploadedFontNames.has(font.name),
   ).length;
   const totalDetectedFonts = availableFontCount + missingFontCount;
+  const resolvedFontCount = availableFontCount + uploadedMissingCount;
   const fontStatusLabel = isUploading
     ? "Preparing Preview"
     : fontsStepComplete
@@ -455,7 +647,7 @@ function AnalyzePanel({
     ? "border-[#E7D8FF] bg-[#F6F1FF] text-[#6941C6]"
     : fontsStepComplete
       ? "border-[#CFEBDD] bg-[#F0FBF5] text-[#227A50]"
-      : "border-[#FAD7BF] bg-[#FFF7ED] text-[#B45309]";
+      : "border-[#DADDE6] bg-white text-[#343741]";
 
   const handleFontFile = (fontName: string, event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -467,27 +659,31 @@ function AnalyzePanel({
   return (
     <main className="flex min-h-screen flex-col bg-white px-4 pb-28 font-syne sm:px-6 sm:pb-32 2xl:px-10 2xl:pb-36">
       <TemplateStudioTitle compact />
-      <section className="mx-auto mt-8 w-full max-w-[980px] sm:mt-10 2xl:mt-12 2xl:max-w-[1180px]">
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_400px] 2xl:gap-5">
-          <div className="h-fit rounded-[10px] border border-[#E3E5EC] bg-gradient-to-br from-white to-[#FAFAFF] p-4 shadow-[0_12px_34px_rgba(16,24,40,0.06)] sm:p-5 2xl:p-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex min-w-0 items-start gap-3">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#F0EFFD] text-[#5146E5] 2xl:h-12 2xl:w-12">
-                  <Type className="h-4 w-4 2xl:h-5 2xl:w-5" />
+      <section className="mx-auto mt-8 w-full max-w-[1040px] sm:mt-10 2xl:mt-12 2xl:max-w-[1180px]">
+        <div className="rounded-[28px] border border-[#E8EAF0] bg-[#FAFAFC] p-4 sm:p-5 2xl:p-6">
+          <div className="px-1 py-1">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="flex min-w-0 items-start gap-4">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-[#5146E5] ring-1 ring-[#E8EAF0]">
+                  <Type className="h-5 w-5" />
                 </span>
                 <div className="min-w-0">
-                  <h2 className="text-lg font-semibold text-[#161820] 2xl:text-2xl">
-                    Font Readiness
+                  <h2 className="text-xl font-semibold leading-tight text-[#171821] 2xl:text-2xl">
+                    Review Fonts
                   </h2>
-                  <p className="mt-1 max-w-[560px] text-[13px] leading-relaxed text-[#686B76] 2xl:text-[15px]">
-                    Review detected fonts before creating the slide preview.
+                  <p className="mt-1 max-w-[620px] text-sm leading-relaxed text-[#686C78] 2xl:text-[15px]">
+                    Resolve missing fonts with exact uploads or keep the selected fallbacks.
+                  </p>
+                  <p className="mt-3 text-xs font-medium text-[#777B86]">
+                    {totalDetectedFonts} detected / {resolvedFontCount} resolved / {pendingMissingFonts.length} need action
                   </p>
                 </div>
               </div>
+
               <span
-                className={`inline-flex w-fit shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium 2xl:text-sm ${fontStatusClass}`}
+                className={`inline-flex w-fit shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold ${fontStatusClass}`}
               >
-                {isUploading || showFontAttentionSpinner ? (
+                {isUploading ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : fontsStepComplete ? (
                   <Check className="h-3.5 w-3.5" />
@@ -495,37 +691,20 @@ function AnalyzePanel({
                 {fontStatusLabel}
               </span>
             </div>
+          </div>
 
-            <div className="mt-5 grid grid-cols-3 gap-2 2xl:mt-6 2xl:gap-3">
-              {[
-                { label: "Detected", value: totalDetectedFonts },
-                { label: "Available", value: availableFontCount },
-                { label: "Missing", value: pendingMissingFonts.length },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  className="rounded-[8px] border border-[#E6E7EF] bg-white px-3 py-3 shadow-[0_1px_2px_rgba(16,24,40,0.03)] 2xl:px-4 2xl:py-4"
-                >
-                  <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#777985] 2xl:text-xs">
-                    {item.label}
-                  </p>
-                  <p className="mt-1 font-mono text-2xl font-semibold leading-none text-[#15161C] 2xl:text-3xl">
-                    {item.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-5 2xl:mt-6">
-              <div className="mb-2 flex items-center justify-between gap-3 2xl:mb-3">
-                <p className="text-[13px] font-medium text-[#30323A] 2xl:text-[15px]">
-                  Detected Fonts
-                </p>
-                <p className="text-[12px] text-[#777985] 2xl:text-sm">
+          <div className="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+            <aside className="order-2 rounded-2xl bg-white p-4 ring-1 ring-[#ECEEF4] sm:p-5 2xl:p-6">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-[#22242D]">
+                  Detected in this deck
+                </h3>
+                <span className="text-xs font-medium text-[#7B7F8C]">
                   {missingFontCount} missing
-                </p>
+                </span>
               </div>
-              <div className="flex max-h-[190px] flex-wrap gap-2 overflow-y-auto pr-1 [scrollbar-color:#C7CBD6_transparent] [scrollbar-width:thin] 2xl:max-h-[240px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C7CBD6] [&::-webkit-scrollbar-track]:bg-transparent">
+
+              <div className="flex max-h-[340px] flex-wrap gap-2 overflow-y-auto pr-1 [scrollbar-color:#CBD0DC_transparent] [scrollbar-width:thin] 2xl:max-h-[420px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#CBD0DC] [&::-webkit-scrollbar-track]:bg-transparent">
                 {fontChips.length > 0 ? (
                   fontChips.map((font, index) => {
                     const label = chipLabel(font);
@@ -533,9 +712,9 @@ function AnalyzePanel({
                     return (
                       <span
                         key={`${font.name}-${index}`}
-                        className={`max-w-full truncate rounded-full border px-3 py-1.5 text-[12px] 2xl:px-3.5 2xl:text-[13px] ${isMissing
-                          ? "border-[#FDBA74] bg-[#FFF7ED] text-[#C2410C]"
-                          : "border-[#DDEADF] bg-[#F4FBF6] text-[#236C4A]"
+                        className={`max-w-full truncate rounded-full border px-3 py-1.5 text-xs font-medium ${isMissing
+                          ? "border-[#DADDE6] bg-white text-[#4A4D57]"
+                          : "border-[#CFEBDD] bg-[#F4FBF7] text-[#236C4A]"
                           }`}
                         title={label}
                       >
@@ -544,147 +723,162 @@ function AnalyzePanel({
                     );
                   })
                 ) : (
-                  <span className="rounded-full border border-[#E1E2E8] bg-[#F0F1F4] px-3 py-1.5 text-[12px] text-[#555862] 2xl:text-[13px]">
+                  <span className="rounded-full border border-[#E1E2E8] bg-[#F3F4F7] px-3 py-1.5 text-xs font-medium text-[#555862]">
                     No fonts detected
                   </span>
                 )}
               </div>
-            </div>
 
-            {uploadedMissingCount > 0 ? (
-              <div className="mt-4 rounded-[8px] border border-[#CFEBDD] bg-[#F0FBF5] px-3 py-2.5 text-[12px] text-[#236C4A] 2xl:text-[13px]">
-                {uploadedMissingCount} missing font{uploadedMissingCount === 1 ? "" : "s"} uploaded.
+              {uploadedMissingCount > 0 ? (
+                <div className="mt-5 flex items-center gap-2 rounded-xl border border-[#CFEBDD] bg-[#F3FBF6] px-4 py-3 text-sm font-medium text-[#236C4A]">
+                  <Check className="h-4 w-4" />
+                  {uploadedMissingCount} missing font{uploadedMissingCount === 1 ? "" : "s"} uploaded.
+                </div>
+              ) : null}
+            </aside>
+
+            <div className="order-1 rounded-2xl bg-white p-4 ring-1 ring-[#ECEEF4] sm:p-5 2xl:p-6">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-[#22242D]">
+                    Missing fonts
+                  </h3>
+                  <p className="mt-1 text-xs leading-relaxed text-[#737784]">
+                    Upload a matching file, or choose a fallback.
+                  </p>
+                </div>
+                <span className="inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-[#E4E6EE] px-3 text-xs font-semibold text-[#555862]">
+                  {pendingMissingFonts.length} left
+                </span>
               </div>
-            ) : null}
-          </div>
 
-          <aside className="h-fit rounded-[10px] border border-[#E3E5EC] bg-white p-4 shadow-[0_12px_34px_rgba(16,24,40,0.05)] sm:p-5 2xl:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-[15px] font-semibold text-[#181A22] 2xl:text-lg">
-                  Missing Fonts
-                </h3>
-                <p className="mt-1 text-[12px] leading-relaxed text-[#70737D] 2xl:text-sm">
-                  Upload exact font files or continue with fallbacks.
+              {hasPendingMissingFonts && !isUploading ? (
+                <p className="mb-4 text-xs leading-relaxed text-[#686C78]">
+                  Exact font files preserve typography. Fallbacks are used when a file is not uploaded.
                 </p>
-              </div>
-              <span className="rounded-full border border-[#E5E7EF] bg-white px-2.5 py-1 text-[11px] font-medium text-[#555862] 2xl:text-xs">
-                {pendingMissingFonts.length} left
-              </span>
-            </div>
+              ) : null}
 
-            {hasPendingMissingFonts && !isUploading ? (
-              <div className="mt-4 rounded-[7px] border border-[#FDE4C2] bg-[#FFFBF5] px-3 py-2.5 text-[12px] leading-relaxed text-[#8A5B2C] 2xl:text-[13px]">
-                Continuing without uploads will use available fallback fonts.
-              </div>
-            ) : null}
+              {missingFonts.length > 0 ? (
+                <div>
+                  {missingFonts.map((font, index) => {
+                    const fontName = font.name;
+                    const isUploaded = uploadedFontNames.has(fontName);
+                    const selectedFallback = selectedFallbackFonts[fontName];
+                    return (
+                      <div
+                        key={`${fontName}-${index}`}
+                        className="border-t border-[#EEF0F5] py-4 first:border-t-0 first:pt-0 last:pb-0"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <p className="min-w-0 truncate text-sm font-semibold text-[#242630]" title={fontName}>
+                            {fontName}
+                          </p>
+                          {isUploaded ? (
+                            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#ECFDF3] px-2 py-1 text-[10px] font-semibold text-[#237A50]">
+                              <Check className="h-3 w-3" />
+                              Uploaded
+                            </span>
+                          ) : null}
+                        </div>
 
-            {missingFonts.length > 0 ? (
-              <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1 [scrollbar-color:#C7CBD6_transparent] [scrollbar-width:thin] 2xl:mt-5 2xl:max-h-[430px] 2xl:space-y-4 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C7CBD6] [&::-webkit-scrollbar-track]:bg-transparent">
-                {missingFonts.map((font, index) => {
-                  const fontName = font.name;
-                  const isUploaded = uploadedFontNames.has(fontName);
-                  const selectedFallback = selectedFallbackFonts[fontName];
-                  return (
-                    <div key={`${fontName}-${index}`} className="rounded-[8px] border border-[#ECECF2] bg-white p-3 2xl:p-4">
-                      <div className="mb-2 flex items-center justify-between gap-2 2xl:mb-3">
-                        <p className="min-w-0 truncate text-[12px] font-medium text-[#30323A] 2xl:text-sm" title={fontName}>
-                          {fontName}
-                        </p>
-                        {isUploaded ? (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-[#ECFDF3] px-2 py-0.5 text-[10px] font-medium text-[#237A50] 2xl:text-[11px]">
-                            <Check className="h-3 w-3" />
-                            Uploaded
-                          </span>
+                        <input
+                          ref={(node) => {
+                            fileInputRefs.current[fontName] = node;
+                          }}
+                          type="file"
+                          accept=".ttf,.otf,.woff,.woff2,.eot"
+                          className="hidden"
+                          onChange={(event) => handleFontFile(fontName, event)}
+                        />
+
+                        <div className="grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)]">
+                          <button
+                            type="button"
+                            onClick={() => fileInputRefs.current[fontName]?.click()}
+                            disabled={isUploading}
+                            className="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#DADDE6] bg-white px-3 text-sm font-semibold text-[#25272F] transition hover:border-[#A8ADBA] hover:bg-[#F8F9FB] disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Upload className="h-4 w-4" />
+                            {isUploaded ? "Replace file" : "Upload font"}
+                          </button>
+
+                          <FontFallbackPicker
+                            fontName={fontName}
+                            options={googleFontOptions}
+                            selectedOption={selectedFallback}
+                            disabled={isUploading}
+                            onChange={(option) =>
+                              onFallbackFontChange(fontName, option)
+                            }
+                          />
+                        </div>
+
+                        {selectedFallback ? (
+                          <p
+                            className="mt-2 truncate text-xs font-medium text-[#80838F]"
+                            title={`${fontName} -> ${selectedFallback.family} (${selectedFallback.cssUrl})`}
+                          >
+                            Fallback: {selectedFallback.family}
+                          </p>
                         ) : null}
                       </div>
-                      <input
-                        ref={(node) => {
-                          fileInputRefs.current[fontName] = node;
-                        }}
-                        type="file"
-                        accept=".ttf,.otf,.woff,.woff2,.eot"
-                        className="hidden"
-                        onChange={(event) => handleFontFile(fontName, event)}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => fileInputRefs.current[fontName]?.click()}
-                        disabled={isUploading}
-                        className="flex h-9 w-full items-center justify-center gap-2 rounded-[5px] border border-[#D9DAE2] bg-white px-3 text-[12px] font-medium text-[#25272F] transition hover:border-[#B9ABFF] hover:bg-[#FAFAFF] disabled:cursor-not-allowed disabled:opacity-60 2xl:h-10 2xl:text-[13px]"
-                      >
-                        <Upload className="h-3.5 w-3.5 2xl:h-4 2xl:w-4" />
-                        {isUploaded ? "Replace Font File" : "Upload Font File"}
-                      </button>
-                      <div className="relative mt-2 2xl:mt-2.5">
-                        <select
-                          aria-label={`Fallback font for ${fontName}`}
-                          disabled={isUploading}
-                          className="h-9 w-full appearance-none rounded-[5px] border border-[#D9DAE2] bg-white px-3 pr-8 text-[12px] text-[#282A32] outline-none transition hover:border-[#B9ABFF] disabled:cursor-not-allowed disabled:opacity-60 2xl:h-10 2xl:text-[13px]"
-                          value={selectedFallback?.family ?? ""}
-                          onChange={(event) => {
-                            const option = googleFontOptions.find(
-                              (item) => item.family === event.target.value,
-                            );
-                            if (option) onFallbackFontChange(fontName, option);
-                          }}
-                        >
-                          {googleFontOptions.length === 0 ? (
-                            <option value="">Loading Google fonts...</option>
-                          ) : null}
-                          {googleFontOptions.map((option) => (
-                            <option key={option.family} value={option.family}>
-                              {option.family}
-                            </option>
-                          ))}
-                        </select>
-                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black" />
-                      </div>
-                      {selectedFallback ? (
-                        <p
-                          className="mt-1.5 truncate text-[10px] text-[#777985] 2xl:text-[11px]"
-                          title={`${fontName} -> ${selectedFallback.family} (${selectedFallback.cssUrl})`}
-                        >
-                          Replaces with {selectedFallback.family}
-                        </p>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="mt-4 flex min-h-[180px] flex-col items-center justify-center rounded-[8px] border border-[#DDEADF] bg-[#F4FBF6] px-4 text-center 2xl:min-h-[220px]">
-                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2CA36B] text-white 2xl:h-11 2xl:w-11">
-                  <Check className="h-4 w-4 2xl:h-5 2xl:w-5" />
-                </span>
-                <p className="mt-3 text-[13px] font-medium text-[#236C4A] 2xl:text-[15px]">
-                  All fonts resolved
-                </p>
-              </div>
-            )}
-          </aside>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl bg-[#F6FBF8] px-6 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[#2CA36B] text-white">
+                    <Check className="h-5 w-5" />
+                  </span>
+                  <p className="mt-3 text-sm font-semibold text-[#236C4A]">
+                    All fonts resolved
+                  </p>
+                  <p className="mt-1 text-xs text-[#70737D]">
+                    Continue to create the preview.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {isUploading ? (
-          <div className="mt-4 rounded-[10px] border border-[#E7E8EE] bg-white p-4 shadow-[0_8px_28px_rgba(16,24,40,0.05)] sm:p-5 2xl:mt-5 2xl:p-6">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-black text-white 2xl:h-11 2xl:w-11">
-                <LayoutPanelTop className="h-4 w-4 2xl:h-5 2xl:w-5" />
+          <div className="mt-5 rounded-2xl border border-[#E6E7EC] bg-white p-5 2xl:p-6">
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black text-white">
+                <LayoutPanelTop className="h-5 w-5" />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-3">
-                  <h2 className="text-[16px] font-semibold text-black 2xl:text-xl">
-                    Creating Preview
-                  </h2>
-                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#7A5AF8] 2xl:h-6 2xl:w-6" />
+                  <div>
+                    <h2 className="text-lg font-semibold text-[#171821]">
+                      Creating Preview
+                    </h2>
+                    <p className="mt-1 text-sm text-[#70737D]">
+                      Extracting slides, applying fonts, and rendering previews.
+                    </p>
+                  </div>
+                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-[#7A5AF8]" />
                 </div>
-                <div className="mt-3 grid gap-2 text-[13px] text-[#777985] sm:grid-cols-3 2xl:text-[15px]">
-                  <p className="font-medium text-black">Extracting Slides</p>
-                  <p className="font-medium text-black">Preparing Fonts</p>
-                  <p className="flex items-center gap-2">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin text-[#7A5AF8] 2xl:h-4 2xl:w-4" />
-                    Rendering Preview
-                  </p>
+                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                  {["Extracting slides", "Preparing fonts", "Rendering preview"].map(
+                    (label, index) => (
+                      <div
+                        key={label}
+                        className={`flex items-center gap-2 rounded-xl px-3 py-2 ${index === 2
+                          ? "bg-[#F8F3FF] text-[#6941C6]"
+                          : "bg-[#FAFBFC] text-[#30323A]"
+                          }`}
+                      >
+                        {index === 2 ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5 text-[#2CA36B]" />
+                        )}
+                        <span className="font-semibold">{label}</span>
+                      </div>
+                    ),
+                  )}
                 </div>
               </div>
             </div>
@@ -701,31 +895,51 @@ const SLIDE_HEIGHT = EDITOR_STAGE_HEIGHT;
 function ResponsiveSlideViewport({
   children,
   className = "",
+  fitToAvailableHeight = false,
+  bottomReserve = 0,
 }: {
   children: React.ReactNode;
   className?: string;
+  fitToAvailableHeight?: boolean;
+  bottomReserve?: number;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(0);
+  const [bounds, setBounds] = useState({ width: 0, maxHeight: 0 });
 
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
 
-    const updateWidth = () => setWidth(node.clientWidth);
-    updateWidth();
+    const updateBounds = () => {
+      const rect = node.getBoundingClientRect();
+      const maxHeight = fitToAvailableHeight
+        ? Math.max(160, window.innerHeight - rect.top - bottomReserve)
+        : 0;
+      setBounds({ width: node.clientWidth, maxHeight });
+    };
+    updateBounds();
 
     if (typeof ResizeObserver === "undefined") {
-      window.addEventListener("resize", updateWidth);
-      return () => window.removeEventListener("resize", updateWidth);
+      window.addEventListener("resize", updateBounds);
+      return () => window.removeEventListener("resize", updateBounds);
     }
 
-    const observer = new ResizeObserver(updateWidth);
+    const observer = new ResizeObserver(updateBounds);
     observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
+    window.addEventListener("resize", updateBounds);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateBounds);
+    };
+  }, [bottomReserve, fitToAvailableHeight]);
 
-  const scale = width > 0 ? Math.min((width / SLIDE_WIDTH) * 0.98, 1) : 0;
+  const widthScale =
+    bounds.width > 0 ? (bounds.width / SLIDE_WIDTH) * 0.98 : 0;
+  const heightScale =
+    fitToAvailableHeight && bounds.maxHeight > 0
+      ? bounds.maxHeight / SLIDE_HEIGHT
+      : 1;
+  const scale = widthScale > 0 ? Math.min(widthScale, heightScale, 1) : 0;
 
   return (
     <div
@@ -803,9 +1017,23 @@ function EmptyGeneratingSlide() {
   );
 }
 
-function ScaledScreenshotSlide({ src, alt }: { src: string; alt: string }) {
+function ScaledScreenshotSlide({
+  src,
+  alt,
+  fitToAvailableHeight = false,
+  bottomReserve,
+}: {
+  src: string;
+  alt: string;
+  fitToAvailableHeight?: boolean;
+  bottomReserve?: number;
+}) {
   return (
-    <ResponsiveSlideViewport className="border border-[#E8E8EF] bg-white shadow-[0_2px_16px_rgba(16,24,40,0.06)]">
+    <ResponsiveSlideViewport
+      className="border border-[#E8E8EF] bg-white shadow-[0_2px_16px_rgba(16,24,40,0.06)]"
+      fitToAvailableHeight={fitToAvailableHeight}
+      bottomReserve={bottomReserve}
+    >
       <img
         src={resolveBackendAssetUrl(src)}
         alt={alt}
@@ -1029,15 +1257,21 @@ function PreviewPanel({
   const selectedUrl = previewUrls[selectedIndex] ?? previewUrls[0];
 
   return (
-    <main className="min-h-screen bg-white px-4 pb-44 pt-[80px] font-syne sm:px-6 sm:pb-48 sm:pt-[92px] 2xl:px-10 2xl:pb-52 2xl:pt-[104px]">
+    <main className="h-screen overflow-hidden bg-white px-4 pt-[80px] font-syne sm:px-6 sm:pt-[92px] 2xl:px-10 2xl:pt-[104px]">
       <div className="relative mx-auto w-full max-w-[1280px]">
         {selectedUrl ? (
           <ScaledScreenshotSlide
             src={selectedUrl}
             alt={`Slide ${selectedIndex + 1}`}
+            fitToAvailableHeight
+            bottomReserve={176}
           />
         ) : (
-          <ResponsiveSlideViewport className="border border-[#E8E8EF] bg-[#F7F7FA]">
+          <ResponsiveSlideViewport
+            className="border border-[#E8E8EF] bg-[#F7F7FA]"
+            fitToAvailableHeight
+            bottomReserve={176}
+          >
             <div className="flex h-full w-full items-center justify-center text-sm text-[#777985] 2xl:text-base">
               Preview unavailable
             </div>
