@@ -234,7 +234,7 @@ const NavButton = ({
       type="button"
       onClick={onClick}
       className={cn(
-        "group flex  w-full flex-col items-center justify-center gap-1 text-[12px] leading-none transition-colors",
+        "group flex w-full flex-col items-center justify-center gap-1 text-[clamp(10px,0.75vw,12px)] leading-none transition-colors",
         active ? "text-[#101323]" : "text-[#111827] ",
       )}
       aria-pressed={active}
@@ -249,7 +249,10 @@ const NavButton = ({
           boxShadow: active ? "0 6.6px 13.2px 0 rgba(124, 81, 248, 0.14)" : "",
         }}
       >
-        <Icon className="h-3.5 w-3.5" aria-hidden />
+        <Icon
+          className="h-[clamp(12px,0.9vw,14px)] w-[clamp(12px,0.9vw,14px)]"
+          aria-hidden
+        />
       </span>
       <span className="">{item.label}</span>
     </button>
@@ -278,17 +281,17 @@ const PaletteCard = ({
     disabled={disabled}
     onClick={onClick}
     className={cn(
-      "flex h-[58px] min-w-0 flex-col items-center justify-center gap-2 rounded-[8px] border border-[#EDEEF0] bg-white px-2 text-center transition-colors hover:border-[#DCD8EA] hover:bg-[#FBFAFF]",
+      "flex h-[clamp(50px,4vw,58px)] min-w-0 flex-col items-center justify-center gap-[clamp(6px,0.6vw,8px)] rounded-[8px] border border-[#EDEEF0] bg-white px-[clamp(6px,0.6vw,8px)] text-center transition-colors hover:border-[#DCD8EA] hover:bg-[#FBFAFF]",
       disabled && "cursor-not-allowed opacity-50 hover:border-[#EDEEF0] hover:bg-white",
     )}
     title={label}
   >
     <Icon
-      className="h-3.5 w-3.5 shrink-0 text-[#1F2937]"
+      className="h-[clamp(12px,0.9vw,14px)] w-[clamp(12px,0.9vw,14px)] shrink-0 text-[#1F2937]"
       strokeWidth={1.8}
       aria-hidden
     />
-    <span className="w-full break-words text-[11px] font-normal leading-[14px] text-[#171725]">
+    <span className="w-full break-words text-[clamp(10px,0.72vw,11px)] font-normal leading-[clamp(12px,0.9vw,14px)] text-[#171725]">
       {label}
     </span>
   </button>
@@ -303,7 +306,7 @@ const PaletteGrid = ({
   items: PaletteItem[];
   onSelect?: (item: PaletteItem) => void;
 }) => (
-  <div className="grid grid-cols-3 gap-2">
+  <div className="grid grid-cols-3  gap-[clamp(6px,0.65vw,8px)]">
     {items.map((item) => (
       <PaletteCard
         key={item.label}
@@ -330,8 +333,8 @@ const InsertPanel = ({
   }>;
   onItemSelect?: (item: PaletteItem) => void;
 }) => (
-  <div className="h-full overflow-y-auto px-5 pb-8 pt-8 hide-scrollbar">
-    <h3 className="mb-8 text-[15px] font-semibold leading-5 text-[#101323]">
+  <div className="h-full overflow-y-auto px-[clamp(14px,1.4vw,20px)] pb-[clamp(24px,2.2vw,32px)] pt-[clamp(24px,2.2vw,32px)] hide-scrollbar">
+    <h3 className="mb-[clamp(24px,2.2vw,32px)] text-[clamp(13px,0.95vw,15px)] font-semibold leading-5 text-[#101323]">
       {title}
     </h3>
     <div className="space-y-3.5">
@@ -771,7 +774,7 @@ function BlockGroupCard({
 
   return (
     <section className="rounded-[14px] border border-[#E5E7EB] bg-white p-3 transition-shadow hover:shadow-[0_8px_24px_rgba(16,24,40,0.08)]">
-      <h4 className="mb-4 truncate text-center text-[16px] font-medium leading-5 text-[#171717]">
+      <h4 className="mb-4 truncate text-center text-[clamp(14px,1vw,16px)] font-medium leading-5 text-[#171717]">
         {group.title}
       </h4>
 
@@ -911,7 +914,7 @@ const BlocksPanel = ({
   }, [cacheKey, presentationData, presentationId]);
 
   return (
-    <div className="h-full overflow-y-auto px-5 pb-8 pt-8 hide-scrollbar">
+    <div className="h-full overflow-y-auto px-[clamp(14px,1.4vw,20px)] pb-[clamp(24px,2.2vw,32px)] pt-[clamp(24px,2.2vw,32px)] hide-scrollbar">
       <style jsx global>{`
         .template-block-preview,
         .template-block-preview-surface,
@@ -929,28 +932,31 @@ const BlocksPanel = ({
           background: #a2a2a3 !important;
         }
       `}</style>
-      <h3 className="mb-3 text-[15px] font-semibold leading-5 text-[#101323]">
+      <h3 className="mb-3 text-[clamp(13px,0.95vw,15px)] font-semibold leading-5 text-[#101323]">
         Blocks
       </h3>
 
-      <div className="mb-7 flex h-[52px] items-center rounded-[10px] border border-[#EDEEF0] bg-white pl-3 pr-2 shadow-[0_10px_26px_rgba(17,24,39,0.08)]">
+      <div className="mb-7 flex h-[clamp(46px,3.6vw,52px)] items-center rounded-[10px] border border-[#EDEEF0] bg-white pl-[clamp(10px,0.9vw,12px)] pr-[clamp(6px,0.6vw,8px)] shadow-[0_10px_26px_rgba(17,24,39,0.08)]">
         <input
           value={blockPrompt}
           onChange={(event) => setBlockPrompt(event.target.value)}
           placeholder="Search blocks"
-          className="min-w-0 flex-1 bg-transparent text-xs text-[#101323] outline-none placeholder:text-[#9CA3AF]"
+          className="min-w-0 flex-1 bg-transparent text-[clamp(10px,0.75vw,12px)] text-[#101323] outline-none placeholder:text-[#9CA3AF]"
         />
         <button
           type="button"
           disabled={disabled}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-[clamp(32px,2.5vw,36px)] w-[clamp(32px,2.5vw,36px)] shrink-0 items-center justify-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
           style={{
             background:
               "linear-gradient(270deg, #D5CAFC 2.4%, #E3D2EB 35%, #FDE4C2 100%)",
           }}
           aria-label="Create block"
         >
-          <Send className="h-3.5 w-3.5 text-[#101323]" strokeWidth={1.9} />
+          <Send
+            className="h-[clamp(12px,0.9vw,14px)] w-[clamp(12px,0.9vw,14px)] text-[#101323]"
+            strokeWidth={1.9}
+          />
         </button>
       </div>
 
@@ -1057,7 +1063,11 @@ function PrimaryActionButton({
   onClick: () => void;
 }) {
   return (
-    <button type="button" className="mt-10 first:mt-0" onClick={onClick}>
+    <button
+      type="button"
+      className="mt-[clamp(24px,2.8vw,40px)] first:mt-0"
+      onClick={onClick}
+    >
       <p
         className={`p-1.5 flex items-center justify-center rounded-[10px] border border-transparent ${active ? "border-[#EDEEEF] bg-white" : ""
           }`}
@@ -1067,7 +1077,9 @@ function PrimaryActionButton({
       >
         {icon}
       </p>
-      <p className="text-[#7A5AF8] text-xs mt-1">{label}</p>
+      <p className="mt-1 text-[clamp(10px,0.75vw,12px)] text-[#7A5AF8]">
+        {label}
+      </p>
     </button>
   );
 }
@@ -1080,9 +1092,9 @@ function ActionsSidebar({
   onActionSelect: (action: ActionId) => void;
 }) {
   return (
-    <aside className="flex h-full w-[70px] shrink-0 flex-col items-center border-r border-[#F4F4F5]  py-5">
+    <aside className="flex h-full w-[clamp(58px,4.8vw,70px)] shrink-0 flex-col items-center border-r border-[#F4F4F5] py-[clamp(14px,1.4vw,20px)]">
       <div
-        className="flex w-full space-y-10 flex-col items-center rounded-[10px]  py-7"
+        className="flex w-full flex-col items-center space-y-[clamp(24px,2.8vw,40px)] rounded-[10px] py-[clamp(18px,2vw,28px)]"
         style={{
           background: "rgba(244, 243, 255, 0.60)",
         }}
@@ -1101,9 +1113,9 @@ function ActionsSidebar({
         />
       </div>
 
-      <div className="my-6 px-1 h-px w-[30px] bg-[#EDEEEF]" />
+      <div className="my-[clamp(18px,1.8vw,24px)] h-px w-[clamp(24px,2vw,30px)] bg-[#EDEEEF] px-1" />
 
-      <nav className="flex w-full space-y-10 flex-1 flex-col items-center gap-3">
+      <nav className="flex w-full flex-1 flex-col items-center gap-3 space-y-[clamp(24px,2.8vw,40px)]">
         {insertActions.map((item) => (
           <NavButton
             key={item.id}
@@ -1445,7 +1457,7 @@ const PresentationActions = (props: PresentationActionsProps) => {
   return (
     <div
       data-inline-edit-ignore="true"
-      className="flex h-full w-full overflow-hidden  bg-white px-2 py-1.5"
+      className="flex h-full w-full overflow-hidden bg-white px-[clamp(6px,0.6vw,8px)] py-[clamp(5px,0.5vw,6px)] text-[clamp(12px,0.82vw,14px)]"
     >
       <ActionsSidebar
         activeAction={activeAction}

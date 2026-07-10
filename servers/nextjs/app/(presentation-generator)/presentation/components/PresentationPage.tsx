@@ -48,8 +48,8 @@ function hasTemplateV2Layouts(layout: unknown): boolean {
   if (Array.isArray(layouts)) return true;
   return Boolean(
     layouts &&
-      typeof layouts === "object" &&
-      Array.isArray((layouts as any).layouts)
+    typeof layouts === "object" &&
+    Array.isArray((layouts as any).layouts)
   );
 }
 
@@ -129,6 +129,21 @@ const IDLE_LOADING_STATE: LoadingState = {
   extra_info: "",
 };
 
+function useMinWidthQuery(minWidth: number) {
+  const [matches, setMatches] = useState(false);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia(`(min-width: ${minWidth}px)`);
+    const updateMatches = () => setMatches(mediaQuery.matches);
+    updateMatches();
+    mediaQuery.addEventListener("change", updateMatches);
+    return () => mediaQuery.removeEventListener("change", updateMatches);
+  }, [minWidth]);
+
+  return matches;
+}
+
 const PresentationPage: React.FC<PresentationPageProps> = ({
   presentation_id,
 }) => {
@@ -161,6 +176,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
     Set<string>
   >(() => new Set());
   const [error, setError] = useState(false);
+  const isLargeEditingViewport = useMinWidthQuery(1280);
   const slidesScrollContainerRef = useRef<HTMLDivElement | null>(null);
   const templateV2EditorLoadedKeyRef = useRef<string | null>(null);
   const router = useRouter();
@@ -174,6 +190,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
   const isTemplateV2Presentation =
     hasTemplateV2Layouts(presentationData?.layout) ||
     hasTemplateV2Slides(presentationData?.slides);
+  const editingDisabled = isStreaming === true || !isLargeEditingViewport;
 
   // Auto-save functionality.
   // Pause while the chat assistant is mutating the deck: the assistant edits
@@ -609,8 +626,8 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
           isPresentationSaving={isSaving}
           currentSlide={selectedSlide}
         />
-        <div className="flex flex-1 min-h-0 gap-6 overflow-hidden">
-          <div className="w-[120px] h-full shrink-0 self-start sticky top-0 pt-[18px]">
+        <div className="flex flex-1 min-h-0 gap-3 overflow-hidden xl:gap-5 2xl:gap-6">
+          <div className="hidden h-full w-[120px] shrink-0 self-start sticky top-0 pt-[18px] md:block">
             <SidePanel
               selectedSlide={selectedSlide}
               onSlideClick={handleEditorSlideNavigation}
@@ -618,7 +635,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
               loading={loading}
             />
           </div>
-          <div className="w-full min-w-0 h-full flex-1 pt-[18px]">
+          <div className="w-full min-w-0 h-full flex-1 pt-[18px] max-md:ml-6 max-xl:mr-6">
             <div
               ref={slidesScrollContainerRef}
               data-presentation-slides-scroll-container="true"
@@ -626,9 +643,9 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
             >
               <div className="w-full max-w-[1280px] min-h-full mx-auto flex flex-col items-center pb-8">
                 {!presentationData ||
-                loading ||
-                !presentationData?.slides ||
-                presentationData?.slides.length === 0 ? (
+                  loading ||
+                  !presentationData?.slides ||
+                  presentationData?.slides.length === 0 ? (
                   <div className="relative w-full h-[calc(100vh-120px)] mx-auto hide-scrollbar">
                     <div className="">
                       {Array.from({ length: 2 }).map((_, index) => (
@@ -654,6 +671,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
                             onSlideAdded={handleEditorSlideNavigation}
                             theme={presentationData?.theme}
                             fonts={presentationData?.fonts}
+                            editingDisabled={editingDisabled}
                             isStreaming={isStreaming}
                             showBlankPromptOverlay={
                               typeof slide?.id === "string" &&
@@ -682,7 +700,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
               </div>
             </div>
           </div>
-          <div className="w-full max-w-[370px] h-full shrink-0 self-start sticky top-0">
+          <div className="hidden h-full shrink-0 self-start sticky top-0 xl:block xl:w-[clamp(320px,23vw,390px)] 2xl:w-[400px]">
             <PresentationActions
               presentationId={presentation_id}
               variant={isTemplateV2Presentation ? "template-v2" : "presentation"}
@@ -693,7 +711,7 @@ const PresentationPage: React.FC<PresentationPageProps> = ({
               onChatMutationStateChange={handleChatMutationStateChange}
               onFollowModeChange={setIsFollowModeEnabled}
               onAgentSlideFocus={handleAgentSlideFocus}
-              editingDisabled={isStreaming === true}
+              editingDisabled={editingDisabled}
             />
           </div>
         </div>
