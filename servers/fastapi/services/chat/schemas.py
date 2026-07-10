@@ -105,6 +105,62 @@ class GetContentSchemaFromLayoutIdInput(StrictSchemaModel):
     model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
 
 
+class GetAvailableBlocksInput(OpenAIStrictSchemaModel):
+    query: str | None = Field(
+        ...,
+        min_length=1,
+        max_length=1000,
+        description=(
+            "Optional search text for block id, description, layout, or element types."
+        ),
+    )
+    layout_id: str | None = Field(
+        ...,
+        alias="layoutId",
+        min_length=1,
+        max_length=200,
+        description="Optional layout id to restrict block candidates.",
+    )
+    element_type: str | None = Field(
+        ...,
+        alias="elementType",
+        min_length=1,
+        max_length=80,
+        description=(
+            "Optional element type filter such as table, chart, image, text, "
+            "or text-list."
+        ),
+    )
+    block_id: str | None = Field(
+        ...,
+        alias="blockId",
+        min_length=1,
+        max_length=300,
+        description=(
+            "Optional exact block id returned by a previous getAvailableBlocks call."
+        ),
+    )
+    include_full_content: bool | None = Field(
+        ...,
+        alias="includeFullContent",
+        description=(
+            "Set true only when exact component JSON is needed for "
+            "addComponent/createComponent."
+        ),
+    )
+    max_results: int | None = Field(
+        ...,
+        alias="maxResults",
+        ge=1,
+        le=50,
+        description=(
+            "Maximum matching block summaries to return. Use null for the default."
+        ),
+    )
+
+    model_config = ConfigDict(extra="forbid", strict=True, populate_by_name=True)
+
+
 class GenerateImageInput(StrictSchemaModel):
     prompt: str = Field(min_length=1, max_length=4000)
 
@@ -710,7 +766,19 @@ class AddSlideComponentInput(OpenAIStrictSchemaModel):
             '"size": {"width": 1024, "height": 410}, "elements": [ ... ]}. '
             "Use 1280 x 720 stage pixels, not normalized 0-1 values, and keep "
             "position/size fully inside that visible window. "
-            "Copy the shape of an existing component from getSlideAtIndex(includeFullContent=true)."
+            "Copy the shape of an existing component from getAvailableBlocks or "
+            "getSlideAtIndex(includeFullContent=true)."
+        ),
+    )
+    source_block_id: str | None = Field(
+        ...,
+        alias="sourceBlockId",
+        min_length=1,
+        max_length=300,
+        description=(
+            "Block id returned by getAvailableBlocks when this component is adapted "
+            "from a reusable block. Required for table/chart component additions "
+            "when a matching reusable block exists."
         ),
     )
     insert_index: int | None = Field(

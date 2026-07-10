@@ -136,6 +136,27 @@ def _call(tools: ChatTools, name: str, arguments: dict):
     )
 
 
+def _set_reusable_table_layout(session: _FakeSlideSession):
+    session.presentation.layout = {
+        "name": "template-v2-test",
+        "layouts": [
+            {
+                "id": "comparison",
+                "description": "Comparison slide with reusable blocks.",
+                "components": [
+                    {
+                        "id": "table_card",
+                        "description": "Styled comparison table block.",
+                        "position": {"x": 120, "y": 140},
+                        "size": {"width": 900, "height": 360},
+                        "elements": [{"type": "table", "name": "Comparison table"}],
+                    },
+                ],
+            }
+        ],
+    }
+
+
 def test_get_slide_elements_reports_editable_layout():
     slide = _slide()
     tools, _ = _tools(slide)
@@ -155,6 +176,174 @@ def test_get_slide_elements_reports_editable_layout():
         if element["path"] == "components[0].elements[0]"
     )
     assert title["style"] == {"font": {"size": 20, "family": "Inter"}}
+
+
+def test_get_available_blocks_returns_matching_block_summary_only():
+    slide = _slide()
+    tools, session = _tools(slide)
+    session.presentation.layout = {
+        "name": "template-v2-test",
+        "layouts": [
+            {
+                "id": "comparison",
+                "description": "Comparison slide with reusable blocks.",
+                "components": [
+                    {
+                        "id": "title_block",
+                        "description": "Simple title block.",
+                        "position": {"x": 80, "y": 40},
+                        "size": {"width": 600, "height": 80},
+                        "elements": [{"type": "text", "name": "Title"}],
+                    },
+                    {
+                        "id": "table_card",
+                        "description": "Styled comparison table block.",
+                        "position": {"x": 120, "y": 140},
+                        "size": {"width": 900, "height": 360},
+                        "elements": [{"type": "table", "name": "Comparison table"}],
+                    },
+                ],
+            }
+        ],
+    }
+
+    result = _call(
+        tools,
+        "getAvailableBlocks",
+        {
+            "query": "table",
+            "layoutId": None,
+            "elementType": "table",
+            "blockId": None,
+            "includeFullContent": False,
+            "maxResults": 10,
+        },
+    )
+
+    assert result["ok"] is True
+    payload = result["result"]
+    assert payload["found"] is True
+    assert payload["count"] == 1
+    block = payload["blocks"][0]
+    assert block["block_id"] == "layout:comparison:table_card"
+    assert block["layout_id"] == "comparison"
+    assert block["component_id"] == "table_card"
+    assert block["element_types"] == ["table"]
+    assert "component" not in block
+
+
+def test_get_available_blocks_can_return_exact_block_json():
+    slide = _slide()
+    tools, session = _tools(slide)
+    _set_reusable_table_layout(session)
+
+    result = _call(
+        tools,
+        "getAvailableBlocks",
+        {
+            "query": None,
+            "layoutId": None,
+            "elementType": None,
+            "blockId": "layout:comparison:table_card",
+            "includeFullContent": True,
+            "maxResults": 1,
+        },
+    )
+
+    assert result["ok"] is True
+    block = result["result"]["blocks"][0]
+    assert block["component"]["id"] == "table_card"
+    assert block["component"]["elements"][0]["type"] == "table"
+
+
+def test_add_slide_element_requires_reusable_table_block_when_available():
+    slide = _slide()
+    tools, session = _tools(slide)
+    _set_reusable_table_layout(session)
+    table = {
+        "type": "table",
+        "name": "Plain table",
+        "columns": ["Metric", "Value"],
+        "rows": [["PM2.5", "39%"]],
+    }
+
+    result = _call(
+        tools,
+        "addElement",
+        {"index": 0, "element": json.dumps(table)},
+    )
+
+    assert result["ok"] is False
+    assert "Reusable block available for table insertion" in result["error"]
+    assert "getAvailableBlocks" in result["recovery"]["guidance"][0]
+    assert len(slide.ui["components"]) == 2
+    assert session.commit_count == 0
+
+
+def test_add_slide_component_requires_source_block_for_table_when_available():
+    slide = _slide()
+    tools, session = _tools(slide)
+    _set_reusable_table_layout(session)
+    component = {
+        "id": "plain_table",
+        "description": "Plain primitive table component.",
+        "position": {"x": 100, "y": 100},
+        "size": {"width": 900, "height": 300},
+        "elements": [
+            {
+                "type": "table",
+                "name": "Plain table",
+                "columns": ["Metric", "Value"],
+                "rows": [["PM2.5", "39%"]],
+            }
+        ],
+    }
+
+    result = _call(
+        tools,
+        "addComponent",
+        {"index": 0, "component": json.dumps(component)},
+    )
+
+    assert result["ok"] is False
+    assert "sourceBlockId='layout:comparison:table_card'" in result["error"]
+    assert len(slide.ui["components"]) == 2
+    assert session.commit_count == 0
+
+
+def test_add_slide_component_accepts_source_block_for_table():
+    slide = _slide()
+    tools, session = _tools(slide)
+    _set_reusable_table_layout(session)
+    component = {
+        "id": "table_card",
+        "description": "Styled comparison table block.",
+        "position": {"x": 120, "y": 140},
+        "size": {"width": 900, "height": 360},
+        "elements": [
+            {
+                "type": "table",
+                "name": "Comparison table",
+                "columns": ["Metric", "Value"],
+                "rows": [["PM2.5", "39%"]],
+            }
+        ],
+    }
+
+    result = _call(
+        tools,
+        "addComponent",
+        {
+            "index": 0,
+            "component": json.dumps(component),
+            "sourceBlockId": "layout:comparison:table_card",
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["result"]["added"] is True
+    assert slide.ui["components"][-1]["id"] == "table_card"
+    assert session.commit_count == 1
 
 
 def test_update_slide_element_edits_ui_text():

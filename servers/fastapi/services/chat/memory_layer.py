@@ -617,6 +617,80 @@ class PresentationChatMemoryLayer:
             for layout in layout_model.slides
         ]
 
+    async def get_available_blocks(
+        self,
+        *,
+        query: str | None = None,
+        layout_id: str | None = None,
+        element_type: str | None = None,
+        block_id: str | None = None,
+        include_full_content: bool = False,
+        max_results: int = 20,
+    ) -> dict[str, Any]:
+        presentation = await self._sql_session.get(
+            PresentationModel, self._presentation_id
+        )
+        if not presentation:
+            return {
+                "found": False,
+                "count": 0,
+                "blocks": [],
+                "message": "Presentation not found.",
+            }
+
+        candidates = await self._collect_template_block_candidates(presentation)
+        query_text = (query or "").strip().lower()
+        layout_filter = (layout_id or "").strip()
+        element_filter = (element_type or "").strip().lower()
+        block_filter = (block_id or "").strip()
+
+        matches: list[tuple[int, int, dict[str, Any]]] = []
+        for source_index, candidate in enumerate(candidates):
+            if block_filter and candidate.get("block_id") != block_filter:
+                continue
+            if layout_filter and candidate.get("layout_id") != layout_filter:
+                continue
+            element_types = {
+                str(item).lower()
+                for item in candidate.get("element_types", [])
+                if item is not None
+            }
+            if element_filter and element_filter not in element_types:
+                continue
+            score = self._block_match_score(candidate, query_text)
+            if query_text and score <= 0:
+                continue
+            matches.append((score, source_index, candidate))
+
+        matches.sort(
+            key=lambda item: (
+                -item[0],
+                bool(item[2].get("decorative")),
+                item[1],
+            )
+        )
+
+        limit = min(max(max_results, 1), 50)
+        blocks = [
+            self._format_available_block(
+                candidate,
+                include_full_content=include_full_content,
+            )
+            for _, _, candidate in matches[:limit]
+        ]
+        return {
+            "found": bool(blocks),
+            "count": len(blocks),
+            "total_matches": len(matches),
+            "blocks": blocks,
+            "truncated": len(matches) > len(blocks),
+            "message": (
+                f"Found {len(blocks)} matching block(s)."
+                if blocks
+                else "No matching blocks were found."
+            ),
+        }
+
     async def read_source_documents(
         self,
         *,
@@ -2492,6 +2566,293 @@ class PresentationChatMemoryLayer:
                 self._presentation_id,
             )
         return context
+
+    async def _collect_template_block_candidates(
+        self,
+        presentation: PresentationModel,
+    ) -> list[dict[str, Any]]:
+        sources: list[tuple[str, dict[str, Any]]] = []
+        if isinstance(presentation.layout, dict):
+            sources.append(("presentation_layout", presentation.layout))
+
+            seen_template_ids: set[str] = set()
+            for key in ("name", "template_id", "template_v2_id"):
+                template_id = self._extract_template_v2_id(
+                    presentation.layout.get(key),
+                    allow_bare=key in {"template_id", "template_v2_id"},
+                )
+                if not template_id or template_id in seen_template_ids:
+                    continue
+                seen_template_ids.add(template_id)
+                template = await self._sql_session.get(TemplateV2, template_id)
+                if template:
+                    sources.extend(self._template_block_sources(template))
+
+        candidates: list[dict[str, Any]] = []
+        seen_block_ids: set[str] = set()
+        for source, payload in sources:
+            candidates.extend(
+                self._block_candidates_from_merged_components(
+                    payload,
+                    source=source,
+                    seen_block_ids=seen_block_ids,
+                )
+            )
+            candidates.extend(
+                self._block_candidates_from_layouts(
+                    payload,
+                    source=source,
+                    seen_block_ids=seen_block_ids,
+                )
+            )
+        return candidates
+
+    @staticmethod
+    def _template_block_sources(template: TemplateV2) -> list[tuple[str, dict[str, Any]]]:
+        sources: list[tuple[str, dict[str, Any]]] = []
+        for label, payload in (
+            ("template_merged_components", template.merged_components),
+            ("template_components", template.components),
+            ("template_layouts", template.layouts),
+            ("template_raw_layouts", template.raw_layouts),
+        ):
+            if isinstance(payload, dict):
+                sources.append((label, payload))
+        return sources
+
+    @classmethod
+    def _block_candidates_from_merged_components(
+        cls,
+        payload: dict[str, Any],
+        *,
+        source: str,
+        seen_block_ids: set[str],
+    ) -> list[dict[str, Any]]:
+        raw_components = payload.get("components")
+        if not isinstance(raw_components, list):
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        for group_index, group in enumerate(raw_components):
+            if not isinstance(group, dict):
+                continue
+            variants = group.get("variants")
+            if not isinstance(variants, list):
+                variants = [group]
+            variant_count = len([item for item in variants if isinstance(item, dict)])
+            for variant_index, component in enumerate(variants):
+                if not isinstance(component, dict):
+                    continue
+                component_id = str(
+                    component.get("id")
+                    or group.get("id")
+                    or f"component_{group_index + 1}"
+                )
+                block_id = cls._unique_block_id(
+                    f"merged:{group.get('id') or component_id}:{variant_index}",
+                    seen_block_ids,
+                )
+                candidates.append(
+                    cls._build_block_candidate(
+                        source=source,
+                        block_id=block_id,
+                        layout_id=None,
+                        layout_description=None,
+                        component=component,
+                        component_id=component_id,
+                        description=(
+                            group.get("description")
+                            or component.get("description")
+                            or ""
+                        ),
+                        variant_index=variant_index,
+                        variant_count=variant_count,
+                    )
+                )
+        return candidates
+
+    @classmethod
+    def _block_candidates_from_layouts(
+        cls,
+        payload: dict[str, Any],
+        *,
+        source: str,
+        seen_block_ids: set[str],
+    ) -> list[dict[str, Any]]:
+        layouts = payload.get("layouts")
+        if not isinstance(layouts, list):
+            return []
+
+        candidates: list[dict[str, Any]] = []
+        for layout_index, layout in enumerate(layouts):
+            if not isinstance(layout, dict):
+                continue
+            components = layout.get("components")
+            if not isinstance(components, list):
+                continue
+            layout_id = str(layout.get("id") or f"layout_{layout_index + 1}")
+            layout_description = (
+                str(layout.get("description"))
+                if layout.get("description") is not None
+                else None
+            )
+            for component_index, component in enumerate(components):
+                if not isinstance(component, dict):
+                    continue
+                component_id = str(
+                    component.get("id") or f"component_{component_index + 1}"
+                )
+                block_id = cls._unique_block_id(
+                    f"layout:{layout_id}:{component_id}",
+                    seen_block_ids,
+                )
+                candidates.append(
+                    cls._build_block_candidate(
+                        source=source,
+                        block_id=block_id,
+                        layout_id=layout_id,
+                        layout_description=layout_description,
+                        component=component,
+                        component_id=component_id,
+                        description=str(component.get("description") or ""),
+                    )
+                )
+        return candidates
+
+    @classmethod
+    def _build_block_candidate(
+        cls,
+        *,
+        source: str,
+        block_id: str,
+        layout_id: str | None,
+        layout_description: str | None,
+        component: dict[str, Any],
+        component_id: str,
+        description: str,
+        variant_index: int | None = None,
+        variant_count: int | None = None,
+    ) -> dict[str, Any]:
+        candidate = {
+            "block_id": block_id,
+            "source": source,
+            "layout_id": layout_id,
+            "layout_description": layout_description,
+            "component_id": component_id,
+            "description": description,
+            "position": copy.deepcopy(component.get("position")),
+            "size": copy.deepcopy(component.get("size")),
+            "element_count": len(component.get("elements", []))
+            if isinstance(component.get("elements"), list)
+            else 0,
+            "element_types": cls._component_element_types(component),
+            "decorative": cls._component_is_decorative(component),
+            "component": copy.deepcopy(component),
+        }
+        if variant_index is not None:
+            candidate["variant_index"] = variant_index
+        if variant_count is not None:
+            candidate["variant_count"] = variant_count
+        return candidate
+
+    @staticmethod
+    def _component_element_types(component: dict[str, Any]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+
+        def visit(element: Any) -> None:
+            if not isinstance(element, dict):
+                return
+            element_type = element.get("type")
+            if element_type is not None:
+                value = str(element_type)
+                if value not in seen:
+                    seen.add(value)
+                    ordered.append(value)
+            child = element.get("child")
+            if isinstance(child, dict):
+                visit(child)
+            children = element.get("children")
+            if isinstance(children, list):
+                for nested in children:
+                    visit(nested)
+
+        elements = component.get("elements")
+        if isinstance(elements, list):
+            for element in elements:
+                visit(element)
+        return ordered
+
+    @staticmethod
+    def _component_is_decorative(component: dict[str, Any]) -> bool:
+        elements = component.get("elements")
+        if not isinstance(elements, list) or not elements:
+            return False
+        return all(
+            isinstance(element, dict) and element.get("decorative") is True
+            for element in elements
+        )
+
+    @staticmethod
+    def _unique_block_id(block_id: str, seen_block_ids: set[str]) -> str:
+        normalized = re.sub(r"[^a-zA-Z0-9:_-]+", "_", block_id).strip("_")
+        normalized = normalized or "block"
+        candidate = normalized
+        suffix = 2
+        while candidate in seen_block_ids:
+            candidate = f"{normalized}:{suffix}"
+            suffix += 1
+        seen_block_ids.add(candidate)
+        return candidate
+
+    @staticmethod
+    def _block_match_score(candidate: dict[str, Any], query: str) -> int:
+        if not query:
+            return 1
+        haystack = " ".join(
+            str(value or "")
+            for value in (
+                candidate.get("block_id"),
+                candidate.get("component_id"),
+                candidate.get("description"),
+                candidate.get("layout_id"),
+                candidate.get("layout_description"),
+                " ".join(str(item) for item in candidate.get("element_types", [])),
+            )
+        ).lower()
+        score = 0
+        if query in haystack:
+            score += 10
+        for word in re.findall(r"[a-z0-9_-]+", query):
+            if word in haystack:
+                score += 1
+        return score
+
+    @staticmethod
+    def _format_available_block(
+        candidate: dict[str, Any],
+        *,
+        include_full_content: bool,
+    ) -> dict[str, Any]:
+        keys = (
+            "block_id",
+            "source",
+            "layout_id",
+            "layout_description",
+            "component_id",
+            "description",
+            "position",
+            "size",
+            "element_count",
+            "element_types",
+            "decorative",
+            "variant_index",
+            "variant_count",
+        )
+        block = {key: candidate.get(key) for key in keys if key in candidate}
+        if include_full_content:
+            block["component"] = copy.deepcopy(candidate.get("component"))
+        return block
 
     async def _get_layout_by_id(
         self,
