@@ -128,7 +128,8 @@ class GetAvailableBlocksInput(OpenAIStrictSchemaModel):
         max_length=80,
         description=(
             "Optional element type filter such as table, chart, image, text, "
-            "or text-list."
+            "or text-list. For title/header/subtitle blocks, use text with a "
+            "title/header/subtitle query."
         ),
     )
     block_id: str | None = Field(
@@ -778,7 +779,8 @@ class AddSlideComponentInput(OpenAIStrictSchemaModel):
         description=(
             "Block id returned by getAvailableBlocks when this component is adapted "
             "from a reusable block. Required for table/chart component additions "
-            "when a matching reusable block exists."
+            "when a matching reusable block exists, and preferred for styled "
+            "title/header/card/metric/text additions when a matching block exists."
         ),
     )
     insert_index: int | None = Field(

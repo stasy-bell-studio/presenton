@@ -411,9 +411,7 @@ function pullLinksFromText(text: string) {
         url: url.startsWith("www.") ? `https://${url}` : url,
       });
       return match.slice(url.length);
-    })
-    .replace(/[ \t]{2,}/g, " ")
-    .trimStart();
+    });
   return { cleanText, links };
 }
 
@@ -1130,7 +1128,7 @@ const Chat = ({
     }
     if (variant === "template-v2") {
       contextLines.push(
-        "UI context: the user is editing a rendered TemplateV2 presentation with the v2 assistant. Use getTemplateSummary, searchSlide, getSlideAtIndex, getContentSchemaFromLayoutId, addNewSlide, addNewSlideLayout, saveSlide, updateSlide, deleteSlide, addElement, updateElement, deleteElement, addComponent, createComponent, updateComponent, deleteComponent, getPresentationTheme, setPresentationTheme, and generateAssets. For visible edits inside an existing slide, inspect with getSlideAtIndex and use the returned componentId/elementPath exactly. Use updateElement for element toolbar-style properties and updateComponent for component move, resize, duplicate, layer order, group, and ungroup actions. When adding or creating rendered elements/components, keep their position and size strictly inside the 1280x720 visible slide window and include the final requested content instead of placeholder blocks."
+        "UI context: the user is editing a rendered TemplateV2 presentation with the v2 assistant. Use getTemplateSummary, getAvailableLayouts, getAvailableBlocks, searchSlide, getSlideAtIndex, getContentSchemaFromLayoutId, addNewSlide, addNewSlideLayout, saveSlide, updateSlide, deleteSlide, addElement, updateElement, deleteElement, addComponent, createComponent, updateComponent, deleteComponent, getPresentationTheme, setPresentationTheme, readSourceDocuments, and generateAssets. For visible edits inside an existing slide, inspect with getSlideAtIndex and use the returned componentId/elementPath exactly. Use updateElement for element toolbar-style properties and updateComponent for component move, resize, duplicate, layer order, group, and ungroup actions. When adding or creating rendered elements/components, prefer reusable template blocks over primitives: for custom new slides, search getAvailableBlocks for a title/header text block first, then requested chart/table/content blocks, adapt their component JSON, and include the final requested content instead of placeholder blocks. Keep new rendered elements/components strictly inside the 1280x720 visible slide window."
       );
     }
 
@@ -2072,7 +2070,7 @@ const Chat = ({
         )}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 pt-9 [scrollbar-color:#C7CBD6_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C7CBD6] [&::-webkit-scrollbar-track]:bg-transparent">
+      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-4 pb-4 pt-9 [scrollbar-color:#C7CBD6_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#C7CBD6] [&::-webkit-scrollbar-track]:bg-transparent">
         {isHistoryLoading && messages.length === 0 ? (
           <div className="flex items-center justify-center py-8 text-sm text-[#99A1AF]">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2176,7 +2174,7 @@ const Chat = ({
                   key={message.id}
                   className="flex items-start justify-end gap-2.5"
                 >
-                  <div className="max-w-[80%] rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm">
+                  <div className="min-w-0 max-w-[80%] rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm [overflow-wrap:anywhere] [word-break:break-word]">
                     <p className="whitespace-pre-wrap">
                       {stripBackendContextFromUserMessage(message.content)}
                     </p>
@@ -2186,11 +2184,14 @@ const Chat = ({
                   </div>
                 </div>
               ) : (
-                <div key={message.id} className="max-w-[92%]">
+                <div
+                  key={message.id}
+                  className="min-w-0 max-w-[92%] [overflow-wrap:anywhere] [word-break:break-word]"
+                >
                   <AssistantMarker />
                   {message.content ? (
                     message.role === "error" ? (
-                      <div className="whitespace-pre-wrap rounded-[12px] bg-red-50 px-3 py-2 text-[13px] font-normal leading-5 text-red-700">
+                      <div className="whitespace-pre-wrap rounded-[12px] bg-red-50 px-3 py-2 text-[13px] font-normal leading-5 text-red-700 [overflow-wrap:anywhere] [word-break:break-word]">
                         {message.content}
                       </div>
                     ) : (
@@ -2267,7 +2268,7 @@ const Chat = ({
         onDragLeave={handleDragLeave}
         onDropCapture={handleDrop}
         className={cn(
-          "mx-4 mb-4 rounded-[8px] border bg-white px-2.5 py-3 transition-colors",
+          "mx-4 mb-4 overflow-x-hidden rounded-[8px] border bg-white px-2.5 py-3 transition-colors",
           isDraggingAttachment
             ? "border-[#7A5AF8] bg-[#F7F5FF]"
             : "border-[#F4F4F4]"
@@ -2405,8 +2406,9 @@ const Chat = ({
           ref={inputRef}
           name="chat-input"
           id="chat-input"
-          className="min-h-[92px] w-full resize-none bg-transparent text-sm text-[#101828] placeholder:text-[#99A1AF] focus:outline-none focus:ring-0"
+          className="min-h-[92px] w-full resize-none overflow-x-hidden bg-transparent text-sm text-[#101828] placeholder:text-[#99A1AF] focus:outline-none focus:ring-0 [overflow-wrap:anywhere] [word-break:break-word]"
           rows={3}
+          wrap="soft"
           value={input}
           disabled={isSending || isHistoryLoading}
           onChange={handleInputChange}

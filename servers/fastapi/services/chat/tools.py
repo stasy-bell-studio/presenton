@@ -176,9 +176,10 @@ class ChatTools:
                 description=(
                     "Search reusable template component blocks without fetching a whole layout. "
                     "Use this before addComponent/createComponent when the user asks to add "
-                    "a block such as a table, chart, card, callout, metric, image panel, "
-                    "or repeated content item. Set includeFullContent=true only when exact "
-                    "component JSON is needed."
+                    "a styled block such as a title/header/subtitle, table, chart, card, "
+                    "callout, metric, image panel, or repeated content item. For title "
+                    "blocks use elementType=text with title/header/heading query terms. "
+                    "Set includeFullContent=true only when exact component JSON is needed."
                 ),
                 schema=GetAvailableBlocksInput,
                 strict=False,
@@ -293,8 +294,9 @@ class ChatTools:
                     "JSON must include id, description, position, size, and elements. Chart "
                     "elements must include numeric data as categories plus series.values, or "
                     "legacy data rows with label/value. Image elements must include data "
-                    "set to a URL returned by generateAssets. For table/chart additions "
-                    "adapt a component returned by getAvailableBlocks and pass sourceBlockId."
+                    "set to a URL returned by generateAssets. For styled title/header, "
+                    "table/chart, card, metric, or callout additions, adapt a component "
+                    "returned by getAvailableBlocks and pass sourceBlockId."
                 ),
                 schema=AddSlideComponentInput,
                 strict=False,
@@ -306,8 +308,8 @@ class ChatTools:
                     "and add it to a slide. Chart elements must include numeric data as "
                     "categories plus series.values, or legacy data rows with label/value. "
                     "Image elements must include data set to a URL returned by generateAssets. "
-                    "For table/chart additions adapt a component returned by "
-                    "getAvailableBlocks and pass sourceBlockId."
+                    "For styled title/header, table/chart, card, metric, or callout additions "
+                    "adapt a component returned by getAvailableBlocks and pass sourceBlockId."
                 ),
                 schema=AddSlideComponentInput,
                 strict=False,

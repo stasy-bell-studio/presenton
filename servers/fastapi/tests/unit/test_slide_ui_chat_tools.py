@@ -229,7 +229,60 @@ def test_get_available_blocks_returns_matching_block_summary_only():
     assert block["layout_id"] == "comparison"
     assert block["component_id"] == "table_card"
     assert block["element_types"] == ["table"]
+    assert block["element_names"] == ["Comparison table"]
     assert "component" not in block
+
+
+def test_get_available_blocks_matches_title_element_names():
+    slide = _slide()
+    tools, session = _tools(slide)
+    session.presentation.layout = {
+        "name": "template-v2-test",
+        "layouts": [
+            {
+                "id": "metrics",
+                "description": "Metrics slide with reusable components.",
+                "components": [
+                    {
+                        "id": "masthead",
+                        "description": "Styled text component.",
+                        "position": {"x": 72, "y": 48},
+                        "size": {"width": 720, "height": 96},
+                        "elements": [{"type": "text", "name": "Title"}],
+                    },
+                    {
+                        "id": "body_copy",
+                        "description": "Styled body copy component.",
+                        "position": {"x": 72, "y": 160},
+                        "size": {"width": 720, "height": 160},
+                        "elements": [{"type": "text", "name": "Body"}],
+                    },
+                ],
+            }
+        ],
+    }
+
+    result = _call(
+        tools,
+        "getAvailableBlocks",
+        {
+            "query": "title",
+            "layoutId": None,
+            "elementType": "text",
+            "blockId": None,
+            "includeFullContent": False,
+            "maxResults": 10,
+        },
+    )
+
+    assert result["ok"] is True
+    payload = result["result"]
+    assert payload["found"] is True
+    assert payload["count"] == 1
+    block = payload["blocks"][0]
+    assert block["block_id"] == "layout:metrics:masthead"
+    assert block["element_types"] == ["text"]
+    assert block["element_names"] == ["Title"]
 
 
 def test_get_available_blocks_can_return_exact_block_json():

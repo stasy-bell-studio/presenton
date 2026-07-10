@@ -36,8 +36,12 @@ def test_system_prompt_preserves_existing_content_for_additive_edits():
     assert "preserve existing substantive charts, tables, images, text, icons" in system_prompt
     assert "prioritize copying and adapting an existing block/component shape" in system_prompt
     assert "Use primitive elements only when the task cannot be achieved from existing blocks" in system_prompt
+    assert "Treat existing template blocks as the default style source" in system_prompt
+    assert "search for reusable title/header text blocks first" in system_prompt
     assert "Prefer this over fetching a whole layout or schema just to find one block" in system_prompt
     assert "For new table or chart requests, getAvailableBlocks is mandatory before inserting" in system_prompt
     assert "Do not use addElement to create a new table or chart while a reusable block exists" in system_prompt
+    assert "Do not add primitive title, header, subtitle" in system_prompt
+    assert "compose it from reusable blocks in this order: title/header block" in system_prompt
     assert "update or add only those requested text elements" in system_prompt
     assert "Use deleteElement, deleteComponent, or deleteSlide only when deletion is explicitly requested" in system_prompt

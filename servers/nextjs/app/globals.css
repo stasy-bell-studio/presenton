@@ -338,6 +338,13 @@ thead {
 
 .chat-markdown {
   @apply prose prose-slate max-w-none;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.chat-markdown :where(*) {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chat-markdown :where(p, ul, ol, pre, blockquote) {
@@ -364,7 +371,12 @@ thead {
 }
 
 .chat-markdown :where(pre) {
-  @apply overflow-x-auto rounded-lg bg-[#F5F5F5] p-3;
+  @apply overflow-x-hidden rounded-lg bg-[#F5F5F5] p-3;
+  white-space: pre-wrap;
+}
+
+.chat-markdown :where(pre code) {
+  white-space: inherit;
 }
 
 /* Override Tailwind Typography prose heading sizes for markdown editor */

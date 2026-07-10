@@ -2746,6 +2746,7 @@ class PresentationChatMemoryLayer:
             if isinstance(component.get("elements"), list)
             else 0,
             "element_types": cls._component_element_types(component),
+            "element_names": cls._component_element_names(component),
             "decorative": cls._component_is_decorative(component),
             "component": copy.deepcopy(component),
         }
@@ -2767,6 +2768,34 @@ class PresentationChatMemoryLayer:
             if element_type is not None:
                 value = str(element_type)
                 if value not in seen:
+                    seen.add(value)
+                    ordered.append(value)
+            child = element.get("child")
+            if isinstance(child, dict):
+                visit(child)
+            children = element.get("children")
+            if isinstance(children, list):
+                for nested in children:
+                    visit(nested)
+
+        elements = component.get("elements")
+        if isinstance(elements, list):
+            for element in elements:
+                visit(element)
+        return ordered
+
+    @staticmethod
+    def _component_element_names(component: dict[str, Any]) -> list[str]:
+        seen: set[str] = set()
+        ordered: list[str] = []
+
+        def visit(element: Any) -> None:
+            if not isinstance(element, dict):
+                return
+            name = element.get("name")
+            if name is not None:
+                value = str(name).strip()
+                if value and value not in seen:
                     seen.add(value)
                     ordered.append(value)
             child = element.get("child")
@@ -2818,6 +2847,7 @@ class PresentationChatMemoryLayer:
                 candidate.get("layout_id"),
                 candidate.get("layout_description"),
                 " ".join(str(item) for item in candidate.get("element_types", [])),
+                " ".join(str(item) for item in candidate.get("element_names", [])),
             )
         ).lower()
         score = 0
@@ -2845,6 +2875,7 @@ class PresentationChatMemoryLayer:
             "size",
             "element_count",
             "element_types",
+            "element_names",
             "decorative",
             "variant_index",
             "variant_count",
