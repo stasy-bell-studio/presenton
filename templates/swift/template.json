@@ -1,7 +1,7 @@
 {
   "id": "209b1081-4aea-45ee-b35e-749e04d6c34c",
   "name": "Swift",
-  "description": "",
+  "description": "Light, energetic layouts for fast-moving and focused presentations.",
   "thumbnail": "static/thumbnail.png",
   "merged_components": [
     {
