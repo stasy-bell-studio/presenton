@@ -251,6 +251,28 @@ def test_generate_slide_layout_accepts_direct_schema_response(monkeypatch, caplo
     assert any("slide 1: slide layout JSON returned" in message for message in messages)
 
 
+def test_generate_slide_layout_passes_max_tokens_when_provided(monkeypatch):
+    client = _FakeClient(responses=[_FakeResponse(_generated_layout())])
+    monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
+    monkeypatch.setattr("templates.v2.generation.get_llm_config", lambda: {})
+    monkeypatch.setattr("templates.v2.generation.get_model", lambda: "test-model")
+    monkeypatch.setattr(
+        PreviewSlideTool,
+        "render",
+        lambda _self, _layout: pytest.fail("preview should not be rendered"),
+    )
+
+    result = generate_slide_layout(
+        _raw_layout(),
+        0,
+        "https://example.com/slide-1.png",
+        max_tokens=16000,
+    )
+
+    assert result == SlideLayout.model_validate(_generated_layout())
+    assert client.calls[0]["max_tokens"] == 16000
+
+
 def test_generate_slide_layout_uses_json_schema_response_for_google(monkeypatch):
     client = _FakeClient(responses=[_FakeResponse(_generated_layout())])
     monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)

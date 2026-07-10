@@ -589,6 +589,8 @@ def generate_slide_layout(
     slide_index: int,
     slide_image_url: str,
     fonts: dict[str, str] | None = None,
+    *,
+    max_tokens: int | None = None,
 ) -> SlideLayout:
     payload = (
         _strip_decorative_fields(
@@ -615,6 +617,7 @@ def generate_slide_layout(
         label=f"slide {slide_index + 1}",
         preview_tool=preview_tool,
         validation_retries=DEFAULT_VALIDATION_RETRIES,
+        max_tokens=max_tokens,
     )
 
 
@@ -638,6 +641,7 @@ def _generate_preview_candidate(
     label: str,
     preview_tool: PreviewSlideTool,
     validation_retries: int,
+    max_tokens: int | None = None,
 ) -> SlideLayout:
     attempt_messages = list(messages)
     last_error: Exception | None = None
@@ -666,6 +670,8 @@ def _generate_preview_candidate(
                     json_schema=SlideLayout,
                 ),
             }
+            if max_tokens is not None:
+                generate_kwargs["max_tokens"] = max_tokens
             if preview_tool_available:
                 generate_kwargs.update(
                     {
