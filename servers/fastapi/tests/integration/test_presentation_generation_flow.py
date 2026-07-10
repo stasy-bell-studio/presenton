@@ -249,16 +249,16 @@ def test_generate_presentation_handler_uses_template_v2_layout():
     assert slide.ui["components"][0]["elements"][0]["runs"][0]["text"] == "V2 headline"
 
 
-def test_create_presentation_requires_and_stores_version(fake_async_session):
+def test_create_presentation_stores_current_version(fake_async_session):
     presentation = _run(
         presentation_endpoint.create_presentation(
             content="Create a short deck.",
-            version=PresentationVersion.V2_STANDARD,
             sql_session=fake_async_session,
         )
     )
 
     assert presentation.version == PresentationVersion.V2_STANDARD
+    assert presentation.content == "Create a short deck."
     assert fake_async_session.added == [presentation]
     assert fake_async_session.commit_count == 1
 
