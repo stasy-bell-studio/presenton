@@ -31,6 +31,7 @@ from templates.v2.models.layouts import (
     SlideLayout,
     SlideLayouts,
 )
+from templates.v2.models.elements import Image as SlideImageElement
 from templates.v2.tools import PREVIEW_SLIDE_TOOL_NAME, PreviewSlideTool
 from utils.asset_directory_utils import resolve_image_path_to_filesystem
 from utils.llm_config import get_llm_config
@@ -39,6 +40,8 @@ from utils.llm_provider import get_model
 DEFAULT_VALIDATION_RETRIES = 5
 MAX_PARALLEL_SLIDE_LAYOUTS = 10
 MAX_PREVIEW_SLIDE_CALLS = 2
+CONTENT_IMAGE_PLACEHOLDER_URL = "/static/images/replaceable_template_image.png"
+CONTENT_ICON_PLACEHOLDER_URL = "/static/icons/placeholder.svg"
 
 LOGGER = logging.getLogger(__name__)
 
@@ -102,6 +105,11 @@ Convert the provided raw slide elements to components.
 - Use `image` for images and icons.
 - Identify icon color from slide image.
 
+# Decorative and Content Element Rules:
+- Use `decorative=false` for elements that carry slide meaning or should be replaced, including text, charts, tables, metrics, and primary images/icons.
+- Use `decorative=true` for fixed styling or branding, including backgrounds, frames, dividers, accents, logos, watermarks, and ornamental images/icons.
+- If removal changes meaning, it is content; if removal only changes style, it is decorative.
+
 # Position and Size Rules:
 - Use local coordinates relative to component for elements.
 - Don't provide position for elements inside flexible elements like `flex`, `grid`, `container`, etc.
@@ -129,8 +137,8 @@ Convert the provided raw slide elements to components.
 - If an infographic is represented as an `image` element in the raw slide layout, convert that image into an `infographic` element and remove the original `image` element.
 
 # Schema Rules:
-- Set `decorative=true` for decorative or static elements like logo, decorative images, etc.
-- Set `decorative=false` for content elements which should be replaced while creating new slide.
+- Set `decorative=true` for elements that should stay fixed as part of the template design.
+- Set `decorative=false` for content elements that should be replaced when creating a new slide from this layout.
 - Try to keep `max_length`, `min_length`, `max_items` and `min_items` same as in the raw slide layout.
 - If `flex` or `grid` contains list of same items, set the `max_length`, `min_length`, and other schema related constraints same for items.
 - For same items arranged in `flex`/`grid` derive schema fields by averaging between those similar items.
@@ -610,7 +618,7 @@ def generate_slide_layout(
         ),
     ]
     preview_tool = PreviewSlideTool(slide_index=slide_index, fonts=fonts)
-    return _generate_preview_candidate(
+    layout = _generate_preview_candidate(
         client=client,
         model=model,
         messages=messages,
@@ -619,6 +627,36 @@ def generate_slide_layout(
         validation_retries=DEFAULT_VALIDATION_RETRIES,
         max_tokens=max_tokens,
     )
+    return _replace_content_image_urls(layout)
+
+
+def _replace_content_image_urls(layout: SlideLayout) -> SlideLayout:
+    normalized = layout.model_copy(deep=True)
+    for component in normalized.components:
+        _replace_content_image_urls_in_elements(component.elements)
+    return normalized
+
+
+def _replace_content_image_urls_in_elements(elements: list[Any]) -> None:
+    for element in elements:
+        _replace_content_image_url_in_element(element)
+
+
+def _replace_content_image_url_in_element(element: Any) -> None:
+    if isinstance(element, SlideImageElement) and element.decorative is False:
+        element.data = (
+            CONTENT_ICON_PLACEHOLDER_URL
+            if element.is_icon
+            else CONTENT_IMAGE_PLACEHOLDER_URL
+        )
+
+    child = getattr(element, "child", None)
+    if child is not None:
+        _replace_content_image_url_in_element(child)
+
+    children = getattr(element, "children", None)
+    if isinstance(children, list):
+        _replace_content_image_urls_in_elements(children)
 
 
 def _strip_decorative_fields(value: Any) -> Any:
