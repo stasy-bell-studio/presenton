@@ -47,12 +47,14 @@ import type {
 import ToolTip from "@/components/ToolTip";
 import { cn } from "@/lib/utils";
 import type { TemplateV2SurfaceSelectedDetail } from "@/components/slide-editor/events/events";
+import type { TemplateV2Layout } from "@/components/slide-editor/importing/template-v2-import";
 import {
   MAX_NUMBER_OF_SLIDES,
   MAX_OUTLINE_CONTENT_WORDS,
 } from "@/utils/presentationLimits";
 import { bucketMessageLength, sanitizeAnalyticsError } from "@/utils/analytics";
 import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
+import { TemplateV2HtmlSlidePreview } from "../../components/TemplateV2HtmlSlidePreview";
 
 const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
   {
@@ -277,6 +279,18 @@ type ChatMessage = {
   content: string;
   toolCalls?: string[];
   activity?: AssistantActivity[];
+  layoutPreview?: ChatLayoutPreview;
+};
+
+type ChatLayoutPreview = {
+  layout: TemplateV2Layout;
+  layoutId?: string | null;
+  slideIndex?: number | null;
+};
+
+type SubmitMessageOptions = {
+  backendContext?: string;
+  layoutPreview?: ChatLayoutPreview;
 };
 
 type PastedChatImage = {
@@ -393,6 +407,14 @@ const createMessageId = () => {
 
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 };
+
+const createChatLayoutPreviewSlide = (preview: ChatLayoutPreview) => ({
+  id: `chat-layout-preview-${preview.slideIndex ?? "slide"}`,
+  content: {},
+  ui: preview.layout,
+  layout: preview.layoutId || "chat-layout-preview",
+  layout_group: "template-v2",
+});
 
 const URL_PATTERN =
   /(https?:\/\/[^\s<>"']+\.[^\s<>"']+|www\.[^\s<>"']+\.[^\s<>"']+)/gi;
@@ -855,12 +877,17 @@ const Chat = ({
   const [expandedActivityByMessage, setExpandedActivityByMessage] = useState<
     Record<string, boolean>
   >({});
+  const [hiddenOverlaySlideReference, setHiddenOverlaySlideReference] = useState<
+    number | null
+  >(null);
 
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  const submitMessageRef = useRef<(message: string) => Promise<void>>(
+  const submitMessageRef = useRef<
+    (message: string, options?: SubmitMessageOptions) => Promise<void>
+  >(
     async () => undefined,
   );
   const lastFollowedTraceRef = useRef<string | null>(null);
@@ -911,6 +938,7 @@ const Chat = ({
     setIsUploadingPastedImage(false);
     setIsDraggingAttachment(false);
     setExpandedActivityByMessage({});
+    setHiddenOverlaySlideReference(null);
     promptMetricsRef.current = null;
 
     if (!activeResourceId) {
@@ -981,6 +1009,10 @@ const Chat = ({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end" });
   }, [messages, isSending]);
+
+  useEffect(() => {
+    setHiddenOverlaySlideReference(null);
+  }, [currentSlide]);
 
   useEffect(() => {
     onChatMutationStateChange?.(activeMutationToolCount > 0);
@@ -1117,7 +1149,8 @@ const Chat = ({
 
   const buildBackendMessage = (
     message: string,
-    images = pastedImages
+    images = pastedImages,
+    additionalContext?: string,
   ) => {
     const contextLines: string[] = [];
 
@@ -1137,6 +1170,15 @@ const Chat = ({
         `UI context: the currently selected slide is slide ${
           currentSlide + 1
         } (zero-based index ${currentSlide}).`
+      );
+    }
+
+    const trimmedAdditionalContext = additionalContext?.trim();
+    if (trimmedAdditionalContext) {
+      contextLines.push(
+        trimmedAdditionalContext.startsWith("UI context:")
+          ? trimmedAdditionalContext
+          : `UI context: ${trimmedAdditionalContext}`,
       );
     }
 
@@ -1226,6 +1268,7 @@ const Chat = ({
     setActiveMutationToolCount(0);
     setErrorMessage(null);
     setExpandedActivityByMessage({});
+    setHiddenOverlaySlideReference(null);
     if (activeResourceId && typeof sessionStorage !== "undefined") {
       sessionStorage.removeItem(
         conversationStorageKey(conversationStorageScope, activeResourceId)
@@ -1506,7 +1549,10 @@ const Chat = ({
     }
   };
 
-  const submitMessage = async (rawMessage: string) => {
+  const submitMessage = async (
+    rawMessage: string,
+    options: SubmitMessageOptions = {},
+  ) => {
     const trimmedMessage = rawMessage.trim();
     const hasAttachedContext =
       pastedImages.length > 0 ||
@@ -1565,6 +1611,7 @@ const Chat = ({
       id: createMessageId(),
       role: "user",
       content: outboundMessage,
+      layoutPreview: options.layoutPreview,
     };
 
     const assistantMessageId = createMessageId();
@@ -1618,7 +1665,11 @@ const Chat = ({
       const response = await chatAdapter.streamMessage(
         {
           resourceId: activeResourceId,
-          message: buildBackendMessage(outboundMessage, imagesForMessage),
+          message: buildBackendMessage(
+            outboundMessage,
+            imagesForMessage,
+            options.backendContext,
+          ),
           conversation_id: conversationId ?? undefined,
           attachments: buildChatDocumentAttachments(attachedDocuments),
         },
@@ -1831,9 +1882,28 @@ const Chat = ({
         typeof detail.slideIndex === "number"
           ? `slide ${detail.slideIndex + 1}`
           : "the current blank slide";
-      void submitMessageRef.current(
-        `Create content for ${target} from this prompt: ${prompt}`,
-      );
+      const layoutReference =
+        typeof detail.layoutId === "string" && detail.layoutId.trim()
+          ? ` (layout id: ${detail.layoutId.trim()})`
+          : "";
+      const instruction =
+        detail.promptKind === "layout"
+          ? `Fill the existing selected ${target} using its selected layout${layoutReference} as the layout reference. Preserve the layout structure and update this slide; do not add another slide.`
+          : `Create content on the existing selected ${target}. Update this slide; do not add another slide.`;
+      if (typeof detail.slideIndex === "number") {
+        setHiddenOverlaySlideReference(detail.slideIndex);
+      }
+      void submitMessageRef.current(prompt, {
+        backendContext: instruction,
+        layoutPreview:
+          detail.promptKind === "layout" && detail.layout
+            ? {
+                layout: detail.layout,
+                layoutId: detail.layoutId,
+                slideIndex: detail.slideIndex,
+              }
+            : undefined,
+      });
     };
 
     window.addEventListener(
@@ -2012,7 +2082,10 @@ const Chat = ({
   const isOutlineVariant = variant === "outline";
   const isTemplateV2Variant = variant === "template-v2";
   const chatSlideReference =
-    typeof currentSlide === "number" ? `Slide ${currentSlide + 1}` : "";
+    typeof currentSlide === "number" &&
+    hiddenOverlaySlideReference !== currentSlide
+      ? `Slide ${currentSlide + 1}`
+      : "";
   const chatTargetReference = selectedTemplateV2Target
     ? selectedTemplateV2Target.kind === "multi-component"
       ? selectedTemplateV2Target.targetLabel ||
@@ -2174,10 +2247,30 @@ const Chat = ({
                   key={message.id}
                   className="flex items-start justify-end gap-2.5"
                 >
-                  <div className="min-w-0 max-w-[80%] rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm [overflow-wrap:anywhere] [word-break:break-word]">
-                    <p className="whitespace-pre-wrap">
-                      {stripBackendContextFromUserMessage(message.content)}
-                    </p>
+                  <div
+                    className={cn(
+                      "flex min-w-0 max-w-[80%] flex-col items-end gap-2",
+                      message.layoutPreview && "w-[220px]",
+                    )}
+                  >
+                    {message.layoutPreview && (
+                      <div className="w-full overflow-hidden rounded-[12px] border border-[#EDE7FF] bg-white p-1.5 shadow-sm">
+                        <TemplateV2HtmlSlidePreview
+                          slide={createChatLayoutPreviewSlide(
+                            message.layoutPreview,
+                          )}
+                          className="rounded-[8px]"
+                        />
+                        <p className="px-1 pb-0.5 pt-1.5 text-[10px] font-medium text-[#667085]">
+                          Selected layout
+                        </p>
+                      </div>
+                    )}
+                    <div className="w-fit max-w-full rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm [overflow-wrap:anywhere] [word-break:break-word]">
+                      <p className="whitespace-pre-wrap">
+                        {stripBackendContextFromUserMessage(message.content)}
+                      </p>
+                    </div>
                   </div>
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#FF8617] text-white">
                     <UserRound className="h-4 w-4" aria-hidden="true" />

@@ -412,8 +412,12 @@ def test_create_template_v2_async_task_updates_slide_status_before_batch_complet
     )
     session = _TemplateTaskSession(task)
     generated_layouts = _two_template_layouts()["layouts"]
+    generation_max_tokens = []
 
-    def fake_generate_slide_layout(_raw_layout, index, _slide_image_url, _fonts):
+    def fake_generate_slide_layout(
+        _raw_layout, index, _slide_image_url, _fonts, *, max_tokens=None
+    ):
+        generation_max_tokens.append(max_tokens)
         return generated_layouts[index]
 
     with patch(
@@ -463,6 +467,7 @@ def test_create_template_v2_async_task_updates_slide_status_before_batch_complet
 
     assert task.status == "completed"
     assert task.message == "Template creation completed"
+    assert generation_max_tokens == [16000, 16000]
     assert task.data["slide_layout_statuses"] == [
         {"index": 0, "status": "completed"},
         {"index": 1, "status": "completed"},
@@ -579,6 +584,7 @@ def test_create_template_v2_slide_layouts_returns_generated_layout(
     assert slide_index == 0
     assert slide_image_url == "/app_data/images/slide-1.png"
     assert fonts == {"Inter": "https://example.com/inter.css"}
+    assert generate_mock.call_args.kwargs == {"max_tokens": 16000}
     assert response.layouts[0].index == 0
     response_layout = response.layouts[0].layout.model_dump(
         mode="json", exclude_none=True
@@ -682,6 +688,7 @@ def test_create_template_v2_slide_layouts_preserves_image_url_indexes(
     assert source_layout.id == "slide_2"
     assert slide_index == 1
     assert slide_image_url == "/app_data/images/slide-2.png"
+    assert generate_mock.call_args.kwargs == {"max_tokens": 16000}
 
 
 def test_create_template_v2_slide_layouts_returns_404_for_missing_template(

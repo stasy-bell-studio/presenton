@@ -598,11 +598,14 @@ def _font_info_entry(
     variant: str,
     original_name: Optional[str] = None,
 ) -> FontInfo:
+    family_name = normalize_font_family_name(font_name)
+    if not family_name:
+        family_name = font_name
     return FontInfo(
-        name=_font_variant_display_name(font_name, variant),
+        name=_font_variant_display_name(family_name, variant),
         url=url,
         original_name=original_name or font_name,
-        family_name=font_name,
+        family_name=family_name,
         variant=variant,
         variants=[variant],
     )

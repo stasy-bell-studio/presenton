@@ -937,6 +937,59 @@ def test_update_slide_component_edits_ui_size():
     assert session.commit_count == 1
 
 
+def test_update_component_resize_scales_standalone_chart_contents():
+    slide = _slide()
+    slide.ui["components"] = [
+        {
+            "id": "line-chart",
+            "description": "Line Chart",
+            "position": {"x": 371, "y": 155},
+            "size": {"width": 538, "height": 410},
+            "elements": [
+                {
+                    "type": "chart",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 538, "height": 410},
+                    "chart_type": "line",
+                    "categories": ["Q1", "Q2"],
+                    "series": [{"name": "Revenue", "values": [10, 20]}],
+                }
+            ],
+        },
+        {
+            "id": "thank-you",
+            "description": "Thank You heading",
+            "position": {"x": 400, "y": 60},
+            "size": {"width": 480, "height": 80},
+            "elements": [{"type": "text", "runs": [{"text": "Thank You"}]}],
+        },
+    ]
+    untouched_heading = json.loads(json.dumps(slide.ui["components"][1]))
+    tools, session = _tools(slide)
+
+    result = _call(
+        tools,
+        "updateComponent",
+        {
+            "index": 0,
+            "componentId": "line-chart",
+            "action": "update",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 1280, "height": 720},
+        },
+    )
+
+    chart_component = slide.ui["components"][0]
+    chart = chart_component["elements"][0]
+    assert result["ok"] is True
+    assert chart_component["position"] == {"x": 0.0, "y": 0.0}
+    assert chart_component["size"] == {"width": 1280.0, "height": 720.0}
+    assert chart["position"] == {"x": 0.0, "y": 0.0}
+    assert chart["size"] == {"width": 1280.0, "height": 720.0}
+    assert slide.ui["components"][1] == untouched_heading
+    assert session.commit_count == 1
+
+
 def test_update_component_groups_components():
     slide = _slide()
     tools, session = _tools(slide)

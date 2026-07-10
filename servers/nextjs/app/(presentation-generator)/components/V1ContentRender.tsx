@@ -62,6 +62,10 @@ function TemplateV2PromptOverlay({
                     detail: {
                         prompt: trimmedPrompt,
                         slideIndex,
+                        layoutId:
+                            typeof layout.id === "string" ? layout.id : null,
+                        promptKind: showLayoutPreview ? "layout" : "blank",
+                        layout: showLayoutPreview ? layout : null,
                     },
                 },
             ),
@@ -121,6 +125,7 @@ function TemplateV2PromptOverlay({
                         </label>
                         <input
                             id={`blank-slide-prompt-${slideIndex}`}
+                            autoFocus
                             value={prompt}
                             onChange={(event) => setPrompt(event.target.value)}
                             placeholder="Start with your idea... we'll handle the slides"
@@ -150,7 +155,6 @@ export const V1ContentRender = ({
     slide,
     presentationId,
     isEditMode,
-    theme,
     fonts,
     renderIndex,
     showBlankPromptOverlay = false,

@@ -1,6 +1,7 @@
 import asyncio
 import io
 import os
+import struct
 import zipfile
 import xml.etree.ElementTree as ET
 from types import SimpleNamespace
@@ -103,6 +104,34 @@ def test_build_google_fonts_stylesheet_url_includes_regular_and_bold_weights():
 
 def test_normalize_font_family_name_strips_localized_bold_token():
     assert pptx_font_utils.normalize_font_family_name("Arial Gras") == "Arial"
+
+
+def test_normalize_font_family_name_preserves_width_tokens():
+    assert (
+        pptx_font_utils.normalize_font_family_name("Latin Condensed")
+        == "Latin Condensed"
+    )
+    assert (
+        pptx_font_utils.normalize_font_family_name("Roboto Condensed Bold")
+        == "Roboto Condensed"
+    )
+    assert (
+        pptx_font_utils.normalize_font_family_name("Arial Narrow Bold")
+        == "Arial Narrow"
+    )
+
+
+def test_extract_font_from_eot_uses_header_font_data_offset(tmp_path):
+    embedded_font = b"\x00\x01\x00\x00valid-font-data"
+    header_body = b"metadata-before-font\x00\x01\x00\x00not-the-font"
+    eot_size = 8 + len(header_body) + len(embedded_font)
+    font_data_size = len(embedded_font)
+    eot_path = tmp_path / "font.fntdata"
+    eot_path.write_bytes(
+        struct.pack("<II", eot_size, font_data_size) + header_body + embedded_font
+    )
+
+    assert pptx_font_utils.extract_font_from_eot(eot_path) == embedded_font
 
 
 def test_check_fonts_in_pptx_rejects_100mb_file_from_upload_size():
@@ -659,6 +688,21 @@ def test_font_info_entries_use_explicit_variants_without_family_expansion():
     assert entries[0].name == "HK Grotesk Regular"
     assert entries[0].variant == "regular"
     assert entries[0].variants == ["regular"]
+
+
+def test_font_info_entries_do_not_duplicate_explicit_variant_name():
+    entries = fonts_and_slides_preview._font_info_entries(
+        [("Aileron Bold", None, ["bold"])],
+        {"Aileron": {"bold"}},
+        {("Aileron", "bold"): "Aileron Bold"},
+    )
+
+    assert len(entries) == 1
+    assert entries[0].name == "Aileron Bold"
+    assert entries[0].original_name == "Aileron Bold"
+    assert entries[0].family_name == "Aileron"
+    assert entries[0].variant == "bold"
+    assert entries[0].variants == ["bold"]
 
 
 def test_preview_dimensions_preserve_converter_aspect_ratio():

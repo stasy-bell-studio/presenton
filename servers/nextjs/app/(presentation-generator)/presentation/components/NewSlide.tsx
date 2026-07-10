@@ -203,16 +203,24 @@ const NewSlideV1 = ({
 
       try {
         const slideId = uuidv4();
+        const newSlide = {
+          id: slideId,
+          index,
+          content: {},
+          ui: sampleData,
+          layout_group: templateID,
+          layout: id,
+          presentation: presentationId,
+        };
 
-
+        dispatch(addNewSlide({ slideData: newSlide, index }));
         onSlideAdded?.(
           index + 1,
           {
             promptOverlaySlideId: slideId,
             promptOverlayKind:
               id === BLANK_SLIDE_LAYOUT_ID ? "blank" : "layout",
-          }
-
+          },
         );
         trackEvent(MixpanelEvent.Presentation_Slide_Added, {
           pathname,

@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from templates.v2.generation import (
     CLUSTER_SIMILAR_COMPONENTS_SYSTEM_PROMPT,
+    CONTENT_ICON_PLACEHOLDER_URL,
+    CONTENT_IMAGE_PLACEHOLDER_URL,
     GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT,
     _generate_preview_candidate,
     _messages_for_json_repair_retry,
@@ -112,6 +114,59 @@ def _generated_layout(layout_id: str = "title_slide") -> dict:
             }
         ],
     }
+
+
+def _generated_layout_with_images() -> dict:
+    layout = _generated_layout("image_slide")
+    layout["components"][0]["elements"] = [
+        {
+            "type": "image",
+            "position": {"x": 0, "y": 0},
+            "size": {"width": 320, "height": 180},
+            "decorative": False,
+            "name": "hero_image",
+            "data": "/app_data/images/source-photo.png",
+            "prompt": "Team reviewing dashboard",
+            "is_icon": False,
+        },
+        {
+            "type": "image",
+            "position": {"x": 340, "y": 0},
+            "size": {"width": 48, "height": 48},
+            "decorative": False,
+            "name": "status_icon",
+            "data": "/app_data/icons/source-icon.svg",
+            "prompt": "growth chart",
+            "is_icon": True,
+        },
+        {
+            "type": "image",
+            "position": {"x": 400, "y": 0},
+            "size": {"width": 80, "height": 40},
+            "decorative": True,
+            "name": "logo",
+            "data": "/app_data/images/logo.png",
+            "is_icon": False,
+        },
+        {
+            "type": "group",
+            "position": {"x": 0, "y": 220},
+            "size": {"width": 180, "height": 120},
+            "name": "nested_media",
+            "children": [
+                {
+                    "type": "image",
+                    "position": {"x": 0, "y": 0},
+                    "size": {"width": 180, "height": 120},
+                    "decorative": False,
+                    "name": "nested_image",
+                    "data": "/app_data/images/nested-photo.png",
+                    "is_icon": False,
+                }
+            ],
+        },
+    ]
+    return layout
 
 
 def _contains_key(value, key: str) -> bool:
@@ -249,6 +304,54 @@ def test_generate_slide_layout_accepts_direct_schema_response(monkeypatch, caplo
     assert call["response_format"].name == "SlideLayoutResponse"
     messages = [record.getMessage() for record in caplog.records]
     assert any("slide 1: slide layout JSON returned" in message for message in messages)
+
+
+def test_generate_slide_layout_replaces_content_image_urls(monkeypatch):
+    client = _FakeClient(responses=[_FakeResponse(_generated_layout_with_images())])
+    monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
+    monkeypatch.setattr("templates.v2.generation.get_llm_config", lambda: {})
+    monkeypatch.setattr("templates.v2.generation.get_model", lambda: "test-model")
+    monkeypatch.setattr(
+        PreviewSlideTool,
+        "render",
+        lambda _self, _layout: pytest.fail("preview should not be rendered"),
+    )
+
+    result = generate_slide_layout(
+        _raw_layout(),
+        0,
+        "https://example.com/slide-1.png",
+    )
+
+    elements = result.model_dump(mode="json")["components"][0]["elements"]
+    assert elements[0]["data"] == CONTENT_IMAGE_PLACEHOLDER_URL
+    assert elements[0]["prompt"] == "Team reviewing dashboard"
+    assert elements[1]["data"] == CONTENT_ICON_PLACEHOLDER_URL
+    assert elements[1]["prompt"] == "growth chart"
+    assert elements[2]["data"] == "/app_data/images/logo.png"
+    assert elements[3]["children"][0]["data"] == CONTENT_IMAGE_PLACEHOLDER_URL
+
+
+def test_generate_slide_layout_passes_max_tokens_when_provided(monkeypatch):
+    client = _FakeClient(responses=[_FakeResponse(_generated_layout())])
+    monkeypatch.setattr("templates.v2.generation.get_client", lambda **_kwargs: client)
+    monkeypatch.setattr("templates.v2.generation.get_llm_config", lambda: {})
+    monkeypatch.setattr("templates.v2.generation.get_model", lambda: "test-model")
+    monkeypatch.setattr(
+        PreviewSlideTool,
+        "render",
+        lambda _self, _layout: pytest.fail("preview should not be rendered"),
+    )
+
+    result = generate_slide_layout(
+        _raw_layout(),
+        0,
+        "https://example.com/slide-1.png",
+        max_tokens=16000,
+    )
+
+    assert result == SlideLayout.model_validate(_generated_layout())
+    assert client.calls[0]["max_tokens"] == 16000
 
 
 def test_generate_slide_layout_uses_json_schema_response_for_google(monkeypatch):
@@ -845,6 +948,9 @@ def test_slide_layout_does_not_accept_fixed_component_metadata():
 
 def test_direct_generation_prompt_uses_decorative_element_metadata():
     assert "Convert the provided raw slide elements to components" in (
+        GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
+    )
+    assert "# Decorative and Content Element Rules:" in (
         GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT
     )
     assert "`decorative=true`" in GENERATE_SLIDE_LAYOUT_SYSTEM_PROMPT

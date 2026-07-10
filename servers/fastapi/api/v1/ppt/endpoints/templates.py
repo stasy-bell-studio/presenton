@@ -63,6 +63,7 @@ LOGGER = logging.getLogger(__name__)
 _TEMPLATE_LAYOUT_PATCH_LOCKS: dict[str, asyncio.Lock] = {}
 _TEMPLATE_LAYOUT_PATCH_LOCKS_GUARD = asyncio.Lock()
 ASYNC_TASK_TYPE_TEMPLATE_CREATE = "template.create"
+SLIDE_LAYOUT_GENERATION_MAX_TOKENS = 16000
 
 
 class InitTemplateV2Request(BaseModel):
@@ -427,6 +428,7 @@ async def _generate_slide_layouts_with_task_progress(
                 index,
                 slide_image_urls[index],
                 fonts,
+                max_tokens=SLIDE_LAYOUT_GENERATION_MAX_TOKENS,
             ),
         )
         layout = (
@@ -749,6 +751,7 @@ def _generate_indexed_slide_layouts(
                 index,
                 slide_image_urls[index],
                 fonts,
+                max_tokens=SLIDE_LAYOUT_GENERATION_MAX_TOKENS,
             ): index
             for index in indices
         }

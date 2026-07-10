@@ -1521,6 +1521,11 @@ class PresentationChatMemoryLayer:
             _normalize_chart_tree(component, await self._get_current_theme())
             self._fit_component_to_stage(component)
             updated = True
+        if size is not None:
+            # Match the editor's corner-resize behavior. Updating only the
+            # component frame leaves a standalone chart/image/table at its old
+            # size and creates empty space inside the enlarged selection box.
+            self._scale_component_contents_for_resize(component, size)
         if self._update_ui_box(component, position=position, size=size):
             updated = True
         if not updated:
@@ -1822,6 +1827,128 @@ class PresentationChatMemoryLayer:
             "width": float(width),
             "height": float(height),
         }
+
+    @classmethod
+    def _scale_component_contents_for_resize(
+        cls,
+        component: dict[str, Any],
+        target_size: dict[str, Any],
+    ) -> None:
+        current_size = component.get("size")
+        if not isinstance(current_size, dict):
+            return
+        current_width = current_size.get("width")
+        current_height = current_size.get("height")
+        target_width = target_size.get("width")
+        target_height = target_size.get("height")
+        if not all(
+            isinstance(value, (int, float))
+            for value in (current_width, current_height, target_width, target_height)
+        ):
+            return
+        if current_width <= 0 or current_height <= 0:
+            return
+
+        scale_x = float(target_width) / float(current_width)
+        scale_y = float(target_height) / float(current_height)
+        if abs(scale_x - 1.0) < 0.001 and abs(scale_y - 1.0) < 0.001:
+            return
+
+        elements = component.get("elements")
+        if not isinstance(elements, list):
+            return
+        font_scale = (scale_x * scale_y) ** 0.5
+        for element in elements:
+            if isinstance(element, dict):
+                cls._scale_ui_element_for_component_resize(
+                    element,
+                    scale_x=scale_x,
+                    scale_y=scale_y,
+                    font_scale=font_scale,
+                )
+
+    @classmethod
+    def _scale_ui_element_for_component_resize(
+        cls,
+        element: dict[str, Any],
+        *,
+        scale_x: float,
+        scale_y: float,
+        font_scale: float,
+    ) -> None:
+        position = element.get("position")
+        if isinstance(position, dict):
+            x = position.get("x")
+            y = position.get("y")
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                element["position"] = {
+                    "x": float(x) * scale_x,
+                    "y": float(y) * scale_y,
+                }
+
+        size = element.get("size")
+        if isinstance(size, dict):
+            width = size.get("width")
+            height = size.get("height")
+            if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+                element["size"] = {
+                    "width": max(1.0, float(width) * scale_x),
+                    "height": max(1.0, float(height) * scale_y),
+                }
+
+        if str(element.get("type") or "").lower() in {"text", "text-list", "table"}:
+            cls._scale_font_metrics_for_component_resize(element, font_scale)
+
+        for key in ("children", "elements"):
+            children = element.get(key)
+            if isinstance(children, list):
+                for child in children:
+                    if isinstance(child, dict):
+                        cls._scale_ui_element_for_component_resize(
+                            child,
+                            scale_x=scale_x,
+                            scale_y=scale_y,
+                            font_scale=font_scale,
+                        )
+        child = element.get("child")
+        if isinstance(child, dict):
+            cls._scale_ui_element_for_component_resize(
+                child,
+                scale_x=scale_x,
+                scale_y=scale_y,
+                font_scale=font_scale,
+            )
+
+    @classmethod
+    def _scale_font_metrics_for_component_resize(
+        cls,
+        value: Any,
+        scale: float,
+    ) -> None:
+        if isinstance(value, list):
+            for item in value:
+                cls._scale_font_metrics_for_component_resize(item, scale)
+            return
+        if not isinstance(value, dict):
+            return
+
+        font = value.get("font")
+        if isinstance(font, dict):
+            size = font.get("size")
+            if isinstance(size, (int, float)):
+                font["size"] = min(512.0, max(1.0, round(float(size) * scale, 2)))
+            for key in ("letter_spacing", "letterSpacing"):
+                spacing = font.get(key)
+                if isinstance(spacing, (int, float)):
+                    font[key] = round(float(spacing) * scale, 2)
+
+        # Child layout nodes are scaled separately so their text metrics are
+        # not applied twice. These fields contain only text/table content.
+        for key, child_value in value.items():
+            if key in {"font", "children", "elements", "child"}:
+                continue
+            if isinstance(child_value, (dict, list)):
+                cls._scale_font_metrics_for_component_resize(child_value, scale)
 
     async def delete_slide_ui_component(
         self, *, index: int, component_id: str
