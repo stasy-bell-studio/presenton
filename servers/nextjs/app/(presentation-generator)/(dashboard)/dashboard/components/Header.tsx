@@ -46,7 +46,7 @@ const Header = () => {
             <Link href="/dashboard" onClick={() => trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/dashboard" })}>
               <div className="bg-[#EC6608] rounded-full p-1 flex justify-center items-center">
                 <img
-                  src="/logo-gor.svg"
+                  src="/logo-gor-white.svg"
                   alt="21 век"
                   className="h-[28px] w-auto"
                 />
