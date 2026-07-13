@@ -29,7 +29,7 @@ const Header = () => {
   const backHref = backToUpload ? "/upload" : backToTemplates ? "/templates" : "/dashboard";
   const backLabel = backToUpload
     ? "НАЗАД"
-    : isTemplatePage
+    : backToTemplates
       ? "НАЗАД"
       : "НАЗАД";
 
