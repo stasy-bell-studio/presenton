@@ -2327,7 +2327,7 @@ const Chat = ({
                         ) : (
                           <ChevronRight className="h-3 w-3" />
                         )}
-                        <span>Thinking</span>
+                        <span>Анализ</span>
                         {message.activity.some(
                           (item) => item.state === "running"
                         ) && (

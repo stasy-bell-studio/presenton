@@ -44,18 +44,20 @@ const CurrentConfig = ({ webSearchEnabled }: { webSearchEnabled: boolean }) => {
                                                 ? llmConfig.CODEX_MODEL
                                                 : "";
     const textSummary = selectedTextModel
-        ? `${textProviderLabel} (${selectedTextModel})`
+        ? `Модель: ${textProviderLabel}`
         : textProviderLabel;
 
     const imageSummary = llmConfig.DISABLE_IMAGE_GENERATION
-        ? "Генерация изображений отключена"
+        ? "Изображения: выкл"
         : llmConfig.IMAGE_PROVIDER
-            ? IMAGE_PROVIDERS[llmConfig.IMAGE_PROVIDER]?.label || llmConfig.IMAGE_PROVIDER
-            : "Нет провайдера изображений";
+            ? `Изображения: ${IMAGE_PROVIDERS[llmConfig.IMAGE_PROVIDER]?.label || llmConfig.IMAGE_PROVIDER}`
+            : "Изображения: выкл";
     const webSearchProviderKey = (llmConfig.WEB_SEARCH_PROVIDER || "auto").toLowerCase();
     const webSearchProvider =
         WEB_SEARCH_PROVIDERS[webSearchProviderKey]?.label || webSearchProviderKey;
-    const webSearchSummary = `Поиск: ${webSearchProvider} (${webSearchEnabled ? "Вкл" : "Выкл"})`;
+    const webSearchSummary = webSearchEnabled
+        ? `Поиск: ${webSearchProvider}`
+        : "Поиск: выкл";
 
     return (
         <p className="rounded-[50px] border border-[#EDEEEF] px-2.5 py-0.5 text-[10px] font-medium text-[#EC6608] min-[1800px]:px-3 min-[1800px]:py-1 min-[1800px]:text-[11px] min-[2200px]:px-4 min-[2200px]:text-xs">

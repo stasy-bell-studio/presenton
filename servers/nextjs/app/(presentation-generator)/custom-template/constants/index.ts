@@ -1,34 +1,34 @@
 /**
- * Constants for Custom Template Creation Flow
+ * Константы для создания пользовательского шаблона
  */
 
 import { TemplateCreationStep } from "../types";
 
-// Step configuration
+// Конфигурация шагов
 export const TEMPLATE_STEPS: Record<TemplateCreationStep, { title: string; description: string }> = {
     'file-upload': {
-        title: 'Upload Template',
-        description: 'Upload your PPTX file to begin',
+        title: 'Загрузка шаблона',
+        description: 'Загрузите файл PPTX для начала',
     },
     'font-check': {
-        title: 'Font Check',
-        description: 'Checking fonts in your presentation',
+        title: 'Проверка шрифтов',
+        description: 'Проверка шрифтов в презентации',
     },
     'font-upload': {
-        title: 'Upload Fonts',
-        description: 'Upload missing fonts for accurate rendering',
+        title: 'Загрузка шрифтов',
+        description: 'Загрузите отсутствующие шрифты для точного отображения',
     },
     'slides-preview': {
-        title: 'Preview Slides',
-        description: 'Review your slides before processing',
+        title: 'Предпросмотр слайдов',
+        description: 'Проверьте слайды перед обработкой',
     },
     'template-creation': {
-        title: 'Template Creation',
-        description: 'Converting slides to reusable templates',
+        title: 'Создание шаблона',
+        description: 'Преобразование слайдов в переиспользуемые шаблоны',
     },
     'completed': {
-        title: 'Completed',
-        description: 'Your template is ready to save',
+        title: 'Готово',
+        description: 'Шаблон готов к сохранению',
     },
 };
 
@@ -38,57 +38,21 @@ export const UI_CONFIG = {
     slideGridGap: '20px',
     maxContentWidth: '1400px',
 }
-// Highlights for benefits section
+// Преимущества
 export const HIGHLIGHTS_ITEMS = [
     {
         number: "1",
-        title: "Time-consume",
-        description: "Manual formatting and slide copying wastes hours every week",
+        title: "Экономия времени",
+        description: "Ручное форматирование и копирование слайдов отнимает часы каждую неделю",
     },
     {
         number: "2",
-        title: "Expensive",
-        description: "Design resources spent on repetitive tasks instead of innovation",
+        title: "Снижение затрат",
+        description: "Ресурсы дизайна тратятся на повторяющиеся задачи вместо инноваций",
     },
     {
         number: "3",
-        title: "Inconsistent",
-        description: "AI generates unpredictable layouts that require constant cleanup",
-    },
-]
-
-// External scripts
-export const TAILWIND_CDN_URL = "https://cdn.tailwindcss.com";
-
-
-
-export const FAQS = [
-    {
-        question: "What is Custom Template Creation?",
-        answer: "Custom Template Creation is a feature that allows you to create custom templates for your presentations.",
-    },
-    {
-        question: "How do I create a custom template?",
-        answer: "You can create a custom template by uploading a PPTX file and then editing the template to your liking.",
-    },
-    {
-        question: "How do I edit a custom template?",
-        answer: "You can edit a custom template by uploading a PPTX file and then editing the template to your liking.",
-    },
-    {
-        question: "How do I delete a custom template?",
-        answer: "You can delete a custom template by uploading a PPTX file and then editing the template to your liking.",
-    },
-    {
-        question: "How do I create a custom template?",
-        answer: "You can create a custom template by uploading a PPTX file and then editing the template to your liking.",
-    },
-    {
-        question: "How do I edit a custom template?",
-        answer: "You can edit a custom template by uploading a PPTX file and then editing the template to your liking.",
-    },
-    {
-        question: "How do I delete a custom template?",
-        answer: "You can delete a custom template by uploading a PPTX file and then editing the template to your liking.",
+        title: "Единый стиль",
+        description: "AI генерирует непредсказуемые макеты, требующие постоянной правки",
     },
 ]

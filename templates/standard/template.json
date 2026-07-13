@@ -1,7 +1,7 @@
 {
   "id": "dd31ac17-b50a-4579-8aed-a5c7cad80f9c",
-  "name": "Standard",
-  "description": "Balanced, versatile layouts for clear business and everyday presentations.",
+  "name": "Стандартный",
+  "description": "Сбалансированные универсальные макеты для деловых и повседневных презентаций.",
   "thumbnail": "static/thumbnail.png",
   "merged_components": [
     {
