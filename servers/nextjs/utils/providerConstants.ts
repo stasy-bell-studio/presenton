@@ -124,7 +124,7 @@ export const IMAGE_PROVIDERS: Record<string, ImageProviderOption> = {
     label: "DeepSeek Image",
     description: "DeepSeek image generation model",
     icon: "/providers/openai.png",
-    requiresApiKey: ***
+    requiresApiKey: true,
     apiKeyField: "DEEPSEEK_API_KEY",
     apiKeyFieldLabel: "DeepSeek API Key",
     getApiKeyUrl: "https://www.google.com/search?q=how+to+get+deepseek+api+key",
