@@ -527,15 +527,15 @@ const PresentationHeader = ({
             onClick={() => {
               router.push("/dashboard");
             }}
-             src="/logo-white.png"
-             alt="Presenton"
-             className="w-8 h-8 cursor-pointer object-contain"
+             src="/logo-gor.svg"
+             alt="Preza21vek"
+             className="w-8 h-8 cursor-pointer object-contain rounded-full"
           />
            <div className="bg-[#EC6608] rounded-full cursor-pointer p-1 flex justify-center items-center">
-             <img src="/logo-white.png" alt="Presenton" className="h-[32px] object-contain" onClick={() => { router.push("/dashboard"); }} />
+             <img src="/logo-gor.svg" alt="Preza21vek" className="h-[32px] object-contain" onClick={() => { router.push("/dashboard"); }} />
            </div>
           {presentationData && !isStreaming && !isEditingTitle ? (
-            <ToolTip content="Rename presentation">{titleBlock}</ToolTip>
+            <ToolTip content="Переименовать">{titleBlock}</ToolTip>
           ) : (
             titleBlock
           )}
@@ -548,7 +548,7 @@ const PresentationHeader = ({
             </div>
           )}
           <div className="flex items-center gap-2 bg-[#F6F6F9] px-3.5 h-[38px] border border-[#EDECEC] rounded-[80px]">
-            <ToolTip content="Regenerate Presentation">
+            <ToolTip content="Пересоздать презентацию">
               <button
                 type="button"
                 onClick={() => setIsRegenerateConfirmOpen(true)}
@@ -558,7 +558,7 @@ const PresentationHeader = ({
               </button>
             </ToolTip>
             <Separator orientation="vertical" className="h-4" />
-            <ToolTip content="Undo">
+            <ToolTip content="Отменить">
               <button
                 disabled={!canUndo}
                 className=" disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer group"
@@ -570,7 +570,7 @@ const PresentationHeader = ({
               </button>
             </ToolTip>
             <Separator orientation="vertical" className="h-4" />
-            <ToolTip content="Redo">
+            <ToolTip content="Повторить">
               <button
                 disabled={!canRedo}
                 className=" disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer group"
@@ -582,7 +582,7 @@ const PresentationHeader = ({
               </button>
             </ToolTip>
             <Separator orientation="vertical" className="h-4 w-[2px]" />
-            <ToolTip content="Present">
+            <ToolTip content="Показ">
               <button
                 onClick={() => {
                   const to = `?id=${presentation_id}&mode=present&slide=${currentSlide || 0
@@ -621,7 +621,7 @@ const PresentationHeader = ({
                 {isExporting ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  "Export"
+                  "Экспорт"
                 )}{" "}
                 <ArrowRightFromLine className="w-3.5 h-3.5" />
               </button>
@@ -645,11 +645,10 @@ const PresentationHeader = ({
               <AlertTriangle className="h-6 w-6 text-red-500" />
             </div>
             <DialogTitle className="text-lg font-semibold text-[#191919]">
-              Regenerate Presentation?
+              Пересоздать презентацию?
             </DialogTitle>
             <DialogDescription className="text-sm leading-relaxed text-gray-500">
-              This will replace the current slides with a newly generated
-              version and clear undo history. Your current edits may be lost.
+              Текущие слайды будут заменены новой версией, а история отмены очищена. Текущие правки могут быть потеряны.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-row border-t border-gray-100 p-0 sm:space-x-0">
@@ -659,7 +658,7 @@ const PresentationHeader = ({
               onClick={() => setIsRegenerateConfirmOpen(false)}
               className="h-auto flex-1 rounded-none rounded-bl-2xl px-4 py-3.5 text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-700"
             >
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
@@ -667,7 +666,7 @@ const PresentationHeader = ({
               onClick={handleReGenerate}
               className="h-auto flex-1 rounded-none rounded-br-2xl border-l border-gray-100 px-4 py-3.5 text-sm font-medium text-red-500 hover:bg-red-50 hover:text-red-600"
             >
-              Regenerate
+              Пересоздать
             </Button>
           </DialogFooter>
         </DialogContent>

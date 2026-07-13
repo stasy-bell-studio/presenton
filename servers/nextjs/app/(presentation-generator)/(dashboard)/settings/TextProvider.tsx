@@ -389,15 +389,15 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
         console.error("Failed to fetch models");
         setAvailableModels([]);
         setModelsChecked(true);
-        notify.error("Could not load models", message);
+        notify.error("Не удалось загрузить модели", message);
       }
     } catch (error) {
       console.error("Error fetching models:", error);
       notify.error(
-        selectedProvider === "ollama" ? "Could not connect to Ollama" : "Could not load models",
+        selectedProvider === "ollama" ? "Не удалось подключиться к Ollama" : "Не удалось загрузить модели",
         error instanceof Error
           ? error.message
-          : "Something went wrong while contacting the provider. Check your network and try again."
+          : "Что-то пошло не так при обращении к провайдеру. Проверьте сеть и попробуйте снова."
       );
       setAvailableModels([]);
       setModelsChecked(true);
@@ -456,10 +456,10 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
             </svg>
           </div>
           <h3 className="text-xl font-normal text-[#191919] py-2.5">
-            Text Generation Settings
+            Настройки генерации текста
           </h3>
           <p className=" text-sm  text-gray-500">
-            Choosing where text content comes from
+            Выбор источника текстового контента
           </p>
         </div>
         <div className="flex min-w-0 flex-1 flex-col items-stretch justify-end gap-4 sm:items-end">
@@ -475,7 +475,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
             >
               <div className="flex flex-col justify-start ">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Select Text Provider
+                  Выберите текстовый провайдер
                 </label>
                 <Popover
                   open={openProviderSelect}
@@ -493,7 +493,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                           {llmConfig.LLM
                             ? LLM_PROVIDERS[llmConfig.LLM]?.label ||
                               llmConfig.LLM
-                            : "Select text provider"}
+                            : "Выберите текстовый провайдер"}
                         </span>
                       </div>
                       <ChevronUp className="w-4 h-4 text-gray-500" />
@@ -505,9 +505,9 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                     style={{ width: "300px" }}
                   >
                     <Command>
-                      <CommandInput placeholder="Search provider..." />
+                      <CommandInput placeholder="Поиск провайдера..." />
                       <CommandList>
-                        <CommandEmpty>No provider found.</CommandEmpty>
+                        <CommandEmpty>Провайдер не найден.</CommandEmpty>
                         <CommandGroup>
                           {Object.values(LLM_PROVIDERS).map(
                             (provider, index) => (
@@ -617,8 +617,8 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                         className="w-full px-2 py-3 outline-none border  border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                         placeholder={
                           selectedProvider === "litellm"
-                            ? "Optional if your proxy does not require auth"
-                            : `Enter your ${providerApiKeyLabel}`
+                            Необязательно, если прокси без авторизации
+                            : `Введите ${providerApiKeyLabel}`
                         }
                       />
                       <button
@@ -657,7 +657,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                         type="button"
                         className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-gray-200 bg-[#F9F9FA] px-3 py-2.5 text-left text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100"
                       >
-                        <span>Advanced settings</span>
+                        <span>Расширенные настройки</span>
                         <ChevronDown
                           className={cn(
                             "h-4 w-4 shrink-0 text-gray-600 transition-transform duration-200",
@@ -670,7 +670,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                     <CollapsibleContent className="space-y-3 overflow-hidden">
                       <div className="space-y-1.5 border-t border-gray-100 pt-3">
                         <label className="block text-sm font-medium text-gray-700">
-                          DeepSeek base URL (optional)
+                          Базовый URL DeepSeek (необязательно)
                         </label>
                         <input
                           type="text"
@@ -688,7 +688,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                 {selectedProvider === "litellm" && (
                   <>
                     <label className="mt-3 block text-sm font-medium text-gray-700 mb-2">
-                      LiteLLM base URL
+                      Базовый URL LiteLLM
                     </label>
                     <input
                       type="text"
@@ -709,7 +709,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                 {selectedProvider === "lmstudio" && (
                   <>
                     <label className="mt-3 block text-sm font-medium text-gray-700 mb-2">
-                      LM Studio base URL
+                      Базовый URL LM Studio
                     </label>
                     <input
                       type="text"
@@ -729,7 +729,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                 {selectedProvider === "fireworks" && (
                   <>
                     <label className="mt-3 block text-sm font-medium text-gray-700 mb-2">
-                      Fireworks base URL (optional)
+                      Базовый URL Fireworks (необязательно)
                     </label>
                     <input
                       type="text"
@@ -745,7 +745,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                 {selectedProvider === "together" && (
                   <>
                     <label className="mt-3 block text-sm font-medium text-gray-700 mb-2">
-                      Together base URL (optional)
+                      Базовый URL Together (необязательно)
                     </label>
                     <input
                       type="text"
@@ -803,10 +803,10 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                     {modelsLoading ? (
                       <span className="flex items-center justify-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Checking for models...
+                        Проверка моделей...
                       </span>
                     ) : (
-                      "Check models"
+                      "Проверить модели"
                     )}
                   </button>
                 )}
@@ -821,8 +821,8 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-3">
                   {selectedProvider === "ollama"
-                    ? "Choose an Ollama model"
-                    : `Select ${modelLabel} Model`}
+                    ? "Выберите модель Ollama"
+                    : `Выберите модель ${modelLabel}`}
                 </label>
                 <div className="w-full">
                   <Popover
@@ -838,7 +838,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                       >
                         <span className="text-sm truncate font-medium text-gray-900">
                           {(() => {
-                            if (!currentModel) return "Select a model";
+                            if (!currentModel) return "Выберите модель";
                             const selectedModel = modelOptions.find(
                               (model) => model.value === currentModel
                             );
@@ -862,14 +862,14 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                       style={{ width: "var(--radix-popover-trigger-width)" }}
                     >
                       <Command>
-                        <CommandInput placeholder="Search models..." />
+                        <CommandInput placeholder="Поиск моделей..." />
                         <CommandList>
-                          <CommandEmpty>No model found.</CommandEmpty>
+                          <CommandEmpty>Модель не найдена.</CommandEmpty>
                           <CommandGroup>
                             {modelsLoading ? (
                               <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-gray-600">
                                 <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
-                                Fetching models...
+                                Загрузка моделей...
                               </div>
                             ) : null}
                             {modelOptions.map((model) => (
@@ -955,8 +955,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
       {selectedProvider !== "ollama" && modelsChecked && availableModels.length === 0 && (
         <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
           <p className="text-sm text-yellow-800">
-            No models found. Please make sure your provider credentials are
-            valid and the selected provider is reachable.
+            Модели не найдены. Убедитесь, что учётные данные провайдера корректны и провайдер доступен.
           </p>
         </div>
       )}

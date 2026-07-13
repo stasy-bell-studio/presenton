@@ -82,16 +82,16 @@ const WebSearchProvider = ({
               <Search className="h-7 w-7 text-[#5146E5]" />
             </div>
             <h3 className="py-2.5 text-xl font-normal text-[#191919]">
-              Web Search Settings
+              Настройки веб-поиска
             </h3>
             <p className="text-sm text-gray-500">
-              Choose a provider to enable web search, or leave it disabled.
+              Выберите провайдера для веб-поиска или оставьте отключённым.
             </p>
           </div>
           {isWebSearchEnabled && <div className="w-full max-w-[720px] space-y-4">
                 <div className="ml-auto w-[222px]">
                   <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Provider
+                    Провайдер
                   </label>
                   <div className="w-full">
                     <Popover open={openProviderSelect} onOpenChange={setOpenProviderSelect}>
@@ -105,16 +105,16 @@ const WebSearchProvider = ({
                           <span className="truncate text-sm font-medium text-gray-900">
                             {selected
                               ? WEB_SEARCH_PROVIDERS[selected]?.label || selected
-                              : "Select web search provider"}
+                              : "Выберите провайдера поиска"}
                           </span>
                           <ChevronUp className="h-4 w-4 text-gray-500" />
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent className="p-0" align="start" style={{ width: "320px" }}>
                         <Command>
-                          <CommandInput placeholder="Search provider..." />
+                          <CommandInput placeholder="Поиск провайдера..." />
                           <CommandList>
-                            <CommandEmpty>No provider found.</CommandEmpty>
+                            <CommandEmpty>Провайдер не найден.</CommandEmpty>
                             <CommandGroup>
                               {WEB_SEARCH_PROVIDER_OPTIONS.map((option) => (
                                 <CommandItem
@@ -157,8 +157,7 @@ const WebSearchProvider = ({
 
                 {selected === "auto" && (
                   <div className="rounded-lg border border-[#D9D6FE] bg-[#F4F3FF] p-3 text-xs text-[#5146E5]">
-                    Model-native web grounding is preferred when available.
-                    Otherwise, external search fallback is used.
+                    Встроенный поиск модели предпочтителен. При недоступности используется внешний поиск.
                   </div>
                 )}
 
@@ -217,7 +216,7 @@ const WebSearchProvider = ({
                 {selected && selected !== "auto" && (
                   <div>
                     <label className="mb-2 block text-sm font-medium text-[#4C5554]">
-                      Maximum results
+                      Максимум результатов
                     </label>
                     <input
                       type="number"

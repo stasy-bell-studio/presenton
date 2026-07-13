@@ -158,7 +158,7 @@ const SupportingDoc = ({
         <div className="space-y-2 min-[1800px]:space-y-3" data-testid="attachments-uploader">
             <div className="flex items-center justify-between">
                 <p className="font-syne text-sm text-gray-600 min-[1800px]:text-base min-[2200px]:text-lg">
-                    {hasFiles ? `${filteredFiles.length} attachment${filteredFiles.length > 1 ? 's' : ''}` : ''}
+                    {hasFiles ? `${filteredFiles.length} влож.` : ''}
                 </p>
                 {hasFiles && <button
                     type="button"

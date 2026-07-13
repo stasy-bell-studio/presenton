@@ -33,7 +33,7 @@ const OutlinePromptBar: React.FC<OutlinePromptBarProps> = ({
     <section className="w-full font-syne">
       <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <span className="text-sm font-semibold text-[#191919]">Prompt</span>
+          <span className="text-sm font-semibold text-[#191919]">Запрос</span>
           <ConfigurationSelects
             config={config}
             onConfigChange={onConfigChange}
@@ -61,15 +61,15 @@ const OutlinePromptBar: React.FC<OutlinePromptBarProps> = ({
               onRegenerate();
             }
           }}
-          placeholder="Describe the presentation you want to generate"
+          placeholder="Опишите презентацию, которую хотите создать"
           className="min-h-[88px] resize-none border-0 bg-transparent py-5 pl-6 pr-16 text-base font-medium leading-6 text-[#191919] shadow-none outline-none placeholder:text-[#8C8C8C] focus-visible:ring-0 focus-visible:ring-offset-0 disabled:cursor-not-allowed sm:pr-44"
         />
         <button
           type="button"
           onClick={onRegenerate}
           disabled={isRegenerateDisabled}
-          aria-label="Regenerate outline"
-          title="Regenerate outline"
+          aria-label="Пересоздать структуру"
+          title="Пересоздать структуру"
           className={cn(
             "absolute right-5 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center gap-2 rounded-full px-0 text-xs font-semibold text-[#191919] transition hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A00FF]/25 sm:w-auto sm:px-4",
             isRegenerateDisabled && "cursor-not-allowed opacity-70"
@@ -82,12 +82,12 @@ const OutlinePromptBar: React.FC<OutlinePromptBarProps> = ({
           {isBusy ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="hidden sm:inline">Regenerating</span>
+              <span className="hidden sm:inline">Пересоздание</span>
             </>
           ) : (
             <>
               <RefreshCw className="h-4 w-4" />
-              <span className="hidden sm:inline">Regenerate</span>
+              <span className="hidden sm:inline">Пересоздать</span>
             </>
           )}
         </button>

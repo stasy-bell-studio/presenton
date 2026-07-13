@@ -103,13 +103,13 @@ export const PresentationCard = ({
         presentation_id: id,
         slide_count: presentation?.slides?.length || 0,
       });
-      notify.success("Presentation deleted", "The presentation was removed from your dashboard.");
+      notify.success("Презентация удалена", "Презентация удалена из панели управления.");
       setShowDeleteDialog(false);
       if (onDeleted) {
         onDeleted(id);
       }
     } else {
-      notify.error("Could not delete presentation", response?.message || "Something went wrong while deleting the presentation.");
+      notify.error("Не удалось удалить презентацию", response?.message || "Что-то пошло не так при удалении.");
     }
     setIsDeleting(false);
   };
@@ -125,12 +125,12 @@ export const PresentationCard = ({
         duplicate_presentation_id: duplicated?.id,
         slide_count: presentation?.slides?.length || 0,
       });
-      notify.success("Presentation duplicated", "A copy was added to your dashboard.");
+      notify.success("Презентация скопирована", "Копия добавлена в панель управления.");
       onDuplicated?.(duplicated);
     } catch (error) {
       notify.error(
-        "Could not duplicate presentation",
-        error instanceof Error ? error.message : "Something went wrong while duplicating the presentation."
+        "Не удалось скопировать презентацию",
+        error instanceof Error ? error.message : "Что-то пошло не так при копировании."
       );
     } finally {
       setIsDuplicating(false);
@@ -212,7 +212,7 @@ export const PresentationCard = ({
                     setShowDeleteDialog(true);
                   }}
                 >
-                  <p>Delete</p>
+                  <p>Удалить</p>
                   <Trash className="w- h-4 text-red-500" />
                 </button>
               </PopoverContent>
@@ -244,12 +244,12 @@ export const PresentationCard = ({
                 <AlertTriangle className="h-6 w-6 text-red-500" />
               </div>
               <h3 className="mb-2 text-lg font-semibold text-[#191919]">
-                Delete Presentation?
+                Удалить презентацию?
               </h3>
               <p className="text-sm leading-relaxed text-gray-500">
-                You are about to delete{" "}
+                Вы собираетесь удалить{" "}
                 <span className="font-medium text-gray-700">&quot;{title}&quot;</span>.
-                This action cannot be undone.
+                Это действие нельзя отменить.
               </p>
             </div>
             <div className="flex border-t border-gray-100">
@@ -258,7 +258,7 @@ export const PresentationCard = ({
                 disabled={isDeleting}
                 className="flex-1 px-4 py-3.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Cancel
+                Отмена
               </button>
               <button
                 onClick={() => void handleDelete()}
@@ -268,10 +268,10 @@ export const PresentationCard = ({
                 {isDeleting ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Deleting...
+                    Удаление...
                   </>
                 ) : (
-                  "Delete"
+                  "Удалить"
                 )}
               </button>
             </div>

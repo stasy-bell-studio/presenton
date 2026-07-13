@@ -61,12 +61,12 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
             return (
                 <div className="w-[205px] mr-0 ml-auto">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                        DALL·E 3 Image Quality
+                        Качество DALL·E 3
                     </label>
                     <div className="">
                         <Select value={llmConfig.DALL_E_3_QUALITY || 'standard'} onValueChange={(value) => input_field_changed(value, "DALL_E_3_QUALITY")}>
                             <SelectTrigger className="w-full h-12 px-4 py-4 outline-none border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors hover:border-gray-400 justify-between">
-                                <SelectValue placeholder="Select a quality" />
+                                <SelectValue placeholder="Выберите качество" />
                             </SelectTrigger>
                             <SelectContent>
                                 {DALLE_3_QUALITY_OPTIONS.map((option) => (
@@ -84,7 +84,7 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
             return (
                 <div className="w-[205px]">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                        GPT Image 1.5 Quality
+                        Качество GPT Image 1.5
                     </label>
                     <div className="">
                         <Select
@@ -94,7 +94,7 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                             <SelectTrigger
 
                                 className="w-full h-12 px-4 py-4 outline-none border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors hover:border-gray-400 justify-between">
-                                <SelectValue placeholder="Select a quality" />
+                                <SelectValue placeholder="Выберите качество" />
                             </SelectTrigger>
                             <SelectContent>
                                 {GPT_IMAGE_1_5_QUALITY_OPTIONS.map((option) => (
@@ -118,7 +118,7 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
         <div className="space-y-6 bg-[#F9F8F8] p-7 rounded-[12px] ">
             {/* API Key Input */}
             <div className="mb-4  bg-white p-10 pt-5 rounded-[12px]">
-                <ToolTip content="Enable/Disable Image Generation" className='flex justify-end items-center'>
+                <ToolTip content="Вкл/выкл генерацию изображений" className='flex justify-end items-center'>
                     <div className='flex justify-end items-center'>
                         <Switch
                             checked={!isImageGenerationDisabled}
@@ -137,9 +137,9 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                         >
                             <img src="/image-markup.svg" className='w-full h-full object-cover' alt='image-markup' />
                         </div>
-                        <h3 className="text-xl font-normal text-[#191919] py-2.5">Image Generation Settings</h3>
+                        <h3 className="text-xl font-normal text-[#191919] py-2.5">Настройки генерации изображений</h3>
                         <p className=" text-sm  text-gray-500">
-                            Choosing where images come from
+                            Выбор источника изображений
                         </p>
                     </div>
                     <div className=' '>
@@ -151,7 +151,7 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                                     {/* Image Provider Selection */}
                                     <div className="">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Select Image Provider
+                                            Выберите провайдера изображений
                                         </label>
                                         <div className="w-full">
                                             <Popover
@@ -169,7 +169,7 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                                                             <span className="text-sm font-medium text-gray-900">
                                                                 {llmConfig.IMAGE_PROVIDER
                                                                     ? IMAGE_PROVIDERS[llmConfig.IMAGE_PROVIDER]?.label || llmConfig.IMAGE_PROVIDER
-                                                                    : "Select image provider"}
+                                                                    : "Выберите провайдера изображений"}
                                                             </span>
                                                         </div>
                                                         <ChevronUp className="w-4 h-4 text-gray-500" />
@@ -181,9 +181,9 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                                                     style={{ width: "300px" }}
                                                 >
                                                     <Command>
-                                                        <CommandInput placeholder="Search provider..." />
+                                                        <CommandInput placeholder="Поиск провайдера..." />
                                                         <CommandList>
-                                                            <CommandEmpty>No provider found.</CommandEmpty>
+                                                            <CommandEmpty>Провайдер не найден.</CommandEmpty>
                                                             <CommandGroup>
                                                                 {Object.values(IMAGE_PROVIDERS).map((provider) => (
                                                                     <CommandItem
@@ -405,12 +405,12 @@ const ImageProvider = ({ llmConfig, setLlmConfig }: { llmConfig: LLMConfig, setL
                     <>
                         <div className="mb-4 rounded-lg border border-yellow-200 bg-yellow-50 p-3">
                             <p className="text-sm text-yellow-800">
-                                No models found. Please make sure your provider credentials are valid and the selected provider is reachable.
+                                Модели не найдены. Убедитесь, что учётные данные провайдера корректны и провайдер доступен.
                             </p>
                         </div>
                         <div className="flex w-full justify-end">
                             <div className="w-[205px]">
-                                <label className="mb-2 block text-sm font-medium text-gray-700">Image model id</label>
+                                <label className="mb-2 block text-sm font-medium text-gray-700">ID модели изображений</label>
                                 <input
                                     type="text"
                                     placeholder="e.g. dall-e-3, gpt-image-1"

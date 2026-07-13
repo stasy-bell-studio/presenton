@@ -109,7 +109,7 @@ const DashboardPage: React.FC = () => {
 
           <img
             src="/create_presentation_bg.png"
-            alt="Background of the create presentation card"
+            alt="Фон карточки создания презентации"
             className="relative bg-white z-10 h-[89.983px] w-[304px] max-w-full rounded-[10.8px] object-cover"
           />
           <span className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 text-center font-syne text-sm font-medium text-[#191919]">
@@ -125,8 +125,8 @@ const DashboardPage: React.FC = () => {
           <button
             type="button"
             className="flex h-8 w-8 items-center justify-center rounded-full text-[#2F3033] transition-colors hover:bg-[#F3F3F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608]"
-            title="Toggle deck sort order"
-            aria-label="Toggle deck sort order"
+            title="Сменить порядок сортировки"
+            aria-label="Сменить порядок сортировки"
             onClick={() =>
               setDeckSortDirection((current) =>
                 current === "desc" ? "asc" : "desc"

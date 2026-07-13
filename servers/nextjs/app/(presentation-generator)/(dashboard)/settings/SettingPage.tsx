@@ -54,7 +54,7 @@ const SettingsPage = () => {
   const [buttonState, setButtonState] = useState<ButtonState>({
     isLoading: false,
     isDisabled: false,
-    text: "Save Configuration",
+    text: "Сохранить конфигурацию",
     showProgress: false,
   });
 
@@ -163,7 +163,7 @@ const SettingsPage = () => {
     });
     const validationError = getLLMConfigValidationError(llmConfig);
     if (validationError) {
-      notify.warning("Cannot save settings", validationError);
+      notify.warning("Не удалось сохранить", validationError);
       if (
         selectedProvider === "image-provider" &&
         ((llmConfig.LLM === "openai" && !String(llmConfig.OPENAI_MODEL || "").trim()) ||
@@ -184,7 +184,7 @@ const SettingsPage = () => {
         ...prev,
         isLoading: true,
         isDisabled: true,
-        text: "Saving Configuration...",
+        text: "Сохранение...",
       }));
       trackEvent(MixpanelEvent.Settings_SaveConfiguration_API_Call);
       if (
@@ -201,26 +201,26 @@ const SettingsPage = () => {
       }
       await handleSaveLLMConfig(llmConfig);
       notify.success(
-        "Settings saved",
-        "Your configuration was saved successfully."
+        "Настройки сохранены",
+        "Конфигурация успешно сохранена."
       );
       setButtonState((prev) => ({
         ...prev,
         isLoading: false,
         isDisabled: false,
-        text: "Save Configuration",
+        text: "Сохранить конфигурацию",
       }));
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
           : "Something went wrong while saving.";
-      notify.error("Could not save settings", message);
+      notify.error("Не удалось сохранить настройки", message);
       setButtonState((prev) => ({
         ...prev,
         isLoading: false,
         isDisabled: false,
-        text: "Save Configuration",
+        text: "Сохранить конфигурацию",
       }));
     }
   };
@@ -277,15 +277,15 @@ const SettingsPage = () => {
     : textProviderLabel;
 
   const imageSummary = llmConfig.DISABLE_IMAGE_GENERATION
-    ? "Image generation disabled"
+    ? "Генерация изображений отключена"
     : llmConfig.IMAGE_PROVIDER
       ? IMAGE_PROVIDERS[llmConfig.IMAGE_PROVIDER]?.label ||
       llmConfig.IMAGE_PROVIDER
-      : "No image provider";
+      : "Нет провайдера изображений";
   const webSearchProviderKey = (llmConfig.WEB_SEARCH_PROVIDER || "").toLowerCase();
   const webSearchSummary = llmConfig.WEB_GROUNDING
-    ? `Web: ${WEB_SEARCH_PROVIDERS[webSearchProviderKey]?.label || "No provider"}`
-    : "Web search disabled";
+    ? `Поиск: ${WEB_SEARCH_PROVIDERS[webSearchProviderKey]?.label || "Нет провайдера"}`
+    : "Поиск отключён";
 
 
   useEffect(() => {
@@ -375,7 +375,7 @@ const SettingsPage = () => {
           <div className="sticky top-0 right-0 z-50 py-[28px]   backdrop-blur mb-4 ">
             <div className="flex  gap-3 items-center ">
               <h3 className=" text-[28px] tracking-[-0.84px] font-unbounded font-normal text-black flex items-center gap-2">
-                Settings
+                Настройки
               </h3>
               <p className="text-[10px] px-2.5 py-0.5 rounded-[50px] text-[#EC6608] border border-[#EDEEEF]  font-medium ">
                 {textSummary} · {imageSummary} · {webSearchSummary}
@@ -393,13 +393,13 @@ const SettingsPage = () => {
           {selectedProvider === "session" && (
             <div className="w-full max-w-lg space-y-5 rounded-[20px] border border-[#EDEEEF] bg-white p-7">
               <div>
-                <h4 className="font-unbounded text-lg font-normal text-black">Sign out</h4>
+                <h4 className="font-unbounded text-lg font-normal text-black">Выйти</h4>
                 <p className="mt-2 font-syne text-sm leading-relaxed text-[#494A4D]">
-                  End your session on this deployment. You will need to sign in again to use the app and access the API.
+                  Завершить сеанс. Для продолжения работы потребуется повторный вход.
                 </p>
               </div>
               <LogoutButton
-                label="Sign out"
+                label="Выйти"
                 className="inline-flex w-full items-center justify-center gap-2 rounded-[58px] border border-[#EDEEEF] bg-[#EC6608] px-5 py-3 font-syne text-xs font-semibold text-white transition hover:bg-[#d45c07] disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>

@@ -154,7 +154,7 @@ const OutlinePage: React.FC = () => {
   const handleTabChange = (tab: string) => {
     if (tab === TABS.OUTLINE) {
       if (!hasSelectedTemplate) {
-        toast.error("Please select a template first");
+        toast.error("Сначала выберите шаблон");
         return;
       }
 
@@ -204,17 +204,17 @@ const OutlinePage: React.FC = () => {
     }
 
     if (!draftConfig.language) {
-      toast.error("Please select language");
+      toast.error("Выберите язык");
       return;
     }
 
     if (documentPaths.length > 0 && draftConfig.language === LanguageType.Russian) {
-      toast.error("Please choose a language before regenerating from documents");
+      toast.error("Выберите язык перед пересозданием из документов");
       return;
     }
 
     if (!draftConfig.prompt.trim() && documentPaths.length === 0) {
-      toast.error("No Prompt or Document Provided");
+      toast.error("Не указан запрос или документ");
       return;
     }
 
@@ -266,8 +266,8 @@ const OutlinePage: React.FC = () => {
           "Failed to regenerate outline"
         ),
       });
-      toast.error("Outline Error", {
-        description: error.message || "Failed to regenerate outline.",
+      toast.error("Ошибка структуры", {
+        description: error.message || "Не удалось пересоздать структуру.",
       });
     } finally {
       setIsRegeneratingOutline(false);
@@ -346,7 +346,7 @@ const OutlinePage: React.FC = () => {
                       value={TABS.LAYOUTS}
                       className="relative rounded-full px-5 py-2 text-xs font-medium text-[#2D2D2D] shadow-none data-[state=active]:bg-[#F4F3FF] data-[state=active]:text-[#7E3AF2] data-[state=active]:shadow-none"
                     >
-                      Select Template
+                      Выбрать шаблон
                     </TabsTrigger>
                     <Separator orientation="vertical" className="mx-1 h-6" />
                     <TabsTrigger
@@ -357,7 +357,7 @@ const OutlinePage: React.FC = () => {
                         !isOutlineReady && "cursor-not-allowed opacity-50"
                       )}
                     >
-                      Outline & Content
+                      Структура и контент
                     </TabsTrigger>
                   </TabsList>
                 </div>
