@@ -617,7 +617,7 @@ const TextProvider = ({ onInputChange, llmConfig }: OpenAIConfigProps) => {
                         className="w-full px-2 py-3 outline-none border  border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors"
                         placeholder={
                           selectedProvider === "litellm"
-                            "Необязательно, если прокси без авторизации"
+                            ? "Необязательно, если прокси без авторизации"
                             : `Введите ${providerApiKeyLabel}`
                         }
                       />
