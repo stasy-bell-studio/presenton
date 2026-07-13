@@ -34,7 +34,7 @@ import { MixpanelEvent, trackEvent } from "@/utils/mixpanel";
 
 const DEFAULT_OUTLINE_CONFIG: PresentationConfig = {
   slides: null,
-  language: LanguageType.Auto,
+  language: LanguageType.Russian,
   prompt: "",
   tone: ToneType.Default,
   verbosity: VerbosityType.Standard,
@@ -208,7 +208,7 @@ const OutlinePage: React.FC = () => {
       return;
     }
 
-    if (documentPaths.length > 0 && draftConfig.language === LanguageType.Auto) {
+    if (documentPaths.length > 0 && draftConfig.language === LanguageType.Russian) {
       toast.error("Please choose a language before regenerating from documents");
       return;
     }
