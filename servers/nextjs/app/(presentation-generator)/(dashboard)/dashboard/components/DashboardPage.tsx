@@ -13,25 +13,11 @@ const actionCardBase =
   "absolute aspect-[16/9] h-[46.238px] w-[82.201px] rounded-[4.474px] border border-white/50 bg-cover bg-center bg-no-repeat shadow-[0_8px_18px_rgba(16,24,40,0.18)] transition-all duration-500 ease-out opacity-100 translate-y-0 scale-100";
 
 const FloatingActionCards = () => (
-  <div className="pointer-events-none absolute right-[14px] top-[-36px] z-0 block h-[64px] w-[158px]">
-    <div
-      className={`${actionCardBase} left-0 top-0 border-none group-hover/action:-translate-x-2 group-hover/action:-rotate-3 group-focus-visible/action:-translate-x-2 group-focus-visible/action:-rotate-3`}
-      style={{
-        backgroundImage: "url('/create_presentation_card_3.png')",
-      }}
-    />
-    <div
-      className={`${actionCardBase} left-[39px] top-1 z-10 border-none group-hover/action:-translate-y-1 group-hover/action:scale-105 group-focus-visible/action:-translate-y-1 group-focus-visible/action:scale-105`}
-      style={{
-        backgroundImage: "url('/create_presentation_card_2.png')",
-      }}
-    />
-    <div
-      className={`${actionCardBase} left-[76px] top-0 border-none group-hover/action:translate-x-2 group-hover/action:rotate-3 group-focus-visible/action:translate-x-2 group-focus-visible/action:rotate-3`}
-      style={{
-        backgroundImage: "url('/create_presentation_card_1.png')",
-      }}
-    />
+  <div className="pointer-events-none absolute right-[14px] top-[-36px] z-0">
+    <svg width="90" height="64" viewBox="0 0 90 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M45 0 L52 24 L76 28 L52 32 L45 56 L38 32 L14 28 L38 24 Z" fill="#EC6608" opacity="0.2"/>
+      <path d="M45 8 L48 20 L60 22 L48 24 L45 36 L42 24 L30 22 L42 20 Z" fill="#EC6608" opacity="0.35"/>
+    </svg>
   </div>
 );
 
@@ -106,7 +92,7 @@ const DashboardPage: React.FC = () => {
       </div>
       <section className="relative z-10 overflow-visible  ">
         <h2 className="font-syne text-base bg-transparent font-medium pb-3.5  text-[#333333] ">
-          Actions
+          Действия
         </h2>
         <Link
           href="/upload"
@@ -117,7 +103,7 @@ const DashboardPage: React.FC = () => {
             })
           }
           className="group/action bg-white z-50 mt-2  relative  block w-[304px] max-w-full overflow-visible rounded-[10.8px] outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608] focus-visible:ring-offset-4 cursor-pointer"
-          aria-label="Create presentation"
+          aria-label="Создать презентацию"
         >
           <FloatingActionCards />
 
@@ -127,14 +113,14 @@ const DashboardPage: React.FC = () => {
             className="relative bg-white z-10 h-[89.983px] w-[304px] max-w-full rounded-[10.8px] object-cover"
           />
           <span className="absolute left-1/2 top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 text-center font-syne text-sm font-medium text-[#191919]">
-            Create Presentation
+            Создать презентацию
           </span>
         </Link>
       </section>
       <section className="relative z-10 mt-12">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-syne text-base font-medium  text-[#333333] ">
-            Decks
+            Мои презентации
           </h2>
           <button
             type="button"

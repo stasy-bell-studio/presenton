@@ -184,7 +184,7 @@ const SlideCountSelect: React.FC<{
               {SLIDE_OPTIONS.map((option) => (
                 <CommandItem
                   key={option}
-                  value={`${option} slides`}
+                  value={`${option} слайдов`}
                   role="option"
                   onPointerDownCapture={() => {
                     isSelectingPresetRef.current = true;
@@ -206,7 +206,7 @@ const SlideCountSelect: React.FC<{
                       value === option ? "opacity-100" : "opacity-0"
                     )}
                   />
-                  {option} slides
+                  {option} слайдов
                 </CommandItem>
               ))}
             </CommandGroup>
@@ -237,7 +237,7 @@ const LanguageSelect: React.FC<{
       >
         <Languages className="h-3.5 w-3.5 flex-shrink-0 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5" />
         <span className="flex-1 truncate text-xs font-medium min-[1800px]:text-sm min-[2200px]:text-base">
-          {value || "Select language"}
+          {value || "Выберите язык"}
         </span>
         {/* <span className="w-[50%] text-left">
         </span> */}
@@ -251,7 +251,7 @@ const LanguageSelect: React.FC<{
           className="font-instrument_sans"
         />
         <CommandList>
-          <CommandEmpty>No language found.</CommandEmpty>
+          <CommandEmpty>Язык не найден.</CommandEmpty>
           <CommandGroup>
             {Object.values(LanguageType).map((language) => (
               <CommandItem

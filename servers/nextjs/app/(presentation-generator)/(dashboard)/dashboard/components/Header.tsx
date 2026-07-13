@@ -28,10 +28,10 @@ const Header = () => {
 
   const backHref = backToUpload ? "/upload" : backToTemplates ? "/templates" : "/dashboard";
   const backLabel = backToUpload
-    ? "BACK"
-    : backToTemplates
-      ? "BACK"
-      : "BACK";
+    ? "НАЗАД"
+    : isTemplatePage
+      ? "НАЗАД"
+      : "НАЗАД";
 
   return (
     <div className="w-full   sticky top-0 z-50 py-7 "
@@ -44,11 +44,13 @@ const Header = () => {
         <div className="flex items-center justify-between py-1">
           <div className="flex items-center gap-3">
             <Link href="/dashboard" onClick={() => trackEvent(MixpanelEvent.Navigation, { from: pathname, to: "/dashboard" })}>
-              <img
-                src="/logo-with-bg.png"
-                alt="Presentation logo"
-                className="h-[40px] w-[40px]"
-              />
+              <div className="bg-[#EC6608] rounded-full p-1 flex justify-center items-center">
+                <img
+                  src="/logo-gor.svg"
+                  alt="21 век"
+                  className="h-[28px] w-auto"
+                />
+              </div>
             </Link>
           </div>
           <div className="flex items-center">

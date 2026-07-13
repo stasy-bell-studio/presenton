@@ -29,7 +29,7 @@ export const normalizeLLMConfig = (llmConfig: LLMConfig): LLMConfig => {
   const normalizedConfig: LLMConfig = { ...llmConfig };
 
   if (!normalizedConfig.LLM) {
-    normalizedConfig.LLM = "openai";
+    normalizedConfig.LLM = "deepseek";
   }
 
   const parsedDisableImageGeneration = parseOptionalBool(

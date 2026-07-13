@@ -6,7 +6,7 @@ import { useSelector } from 'react-redux';
 const CurrentConfig = ({ webSearchEnabled }: { webSearchEnabled: boolean }) => {
     const userConfigState = useSelector((state: RootState) => state.userConfig);
     const llmConfig = userConfigState.llm_config;
-    const textProviderKey = llmConfig.LLM || "openai";
+    const textProviderKey = llmConfig.LLM || "deepseek";
     const textProviderLabel =
         LLM_PROVIDERS[textProviderKey]?.label || textProviderKey;
     const selectedTextModel =

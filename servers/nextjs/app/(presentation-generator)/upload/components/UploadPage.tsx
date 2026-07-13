@@ -481,10 +481,7 @@ const UploadPage = () => {
         <div className="p-4 min-[1800px]:p-5 min-[2200px]:p-6">
           <Button
             onClick={handleGeneratePresentation}
-            style={{
-              background: "linear-gradient(270deg, #D5CAFC 2.4%, #E3D2EB 27.88%, #F4DCD3 69.23%, #FDE4C2 100%)"
-            }}
-            className="ml-auto mr-0 flex w-fit items-center justify-center rounded-[28px] px-4 py-5 font-syne text-xs font-semibold text-[#101323] min-[1800px]:px-5 min-[1800px]:py-5 min-[1800px]:text-sm min-[2200px]:px-6 min-[2200px]:py-6 min-[2200px]:text-base"
+            className="ml-auto mr-0 flex w-fit items-center justify-center rounded-[28px] px-4 py-5 font-syne text-xs font-semibold text-white bg-[#EC6608] hover:bg-[#D45A07] min-[1800px]:px-5 min-[1800px]:py-5 min-[1800px]:text-sm min-[2200px]:px-6 min-[2200px]:py-6 min-[2200px]:text-base"
           >
             <span>Начать</span>
             <ChevronRight className="!h-5 !w-5 min-[1800px]:!h-6 min-[1800px]:!w-6" />
