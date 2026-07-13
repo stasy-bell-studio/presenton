@@ -18,7 +18,8 @@ _PREFERRED_TEMPLATE_ORDER = [
     "neo-standard",
     "neo-modern",
     "neo-swift",
-]
+     "xxi-vek",
+    ]
 
 
 def _normalize_template_group_id(directory_name: str) -> str:

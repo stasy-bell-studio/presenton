@@ -100,7 +100,7 @@ const DashboardPage: React.FC = () => {
       <div className="sticky top-0 right-0 z-50 py-[28px] backdrop-blur mb-2">
         <div className="flex items-center justify-between">
           <h3 className="text-[28px] tracking-[-0.84px] font-syne font-normal text-[#101828] flex items-center gap-2">
-            Slide Presentation
+             Презентации
           </h3>
         </div>
       </div>

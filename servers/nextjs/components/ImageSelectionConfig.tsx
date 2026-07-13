@@ -88,7 +88,7 @@ const renderQualitySelector = (llmConfig: LLMConfig, input_field_changed: (value
         return (
             <div className="w-[295px]">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                    GPT Image 1.5 Quality
+                    Качество DeepSeek Image
                 </label>
                 <div className="">
                     <Select

@@ -125,7 +125,7 @@ const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
         </defs>
       </svg>
     ),
-    suggestion: "Generate a full presentation from my topic",
+    suggestion: "Создать презентацию по моей теме",
   },
   {
     id: "improve",
@@ -248,13 +248,13 @@ const suggestions: { id: string; icon: ReactNode; suggestion: string }[] = [
 ];
 
 const outlineQuickPrompts = [
-  "Expand outline",
-  "Shorten outline",
-  "Reorder sections",
-  "Merge similar slides",
-  "Split large sections",
-  "Improve conclusion",
-  "Improve introduction",
+  "Развернуть план",
+  "Сократить план",
+  "Переупорядочить разделы",
+  "Объединить похожие слайды",
+  "Разделить большие разделы",
+  "Улучшить заключение",
+  "Улучшить введение",
 ];
 
 const presentationQuickPrompts = [
@@ -2125,10 +2125,10 @@ const Chat = ({
                 fill="#EC6608"
               />
             </svg>
-            AI Assistant
+            AI Ассистент
           </h4>
           {isSending && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-[#F4F3FF] px-2 py-0.5 text-[10px] font-medium text-[#6941C6]">
+            <span className="inline-flex items-center gap-1 rounded-full bg-[#FFF7ED] px-2 py-0.5 text-[10px] font-medium text-[#EC6608]">
               <Loader2 className="h-2.5 w-2.5 animate-spin" />
               Live
             </span>
@@ -2159,7 +2159,7 @@ const Chat = ({
             {isOutlineVariant ? (
               <div>
                 <h4 className="mb-2 text-[10px] font-normal leading-[15px] tracking-[0.367px] text-[#99A1AF]">
-                  QUICK PROMPTS
+                  БЫСТРЫЕ ПРОМПТЫ
                 </h4>
                 <div className="flex flex-wrap gap-2">
                   {outlineQuickPrompts.map((prompt) => (
@@ -2271,7 +2271,7 @@ const Chat = ({
                         </p>
                       </div>
                     )}
-                    <div className="w-fit max-w-full rounded-[18px] bg-[#7C3AED] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm [overflow-wrap:anywhere] [word-break:break-word]">
+                    <div className="w-fit max-w-full rounded-[18px] bg-[#EC6608] px-4 py-3 text-[13px] font-medium leading-5 text-white shadow-sm [overflow-wrap:anywhere] [word-break:break-word]">
                       <p className="whitespace-pre-wrap">
                         {stripBackendContextFromUserMessage(message.content)}
                       </p>
@@ -2389,7 +2389,7 @@ const Chat = ({
         {(chatSlideReference || chatTargetReference) && (
           <div className="mb-2 flex max-w-full items-center gap-1.5">
             {chatSlideReference && (
-              <span className="inline-flex shrink-0 items-center rounded-[8px] border border-[#EDE7FF] bg-[#F6F3FF] px-2 py-1 text-xs font-medium text-[#5B21B6]">
+              <span className="inline-flex shrink-0 items-center rounded-[8px] border border-[#FDE4C2] bg-[#FFF7ED] px-2 py-1 text-xs font-medium text-[#EC6608]">
                 <span>{chatSlideReference}</span>
                 {onClearChatSlideReference && (
                   <button
@@ -2521,7 +2521,7 @@ const Chat = ({
               ? "Regenerate this outline"
               : isTemplateV2Variant
               ? "Change slide 2 title"
-              : "Improve slide design"
+              : "Улучшить дизайн слайда"
           }
           aria-invalid={Boolean(errorMessage)}
         />

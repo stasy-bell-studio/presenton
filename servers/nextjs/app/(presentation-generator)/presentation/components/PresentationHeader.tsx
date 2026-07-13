@@ -504,7 +504,7 @@ const PresentationHeader = ({
         >
           <h2 className="min-w-0 flex-1 font-unbounded text-lg w-[450px] leading-snug text-[#101323]">
             <MarkdownRenderer
-              content={presentationData?.title || "Presentation"}
+              content={presentationData?.title || "Презентация"}
               className="mb-0 min-w-0 overflow-hidden text-ellipsis line-clamp-1 text-sm text-[#101323] prose-p:my-0 prose-headings:my-0"
             />
           </h2>
@@ -527,10 +527,13 @@ const PresentationHeader = ({
             onClick={() => {
               router.push("/dashboard");
             }}
-            src="/logo-with-bg.png"
-            alt=""
-            className="w-10 h-10 cursor-pointer object-contain"
+             src="/logo-white.png"
+             alt="Presenton"
+             className="w-8 h-8 cursor-pointer object-contain"
           />
+           <div className="bg-[#EC6608] rounded-full cursor-pointer p-1 flex justify-center items-center">
+             <img src="/logo-white.png" alt="Presenton" className="h-[32px] object-contain" onClick={() => { router.push("/dashboard"); }} />
+           </div>
           {presentationData && !isStreaming && !isEditingTitle ? (
             <ToolTip content="Rename presentation">{titleBlock}</ToolTip>
           ) : (

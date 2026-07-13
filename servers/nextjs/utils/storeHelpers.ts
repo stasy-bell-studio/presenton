@@ -216,7 +216,7 @@ export const getLLMConfigValidationError = (
         break;
       case "gpt-image-1.5":
         if (!isProvided(llmConfig.OPENAI_API_KEY)) {
-          return "OpenAI API key is required for GPT Image 1.5.";
+          return "DeepSeek API key is required for image generation.";
         }
         break;
       case "gemini_flash":

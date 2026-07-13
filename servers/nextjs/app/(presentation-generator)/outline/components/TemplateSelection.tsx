@@ -42,7 +42,7 @@ const TemplateSelection: React.FC<TemplateSelectionProps> = memo(
 
     return (
       <div className="mb-4 space-y-8">
-        <TemplateListSection label="Custom">
+        <TemplateListSection label="Пользовательские">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <CreateCustomTemplate />
             {customTemplates.map((template) => (

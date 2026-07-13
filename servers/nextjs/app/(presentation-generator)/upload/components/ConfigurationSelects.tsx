@@ -102,7 +102,7 @@ const SlideCountSelect: React.FC<{
     }
   };
 
-  const displayLabel = value ? `${value} slides` : "Auto slides";
+  const displayLabel = value ? `${value} слайдов` : "Авто";
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
