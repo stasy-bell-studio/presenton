@@ -76,7 +76,7 @@ const buildSafeExportFileName = (
   rawTitle: string | null | undefined,
   extension: "pdf" | "pptx"
 ) => {
-  const normalizedTitle = (rawTitle || "presentation").trim();
+  const normalizedTitle = (rawTitle || "preza21vek").trim();
   const titleWithoutExtension = normalizedTitle.replace(/\.(pdf|pptx)$/i, "");
 
   let safeBase = titleWithoutExtension
@@ -90,7 +90,7 @@ const buildSafeExportFileName = (
     .replace(/^[-_]+|[-_]+$/g, "");
 
   if (!safeBase) {
-    safeBase = "presentation";
+    safeBase = "preza21vek";
   }
 
   if (safeBase.length > MAX_EXPORT_TITLE_LENGTH) {
@@ -100,7 +100,7 @@ const buildSafeExportFileName = (
   }
 
   if (!safeBase) {
-    safeBase = "presentation";
+    safeBase = "preza21vek";
   }
 
   return `${safeBase}.${extension}`;
@@ -156,7 +156,7 @@ const PresentationHeader = ({
       return;
     }
     const trimmed = draftTitle.trim();
-    const next = trimmed || presentationData.title || "Presentation";
+    const next = trimmed || presentationData.title || "Презентация";
     if (next !== presentationData.title) {
       dispatch(updateTitle(next));
       trackEvent(MixpanelEvent.Presentation_Title_Updated, {
@@ -226,8 +226,8 @@ const PresentationHeader = ({
         slide_count: presentationData?.slides?.length || 0,
       });
       exportToastId = notify.loading(
-        "Exporting PPTX",
-        "Your presentation is being exported. This may take a moment."
+        "Экспорт PPTX",
+        "Ваша презентация экспортируется. Это может занять некоторое время."
       );
       setIsExporting(true);
       // Save the presentation data before exporting
@@ -263,8 +263,8 @@ const PresentationHeader = ({
         downloadLink(pptxPath, safePptxFileName);
       }
       notify.success(
-        "Export complete",
-        "Your PPTX file has been downloaded.",
+        "Экспорт завершён",
+        "Ваш PPTX файл загружен.",
         { id: exportToastId }
       );
       trackEvent(MixpanelEvent.Presentation_Export_Completed, {
@@ -289,8 +289,8 @@ const PresentationHeader = ({
         error_message: sanitizeAnalyticsError(error, "PPTX export failed"),
       });
       notify.error(
-        "Export failed",
-        "We are having trouble exporting your presentation. Please try again.",
+        "Ошибка экспорта",
+        "Возникла проблема при экспорте презентации. Пожалуйста, попробуйте снова.",
         exportToastId !== undefined ? { id: exportToastId } : undefined
       );
     } finally {
@@ -314,8 +314,8 @@ const PresentationHeader = ({
         slide_count: presentationData?.slides?.length || 0,
       });
       exportToastId = notify.loading(
-        "Exporting PDF",
-        "Your presentation is being exported. This may take a moment."
+        "Экспорт PDF",
+        "Ваша презентация экспортируется. Это может занять некоторое время."
       );
       setIsExporting(true);
       // Save the presentation data before exporting
@@ -347,8 +347,8 @@ const PresentationHeader = ({
         }
       }
       notify.success(
-        "Export complete",
-        "Your PDF file has been downloaded.",
+        "Экспорт завершён",
+        "Ваш PDF файл загружен.",
         { id: exportToastId }
       );
       trackEvent(MixpanelEvent.Presentation_Export_Completed, {
@@ -373,8 +373,8 @@ const PresentationHeader = ({
         error_message: sanitizeAnalyticsError(err, "PDF export failed"),
       });
       notify.error(
-        "Export failed",
-        "We are having trouble exporting your presentation. Please try again.",
+        "Ошибка экспорта",
+        "Возникла проблема при экспорте презентации. Пожалуйста, попробуйте снова.",
         exportToastId !== undefined ? { id: exportToastId } : undefined
       );
     } finally {
@@ -406,7 +406,7 @@ const PresentationHeader = ({
     <div
       className={` rounded-[18px] max-md:mt-4 ${mobile ? "" : "bg-white"}  p-5`}
     >
-      <p className="text-sm font-medium text-[#19001F]">Export as</p>
+      <p className="text-sm font-medium text-[#19001F]">Экспортировать как</p>
       <div className="my-[18px] h-[1px] bg-[#E8E8E8]" />
       <div className="space-y-3">
         <Button
@@ -462,29 +462,29 @@ const PresentationHeader = ({
                 cancelTitleEdit();
               }
             }}
-            placeholder="Presentation title"
+            placeholder="Название презентации"
             className="min-w-0 flex-1 bg-transparent py-2 pr-2 font-unbounded text-base leading-tight text-[#101323] placeholder:text-[#101323]/35 outline-none border-0 focus:ring-0"
-            aria-label="Presentation title"
+            aria-label="Название презентации"
           />
           <div className="flex shrink-0 items-center gap-0.5 border-l border-[#EDECEC] pl-1 ml-0.5">
-            <ToolTip content="Save · Enter">
+            <ToolTip content="Сохранить · Enter">
               <button
                 type="button"
                 onMouseDown={onTitleSaveMouseDown}
                 onClick={commitTitleEdit}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-[#5141e5] hover:bg-[#5141e5]/10 transition-colors"
-                aria-label="Save title"
+                aria-label="Сохранить название"
               >
                 <Check className="h-4 w-4" strokeWidth={2.25} />
               </button>
             </ToolTip>
-            <ToolTip content="Cancel · Esc">
+            <ToolTip content="Отмена · Esc">
               <button
                 type="button"
                 onMouseDown={onTitleCancelMouseDown}
                 onClick={cancelTitleEdit}
                 className="flex h-8 w-8 items-center justify-center rounded-lg text-[#101323]/55 hover:bg-[#F6F6F9] hover:text-[#101323] transition-colors"
-                aria-label="Cancel editing title"
+                aria-label="Отменить редактирование названия"
               >
                 <X className="h-4 w-4" strokeWidth={2.25} />
               </button>

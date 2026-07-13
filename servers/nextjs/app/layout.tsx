@@ -36,44 +36,41 @@ const unbounded = Unbounded({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://presenton.ai"),
-  title: "Presenton - Open Source AI presentation generator",
+  title: "Preza21vek / «21 Век»",
   description:
-    "Open-source AI presentation generator with custom layouts, multi-model support (OpenAI, Gemini, Ollama), and PDF/PPTX export. A free Gamma alternative.",
+    "Preza21vek — генератор презентаций с искусственным интеллектом. Создавайте презентации на русском языке с помощью ИИ.",
   keywords: [
-    "AI presentation generator",
-    "data storytelling",
-    "data visualization tool",
-    "AI data presentation",
-    "presentation generator",
-    "data to presentation",
-    "interactive presentations",
-    "professional slides",
+    "генератор презентаций",
+    "ИИ презентации",
+    "создать презентацию",
+    "презентация 21 век",
+    "Preza21vek",
   ],
   openGraph: {
-    title: "Presenton - Open Source AI presentation generator",
+    title: "Preza21vek / «21 Век»",
     description:
-      "Open-source AI presentation generator with custom layouts, multi-model support (OpenAI, Gemini, Ollama), and PDF/PPTX export. A free Gamma alternative.",
+      "Preza21vek — генератор презентаций с искусственным интеллектом. Создавайте презентации на русском языке с помощью ИИ.",
     url: "https://presenton.ai",
-    siteName: "Presenton",
+    siteName: "Preza21vek",
     images: [
       {
         url: "https://presenton.ai/presenton-feature-graphics.png",
         width: 1200,
         height: 630,
-        alt: "Presenton Logo",
+        alt: "Preza21vek Logo",
       },
     ],
     type: "website",
-    locale: "en_US",
+    locale: "ru_RU",
   },
   alternates: {
     canonical: "https://presenton.ai",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Presenton - Open Source AI presentation generator",
+    title: "Preza21vek / «21 Век»",
     description:
-      "Open-source AI presentation generator with custom layouts, multi-model support (OpenAI, Gemini, Ollama), and PDF/PPTX export. A free Gamma alternative.",
+      "Preza21vek — генератор презентаций с искусственным интеллектом. Создавайте презентации на русском языке с помощью ИИ.",
     images: ["https://presenton.ai/presenton-feature-graphics.png"],
   },
 };
@@ -85,7 +82,7 @@ export default function RootLayout({
 }>) {
 
   return (
-    <html lang="en">
+    <html lang="ru">
       <body
         className={`${inter.variable} ${syne.variable} ${manrope.variable} ${unbounded.variable} antialiased`}
       >

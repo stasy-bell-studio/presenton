@@ -141,7 +141,7 @@ const UploadPage = () => {
   const [files, setFiles] = useState<File[]>([]);
   const [config, setConfig] = useState<PresentationConfig>({
     slides: null,
-    language: LanguageType.Auto,
+    language: LanguageType.Russian,
     prompt: "",
     tone: ToneType.Default,
     verbosity: VerbosityType.Standard,
@@ -239,11 +239,11 @@ const UploadPage = () => {
       });
       return true;
     } catch (error: any) {
-      notify.error(
-        "Image provider unavailable",
-        error?.message ||
-        `Unable to reach ${selectedProvider} right now. Please check your API key/settings and try again.`
-      );
+        notify.error(
+          "Провайдер изображений недоступен",
+          error?.message ||
+          `Не удалось связаться с ${selectedProvider}. Проверьте API-ключ и попробуйте снова.`
+        );
       return false;
     }
   };
@@ -255,19 +255,21 @@ const UploadPage = () => {
   const validateConfiguration = (): boolean => {
     if (!config.language) {
       trackUploadValidationFailure("language_missing");
-      notify.warning("Language required", "Please select a language.");
+      notify.warning("Требуется язык", "Пожалуйста, выберите язык.");
       return false;
     }
 
-    if (files.length > 0 && config.language === LanguageType.Auto) {
+    if (files.length > 0 && config.language === LanguageType.Russian) {
+      // Russian is the only supported language — proceed
+    } else if (files.length > 0 && !config.language) {
       trackUploadValidationFailure("language_auto_with_documents");
-      notify.warning("Language required", "Please choose a language before processing uploaded documents.");
+      notify.warning("Требуется язык", "Пожалуйста, выберите язык перед обработкой загруженных документов.");
       return false;
     }
 
     if (!config.prompt.trim() && files.length === 0) {
       trackUploadValidationFailure("prompt_or_document_missing");
-      notify.warning("Input required", "Provide a prompt or upload at least one document.");
+      notify.warning("Требуется ввод", "Введите запрос или загрузите хотя бы один документ.");
       return false;
     }
     return true;
@@ -306,10 +308,10 @@ const UploadPage = () => {
   const handleDocumentProcessing = async () => {
     setLoadingState({
       isLoading: true,
-      message: "Processing documents...",
+      message: "Обработка документов...",
       showProgress: true,
       duration: 90,
-      extra_info: files.length > 0 ? "It might take a few minutes for large documents." : "",
+      extra_info: files.length > 0 ? "Обработка больших документов может занять несколько минут." : "",
     });
 
     let documents = [];
@@ -336,7 +338,7 @@ const UploadPage = () => {
 
     setLoadingState({
       isLoading: true,
-      message: "Generating presentation outline...",
+      message: "Генерация структуры презентации...",
       showProgress: true,
       duration: 40,
       extra_info: "",
@@ -386,7 +388,7 @@ const UploadPage = () => {
   const handleDirectPresentationGeneration = async () => {
     setLoadingState({
       isLoading: true,
-      message: "Preparing outline generation...",
+      message: "Подготовка к генерации...",
       showProgress: true,
       duration: 30,
     });
@@ -435,8 +437,8 @@ const UploadPage = () => {
       showProgress: false,
     });
     notify.error(
-      "Generation failed",
-      error.message || "Something went wrong while starting your presentation."
+      "Ошибка генерации",
+      error.message || "Что-то пошло не так при запуске презентации."
     );
   };
 
@@ -469,7 +471,7 @@ const UploadPage = () => {
           </div>
         </div>
         <div className="p-4 min-[1800px]:p-5 min-[2200px]:p-6">
-          <h3 className="mb-2 text-sm font-medium text-[#333333] min-[1800px]:text-base min-[2200px]:text-lg">Attachments (optional)</h3>
+          <h3 className="mb-2 text-sm font-medium text-[#333333] min-[1800px]:text-base min-[2200px]:text-lg">Вложения (необязательно)</h3>
           <SupportingDoc
             files={[...files]}
             onFilesChange={setFiles}
@@ -484,7 +486,7 @@ const UploadPage = () => {
             }}
             className="ml-auto mr-0 flex w-fit items-center justify-center rounded-[28px] px-4 py-5 font-syne text-xs font-semibold text-[#101323] min-[1800px]:px-5 min-[1800px]:py-5 min-[1800px]:text-sm min-[2200px]:px-6 min-[2200px]:py-6 min-[2200px]:text-base"
           >
-            <span>Get Started</span>
+            <span>Начать</span>
             <ChevronRight className="!h-5 !w-5 min-[1800px]:!h-6 min-[1800px]:!w-6" />
           </Button>
         </div>

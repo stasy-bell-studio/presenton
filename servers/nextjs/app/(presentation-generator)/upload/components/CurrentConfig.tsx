@@ -48,14 +48,14 @@ const CurrentConfig = ({ webSearchEnabled }: { webSearchEnabled: boolean }) => {
         : textProviderLabel;
 
     const imageSummary = llmConfig.DISABLE_IMAGE_GENERATION
-        ? "Image generation disabled"
+        ? "Генерация изображений отключена"
         : llmConfig.IMAGE_PROVIDER
             ? IMAGE_PROVIDERS[llmConfig.IMAGE_PROVIDER]?.label || llmConfig.IMAGE_PROVIDER
-            : "No image provider";
+            : "Нет провайдера изображений";
     const webSearchProviderKey = (llmConfig.WEB_SEARCH_PROVIDER || "auto").toLowerCase();
     const webSearchProvider =
         WEB_SEARCH_PROVIDERS[webSearchProviderKey]?.label || webSearchProviderKey;
-    const webSearchSummary = `Web: ${webSearchProvider} (${webSearchEnabled ? "On" : "Off"})`;
+    const webSearchSummary = `Поиск: ${webSearchProvider} (${webSearchEnabled ? "Вкл" : "Выкл"})`;
 
     return (
         <p className="rounded-[50px] border border-[#EDEEEF] px-2.5 py-0.5 text-[10px] font-medium text-[#EC6608] min-[1800px]:px-3 min-[1800px]:py-1 min-[1800px]:text-[11px] min-[2200px]:px-4 min-[2200px]:text-xs">

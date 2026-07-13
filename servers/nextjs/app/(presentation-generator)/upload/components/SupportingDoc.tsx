@@ -88,7 +88,7 @@ const SupportingDoc = ({
     const handleValidate = (filesToReview: File[]) => {
         const disallowed = filesToReview.filter((file) => !isAllowedFile(file))
         if (disallowed.length > 0) {
-            notify.error('Some files are not supported', 'Supported: Word, PowerPoint, spreadsheets, PDF/TXT, and image files.')
+            notify.error('Некоторые файлы не поддерживаются', 'Поддерживаются: Word, PowerPoint, таблицы, PDF/TXT и изображения.')
         }
     }
 
@@ -97,7 +97,7 @@ const SupportingDoc = ({
             return candidateFiles
         }
 
-        notify.warning('Maximum file limit reached', `You can upload up to ${MAX_SUPPORTED_FILES} documents only.`)
+        notify.warning('Достигнут лимит файлов', `Вы можете загрузить не более ${MAX_SUPPORTED_FILES} документов.`)
 
         return candidateFiles.slice(0, MAX_SUPPORTED_FILES)
     }
@@ -112,7 +112,7 @@ const SupportingDoc = ({
         onFilesChange(allowedFiles)
         handleValidate(nextFiles)
         if (allowedFiles.length > files.length) {
-            notify.success('Files selected', `${allowedFiles.length - files.length} file(s) have been added.`)
+            notify.success('Файлы выбраны', `${allowedFiles.length - files.length} файл(а/ов) добавлено.`)
         }
         e.currentTarget.value = ''
     }
@@ -130,7 +130,7 @@ const SupportingDoc = ({
         onFilesChange(allowedFiles)
         handleValidate(nextFiles)
         if (allowedFiles.length > files.length) {
-            notify.success('Files selected', `${allowedFiles.length - files.length} file(s) have been added.`)
+            notify.success('Файлы выбраны', `${allowedFiles.length - files.length} файл(а/ов) добавлено.`)
         }
     }
 
@@ -168,7 +168,7 @@ const SupportingDoc = ({
                     data-testid="attachments-clear-button"
                     aria-disabled={!hasFiles}
                 >
-                    Clear all
+                    Очистить всё
                 </button>}
             </div>
 
@@ -192,7 +192,7 @@ const SupportingDoc = ({
                             <Plus className='h-3 w-3 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5' />
                         </div>
                     </div>
-                    <p className='text-sm font-normal text-[#808080] min-[1800px]:text-base min-[2200px]:text-lg'>(Office docs, spreadsheets, images, PDF/TXT)</p>
+                    <p className='text-sm font-normal text-[#808080] min-[1800px]:text-base min-[2200px]:text-lg'>(Офисные документы, таблицы, изображения, PDF/TXT)</p>
                 </div>
             </label>
 
@@ -224,7 +224,7 @@ const SupportingDoc = ({
                                     type="button"
                                     onClick={() => handleRemoveFileAt(idx)}
                                     className="ml-2 inline-flex h-8 w-8 items-center justify-center rounded text-red-600 hover:bg-red-50 hover:text-red-700 min-[1800px]:h-10 min-[1800px]:w-10"
-                                    aria-label={`Remove ${file.name}`}
+                                    aria-label={`Удалить ${file.name}`}
                                     data-testid="remove-file-button"
                                 >
                                     <X className="h-5 w-5 min-[1800px]:h-6 min-[1800px]:w-6" />
@@ -234,7 +234,7 @@ const SupportingDoc = ({
                     </ul>
                     {filteredFiles.length !== files.length && (
                         <p className="mt-2 font-syne text-xs text-amber-600 min-[1800px]:text-sm">
-                            Some files were skipped. Supported: Word, PowerPoint, spreadsheets, PDF/TXT, and image files.
+                            Некоторые файлы были пропущены. Поддерживаются: Word, PowerPoint, таблицы, PDF/TXT и изображения.
                         </p>
                     )}
                 </div>

@@ -163,55 +163,55 @@ function presentationActionsUiReducer(
 }
 
 const insertActions: ActionItem[] = [
-  { id: "texts", label: "Texts", icon: Type },
-  { id: "charts", label: "Charts", icon: BarChart3 },
-  { id: "tables", label: "Tables", icon: Rows3 },
-  { id: "images", label: "Images", icon: Image },
-  { id: "elements", label: "Elements", icon: Shapes },
+  { id: "texts", label: "Текст", icon: Type },
+  { id: "charts", label: "Диаграммы", icon: BarChart3 },
+  { id: "tables", label: "Таблицы", icon: Rows3 },
+  { id: "images", label: "Изображения", icon: Image },
+  { id: "elements", label: "Элементы", icon: Shapes },
 ];
 
 const textItems = [
-  { id: "title-block", label: "Title Block", icon: AlignCenter },
-  { id: "subtitle", label: "Subtitle", icon: AlignCenter },
-  { id: "bullet-list", label: "Bullet List", icon: List },
-  { id: "numbered-list", label: "Order List", icon: ListOrdered },
-  { id: "list-item", label: "List Item", icon: ListMinus },
-  { id: "quote", label: "Quote", icon: Quote },
-  { id: "body-text", label: "Body Text", icon: Columns2 },
+  { id: "title-block", label: "Заголовок", icon: AlignCenter },
+  { id: "subtitle", label: "Подзаголовок", icon: AlignCenter },
+  { id: "bullet-list", label: "Маркированный список", icon: List },
+  { id: "numbered-list", label: "Нумерованный список", icon: ListOrdered },
+  { id: "list-item", label: "Элемент списка", icon: ListMinus },
+  { id: "quote", label: "Цитата", icon: Quote },
+  { id: "body-text", label: "Основной текст", icon: Columns2 },
 ] satisfies PaletteItem[];
 
 const chartTypeItems = [
-  { id: "bar", label: "Bar Chart", icon: BarChart3 },
-  { id: "horizontal_bar", label: "Horizontal Bar", icon: BarChart3 },
-  { id: "stacked_bar", label: "Stacked Bar", icon: BarChart3 },
+  { id: "bar", label: "Столбчатая диаграмма", icon: BarChart3 },
+  { id: "horizontal_bar", label: "Горизонтальная", icon: BarChart3 },
+  { id: "stacked_bar", label: "С накоплением", icon: BarChart3 },
   {
     id: "horizontal_stacked_bar",
-    label: "Horizontal Stack Bar",
+    label: "Гориз. с накоплением",
     icon: BarChart3,
   },
-  { id: "line", label: "Line Chart", icon: LineChart },
-  { id: "pie", label: "Pie Chart", icon: PieChart },
-  { id: "area", label: "Area Chart", icon: AreaChart },
-  { id: "donut", label: "Donut Chart", icon: PieChart },
-  { id: "scatter", label: "Scatter Chart", icon: Circle },
-  { id: "radar", label: "Radar Chart", icon: PieChart },
-  { id: "polar_area", label: "Polar Area", icon: PieChart },
+  { id: "line", label: "Линейная", icon: LineChart },
+  { id: "pie", label: "Круговая", icon: PieChart },
+  { id: "area", label: "С областями", icon: AreaChart },
+  { id: "donut", label: "Кольцевая", icon: PieChart },
+  { id: "scatter", label: "Точечная", icon: Circle },
+  { id: "radar", label: "Лепестковая", icon: PieChart },
+  { id: "polar_area", label: "Полярная", icon: PieChart },
 ] satisfies PaletteItem[];
 
 const tableTypeItems = [
-  { id: "simple-table", label: "Simple Table", icon: Table2 },
+  { id: "simple-table", label: "Простая таблица", icon: Table2 },
 ] satisfies PaletteItem[];
 
 const imageItems = [
-  { id: "image", label: "Image", icon: Image },
-  { id: "image-text", label: "Image + Text", icon: Columns2 },
-  { id: "image-grid", label: "Image Grid", icon: Grid3X3 },
+  { id: "image", label: "Изображение", icon: Image },
+  { id: "image-text", label: "Изображение + Текст", icon: Columns2 },
+  { id: "image-grid", label: "Сетка изображений", icon: Grid3X3 },
 ] satisfies PaletteItem[];
 
 const elementItems = [
-  { id: "rectangle", label: "Rectangle", icon: RectangleHorizontal },
-  { id: "ellipse", label: "Ellipse", icon: Circle },
-  { id: "line", label: "Line", icon: Minus },
+  { id: "rectangle", label: "Прямоугольник", icon: RectangleHorizontal },
+  { id: "ellipse", label: "Эллипс", icon: Circle },
+  { id: "line", label: "Линия", icon: Minus },
 ] satisfies PaletteItem[];
 
 const templateBlocksCache = new Map<string, TemplateBlockGroup[]>();

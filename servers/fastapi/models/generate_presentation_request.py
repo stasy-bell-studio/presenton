@@ -23,8 +23,8 @@ class GeneratePresentationRequest(BaseModel):
         description="Number of slides to generate. If omitted, model auto-detects slide count.",
     )
     language: Optional[str] = Field(
-        default=None,
-        description="Language for the presentation. If omitted, model auto-detects language.",
+        default="Russian",
+        description="Language for the presentation. Defaults to Russian.",
     )
     template: str = Field(
         default="general", description="Template to use for the presentation"

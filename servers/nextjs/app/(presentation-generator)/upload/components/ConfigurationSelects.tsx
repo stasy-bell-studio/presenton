@@ -285,7 +285,6 @@ export function ConfigurationSelects({
   onConfigChange,
 }: ConfigurationSelectsProps) {
   const [openSlides, setOpenSlides] = useState(false);
-  const [openLanguage, setOpenLanguage] = useState(false);
 
   return (
     <div className="order-1 flex flex-wrap items-center gap-4 min-[1800px]:gap-5">
@@ -294,12 +293,6 @@ export function ConfigurationSelects({
         onValueChange={(value) => onConfigChange("slides", value)}
         open={openSlides}
         onOpenChange={setOpenSlides}
-      />
-      <LanguageSelect
-        value={config.language}
-        onValueChange={(value) => onConfigChange("language", value)}
-        open={openLanguage}
-        onOpenChange={setOpenLanguage}
       />
       <AdvanceSettings config={config} onConfigChange={onConfigChange} />
     </div>

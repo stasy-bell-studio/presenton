@@ -24,14 +24,14 @@ export function PromptInput({ value, onChange }: PromptInputProps) {
     >
       <div className="mb-1 flex items-center gap-2 min-[1800px]:mb-2">
         <PencilIcon className="h-3.5 w-3.5 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5" />
-        <p className="font-syne text-sm font-normal text-[#333333] min-[1800px]:text-base min-[2200px]:text-lg">Write prompt</p>
+        <p className="font-syne text-sm font-normal text-[#333333] min-[1800px]:text-base min-[2200px]:text-lg">Напишите запрос</p>
       </div>
       <Textarea
         value={value}
         autoFocus={true}
         rows={4}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="Start with your idea… we’ll handle the slides"
+        placeholder="Начните с вашей идеи… мы сделаем слайды"
         data-testid="prompt-input"
         className="min-h-[120px] max-h-[250px] overflow-y-auto border-none px-2 py-0 indent-4 font-syne text-base font-medium shadow-none focus-visible:ring-0 focus-visible:ring-transparent focus-visible:ring-offset-0 min-[1800px]:min-h-[150px] min-[1800px]:max-h-[320px] min-[1800px]:text-lg min-[2200px]:min-h-[180px] min-[2200px]:max-h-[380px] min-[2200px]:text-xl custom_scrollbar"
       />

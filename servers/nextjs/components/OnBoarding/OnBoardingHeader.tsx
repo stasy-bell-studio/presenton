@@ -1,7 +1,7 @@
 import React from 'react'
 import { MixpanelEvent, trackEvent } from '@/utils/mixpanel'
 
-const STEPS = ["Text Provider", "Image Provider", "Web Search", "Finish Setup"];
+const STEPS = ["Текст-провайдер", "Провайдер изображений", "Веб-поиск", "Завершить настройку"];
 
 const OnBoardingHeader = ({
     currentStep,
