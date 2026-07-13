@@ -277,13 +277,13 @@ export default function AuthGate() {
               className="mx-auto mb-5 h-12 w-auto opacity-95"
               priority
             />
-            <div className="mx-auto mb-4 h-1 w-16 rounded-full bg-[#7C51F8]" />
+            <div className="mx-auto mb-4 h-1 w-16 rounded-full bg-[#EC6608]" />
             <h1 className="font-syne text-lg font-semibold text-black">Presenton</h1>
             <p className="mt-3 font-syne text-sm text-[#000000CC]">Preparing your workspace…</p>
             <div className="mt-6 flex justify-center gap-1.5">
               <span className="h-2 w-2 animate-pulse rounded-full bg-[#5146E5]" />
               <span
-                className="h-2 w-2 animate-pulse rounded-full bg-[#7C51F8]"
+                className="h-2 w-2 animate-pulse rounded-full bg-[#EC6608]"
                 style={{ animationDelay: "0.2s" }}
               />
               <span
@@ -312,7 +312,7 @@ export default function AuthGate() {
               />
             </div>
             <div>
-              <p className="font-syne text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7A5AF8]">
+              <p className="font-syne text-[10px] font-semibold uppercase tracking-[0.14em] text-[#EC6608]">
                 Secure instance
               </p>
               <h1 className="mt-1 font-syne text-2xl font-semibold leading-tight text-black sm:text-[26px]">
@@ -387,7 +387,7 @@ export default function AuthGate() {
           <button
             type="submit"
             disabled={isSubmitting}
-            className="w-full rounded-[58px] border border-[#EDEEEF] bg-[#7C51F8] px-5 py-3 font-syne text-xs font-semibold text-white transition hover:bg-[#6d46e6] disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full rounded-[58px] border border-[#EDEEEF] bg-[#EC6608] px-5 py-3 font-syne text-xs font-semibold text-white transition hover:bg-[#d45c07] disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting
               ? isSetupMode

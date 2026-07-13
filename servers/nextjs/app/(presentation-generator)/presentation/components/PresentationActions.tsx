@@ -734,7 +734,7 @@ function BlockVariantButton({
       data-block-variant
       disabled={disabled}
       className={cn(
-        "template-block-variant group relative w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40",
+        "template-block-variant group relative w-full overflow-hidden rounded-[12px] border border-[#E5E7EB] bg-[#F9FAFB] p-2 text-left transition hover:border-[#D6BBFB] hover:bg-[#FAF9FF] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608]/40",
         disabled && "cursor-not-allowed opacity-50 hover:border-[#E5E7EB] hover:bg-[#F9FAFB]",
       )}
       onClick={() => {
@@ -813,7 +813,7 @@ function BlockGroupCard({
       {variantCount > 1 ? (
         <button
           type="button"
-          className="mt-3 flex w-full items-center justify-between gap-3 border-t border-[#E5E7EB] pt-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/40"
+          className="mt-3 flex w-full items-center justify-between gap-3 border-t border-[#E5E7EB] pt-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608]/40"
           aria-expanded={expanded}
           onClick={toggleExpanded}
         >
@@ -1004,11 +1004,11 @@ function AiSparklesIcon() {
     >
       <path
         d="M14.9386 7.38709C12.9195 7.19256 11.3219 5.59566 11.1276 3.57829L10.7997 0.171875L10.4718 3.57829C10.2775 5.596 8.67987 7.1929 6.66079 7.38709L3.25684 7.71473L6.66079 8.04237C8.67987 8.23691 10.2775 9.8338 10.4718 11.8512L10.7997 15.2576L11.1276 11.8512C11.3219 9.83346 12.9195 8.23656 14.9386 8.04237L18.3426 7.71473L14.9386 7.38709Z"
-        fill="#7A5AF8"
+        fill="#EC6608"
       />
       <path
         d="M7.08427 13.146C5.95358 13.0371 5.0589 12.1428 4.95008 11.0131L4.76648 9.10547L4.58288 11.0131C4.47406 12.143 3.57938 13.0372 2.44869 13.146L0.54248 13.3295L2.44869 13.5129C3.57938 13.6219 4.47406 14.5161 4.58288 15.6459L4.76648 17.5535L4.95008 15.6459C5.0589 14.516 5.95358 13.6217 7.08427 13.5129L8.99048 13.3295L7.08427 13.146Z"
-        fill="#7A5AF8"
+        fill="#EC6608"
       />
     </svg>
   );
@@ -1025,25 +1025,25 @@ function BlocksIcon() {
     >
       <path
         d="M2.3335 8.16602H5.8335"
-        stroke="#7A5AF8"
+        stroke="#EC6608"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M2.3335 1.16602H8.16683"
-        stroke="#7A5AF8"
+        stroke="#EC6608"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M11.0835 10.5H2.91683C2.59466 10.5 2.3335 10.7612 2.3335 11.0833V12.25C2.3335 12.5722 2.59466 12.8333 2.91683 12.8333H11.0835C11.4057 12.8333 11.6668 12.5722 11.6668 12.25V11.0833C11.6668 10.7612 11.4057 10.5 11.0835 10.5Z"
-        stroke="#7A5AF8"
+        stroke="#EC6608"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M11.0835 3.5H2.91683C2.59466 3.5 2.3335 3.76117 2.3335 4.08333V5.25C2.3335 5.57217 2.59466 5.83333 2.91683 5.83333H11.0835C11.4057 5.83333 11.6668 5.57217 11.6668 5.25V4.08333C11.6668 3.76117 11.4057 3.5 11.0835 3.5Z"
-        stroke="#7A5AF8"
+        stroke="#EC6608"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
@@ -1077,7 +1077,7 @@ function PrimaryActionButton({
       >
         {icon}
       </p>
-      <p className="mt-1 text-[clamp(10px,0.75vw,12px)] text-[#7A5AF8]">
+      <p className="mt-1 text-[clamp(10px,0.75vw,12px)] text-[#EC6608]">
         {label}
       </p>
     </button>

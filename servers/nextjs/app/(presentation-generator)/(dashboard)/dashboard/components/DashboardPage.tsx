@@ -116,7 +116,7 @@ const DashboardPage: React.FC = () => {
               source: "dashboard_actions_card",
             })
           }
-          className="group/action bg-white z-50 mt-2  relative  block w-[304px] max-w-full overflow-visible rounded-[10.8px] outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8] focus-visible:ring-offset-4 cursor-pointer"
+          className="group/action bg-white z-50 mt-2  relative  block w-[304px] max-w-full overflow-visible rounded-[10.8px] outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608] focus-visible:ring-offset-4 cursor-pointer"
           aria-label="Create presentation"
         >
           <FloatingActionCards />
@@ -138,7 +138,7 @@ const DashboardPage: React.FC = () => {
           </h2>
           <button
             type="button"
-            className="flex h-8 w-8 items-center justify-center rounded-full text-[#2F3033] transition-colors hover:bg-[#F3F3F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-[#2F3033] transition-colors hover:bg-[#F3F3F6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608]"
             title="Toggle deck sort order"
             aria-label="Toggle deck sort order"
             onClick={() =>

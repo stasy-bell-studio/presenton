@@ -131,7 +131,7 @@ function TemplatePreviewHeader({
             <h1 className="text-[64px] font-bold text-gray-900">
               {templateName}
             </h1>
-            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-sm">
+            <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded text-sm">
               {isDefaultTemplate ? "Built-in" : "Custom"}
             </span>
           </div>

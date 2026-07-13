@@ -201,7 +201,7 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
                 alt="PresentOn"
                 className="mx-auto mb-4 h-12 opacity-90"
               />
-              <div className="mx-auto h-1 w-16 rounded-full bg-[#7C51F8]" />
+              <div className="mx-auto h-1 w-16 rounded-full bg-[#EC6608]" />
             </div>
 
             {/* Loading Text */}
@@ -218,7 +218,7 @@ export function ConfigurationInitializer({ children }: { children: React.ReactNo
             <div className="mt-6">
               <div className="flex space-x-1 justify-center">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
               </div>
             </div>

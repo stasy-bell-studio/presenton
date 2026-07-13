@@ -122,7 +122,7 @@ export function LineToolbar({
                   className={cn(
                     "grid h-10 place-items-center rounded-md border border-[#EDEEEF] bg-white text-[#191919] hover:bg-[#F8F8FA]",
                     currentStyle.key === option.key &&
-                      "border-[#E4D7FF] bg-[#F4F1FF] text-[#7C3AED]",
+                      "border-[#E4D7FF] bg-[#FDF2EA] text-[#7C3AED]",
                   )}
                 >
                   <LinePreview dash={option.dash} />
@@ -177,7 +177,7 @@ export function LineToolbar({
           className={cn(
             "h-7 rounded-[2px] border-0 bg-transparent px-2 font-syne text-[18px] leading-7 text-[#191919] hover:bg-[#F8F8FA]",
             (openPanel === "shadow" || shadowEnabled) &&
-              "bg-[#F4F1FF] text-[#7C3AED]",
+              "bg-[#FDF2EA] text-[#7C3AED]",
           )}
         >
           Shadow

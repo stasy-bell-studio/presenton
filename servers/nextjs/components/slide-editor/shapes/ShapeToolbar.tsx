@@ -241,7 +241,7 @@ export function ShapeToolbar({
                     className={cn(
                       "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs hover:bg-[#F4F3FF]",
                       element.type === option.value &&
-                        "bg-[#F4F1FF] text-[#7A5AF8]",
+                        "bg-[#FDF2EA] text-[#EC6608]",
                     )}
                   >
                     <Icon size={16} aria-hidden="true" />
@@ -355,7 +355,7 @@ export function ToolbarButton({
       onClick={onClick}
       className={cn(
         "relative flex h-7 min-w-7 items-center justify-center gap-1 rounded-[2px] border-0 bg-transparent px-1 text-[#05070A] hover:bg-[#F8F8FA]",
-        pressed && "bg-[#F4F1FF] text-[#7C3AED]",
+        pressed && "bg-[#FDF2EA] text-[#7C3AED]",
       )}
     >
       {children}
@@ -526,7 +526,7 @@ export function NumberField({
   return (
     <label className="flex min-w-0 flex-1 items-center gap-2 text-xs text-[#4B5563]">
       <span className="font-semibold">{label}</span>
-      <span className="flex min-w-0 flex-1 items-center rounded-md border border-[#EDEEEF] bg-white px-2 focus-within:border-[#7C51F8]">
+      <span className="flex min-w-0 flex-1 items-center rounded-md border border-[#EDEEEF] bg-white px-2 focus-within:border-[#EC6608]">
         <input
           aria-label={label}
           type="text"
@@ -607,7 +607,7 @@ export function SliderField({
         onBlur={(event) => commit(Number(event.currentTarget.value))}
         onKeyUp={(event) => commit(Number(event.currentTarget.value))}
         onPointerUp={(event) => commit(Number(event.currentTarget.value))}
-        className="w-full cursor-pointer accent-[#7A5AF8]"
+        className="w-full cursor-pointer accent-[#EC6608]"
       />
     </label>
   );

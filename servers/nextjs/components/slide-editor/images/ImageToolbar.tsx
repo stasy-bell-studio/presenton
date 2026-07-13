@@ -514,7 +514,7 @@ export function ImageToolbar({
                   }}
                   className={cn(
                     "flex w-full items-center rounded-[8px] px-3 py-2 text-left text-[13px] text-[#191919] hover:bg-[#F4F3FF]",
-                    fit === option.value && "bg-[#F4F1FF] text-[#7A5AF8]",
+                    fit === option.value && "bg-[#FDF2EA] text-[#EC6608]",
                   )}
                 >
                   {option.label}
@@ -549,7 +549,7 @@ export function ImageToolbar({
             onClick={() => togglePanel("crop")}
             className={cn(
               "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
-              openPanel === "crop" && "bg-[#F4F1FF] text-[#7C3AED]",
+              openPanel === "crop" && "bg-[#FDF2EA] text-[#7C3AED]",
             )}
           >
             <Crop size={16} strokeWidth={1.7} aria-hidden="true" />
@@ -563,7 +563,7 @@ export function ImageToolbar({
             onClick={() => update({ flip_h: !(element.flip_h ?? false) })}
             className={cn(
               "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
-              element.flip_h === true && "bg-[#F4F1FF] text-[#7C3AED]",
+              element.flip_h === true && "bg-[#FDF2EA] text-[#7C3AED]",
             )}
           >
             <FlipHorizontal2 size={16} strokeWidth={1.7} aria-hidden="true" />
@@ -577,7 +577,7 @@ export function ImageToolbar({
             onClick={() => update({ flip_v: !(element.flip_v ?? false) })}
             className={cn(
               "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
-              element.flip_v === true && "bg-[#F4F1FF] text-[#7C3AED]",
+              element.flip_v === true && "bg-[#FDF2EA] text-[#7C3AED]",
             )}
           >
             <FlipVertical2 size={16} strokeWidth={1.7} aria-hidden="true" />
@@ -592,7 +592,7 @@ export function ImageToolbar({
               onClick={() => togglePanel("radius")}
               className={cn(
                 "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
-                openPanel === "radius" && "bg-[#F4F1FF] text-[#7C3AED]",
+                openPanel === "radius" && "bg-[#FDF2EA] text-[#7C3AED]",
               )}
             >
               <Scan size={16} strokeWidth={1.7} aria-hidden="true" />
@@ -625,7 +625,7 @@ export function ImageToolbar({
                     onPointerUp={(event) =>
                       commitRadius(Number(event.currentTarget.value))
                     }
-                    className="w-full cursor-pointer accent-[#7A5AF8]"
+                    className="w-full cursor-pointer accent-[#EC6608]"
                   />
                 </label>
               </Panel>
@@ -643,7 +643,7 @@ export function ImageToolbar({
             onClick={() => togglePanel("opacity")}
             className={cn(
               "rounded-[2px] border-0 bg-transparent p-1 text-[#05070A] hover:bg-[#F4F3FF]",
-              openPanel === "opacity" && "bg-[#F4F1FF] text-[#7C3AED]",
+              openPanel === "opacity" && "bg-[#FDF2EA] text-[#7C3AED]",
             )}
           >
             <OpacitySwatchIcon />
@@ -664,7 +664,7 @@ export function ImageToolbar({
                 onPointerUp={(event) =>
                   update({ opacity: Number((event.target as HTMLInputElement).value) })
                 }
-                className="w-full cursor-pointer accent-[#7A5AF8]"
+                className="w-full cursor-pointer accent-[#EC6608]"
               />
             </Panel>
           ) : null}

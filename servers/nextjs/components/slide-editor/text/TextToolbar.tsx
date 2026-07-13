@@ -1378,7 +1378,7 @@ const textToolbarStyles = {
     padding: "0 8px",
     border: "1px solid #CBB6FF",
     borderRadius: 4,
-    color: "#7C51F8",
+    color: "#EC6608",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1571,8 +1571,8 @@ const textToolbarStyles = {
     background: "#F8F8FA",
   },
   buttonActive: {
-    color: "#7C51F8",
-    background: "#F4F1FF",
+    color: "#EC6608",
+    background: "#FDF2EA",
   },
   colorControl: {
     position: "relative",
@@ -1684,7 +1684,7 @@ const textToolbarStyles = {
     top: 0,
     height: 3,
     borderRadius: 999,
-    background: "#7C51F8",
+    background: "#EC6608",
   },
   settingsSliderThumb: {
     position: "absolute",
@@ -1734,8 +1734,8 @@ const textToolbarStyles = {
     padding: 0,
   },
   settingsBulletButtonActive: {
-    background: "#EFEAFF",
-    color: "#7C51F8",
+    background: "#FDF2EA",
+    color: "#EC6608",
   },
   opacityIcon: {
     display: "inline-block",

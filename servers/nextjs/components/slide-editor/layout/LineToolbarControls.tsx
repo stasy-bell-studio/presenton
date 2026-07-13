@@ -105,7 +105,7 @@ export function TemplateV2LineToolbarControls({
           onClick={() => onToggle("line-width")}
           className={cn(
             "flex items-center p-1 text-[#191919] rounded-[4px] hover:bg-[#F8F8FA]",
-            openPanel === "line-width" && "bg-[#F4F1FF] text-[#7C3AED]",
+            openPanel === "line-width" && "bg-[#FDF2EA] text-[#7C3AED]",
           )}
         >
           <LineWidthIcon />
@@ -134,7 +134,7 @@ export function TemplateV2LineToolbarControls({
           onClick={() => onToggle("line-color")}
           className={cn(
             "grid h-6 w-6 place-items-center rounded-[4px] text-[#191919] hover:bg-[#F8F8FA]",
-            openPanel === "line-color" && "bg-[#F4F1FF] text-[#7C3AED]",
+            openPanel === "line-color" && "bg-[#FDF2EA] text-[#7C3AED]",
           )}
         >
           <Circle size={16} strokeWidth={1.6} />
@@ -161,7 +161,7 @@ export function TemplateV2LineToolbarControls({
           onClick={() => onToggle("line-style")}
           className={cn(
             "flex items-center rounded-[4px] p-[6px] font-manrope text-[14px] font-medium leading-4 text-[#191919] hover:bg-[#F8F8FA]",
-            openPanel === "line-style" && "bg-[#F4F1FF] text-[#7C3AED]",
+            openPanel === "line-style" && "bg-[#FDF2EA] text-[#7C3AED]",
           )}
         >
           {currentStyle.label}
@@ -175,7 +175,7 @@ export function TemplateV2LineToolbarControls({
                 onClick={() => setStroke({ dash: option.dash })}
                 className={cn(
                   "flex w-full items-center justify-between px-4 py-2 text-left text-[14px] font-manrope text-[#191919] hover:bg-[#F8F8FA]",
-                  currentStyle.key === option.key && "bg-[#F4F1FF] text-[#7C3AED]",
+                  currentStyle.key === option.key && "bg-[#FDF2EA] text-[#7C3AED]",
                 )}
               >
                 <span>{option.label}</span>
@@ -195,7 +195,7 @@ export function TemplateV2LineToolbarControls({
           onClick={() => onToggle("line-opacity")}
           className={cn(
             "flex items-center rounded-[4px] p-1 text-[#191919] hover:bg-[#F8F8FA]",
-            openPanel === "line-opacity" && "bg-[#F4F1FF] text-[#7C3AED]",
+            openPanel === "line-opacity" && "bg-[#FDF2EA] text-[#7C3AED]",
           )}
         >
           <OpacitySwatchIcon />

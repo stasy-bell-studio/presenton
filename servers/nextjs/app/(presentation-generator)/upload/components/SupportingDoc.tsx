@@ -188,7 +188,7 @@ const SupportingDoc = ({
                 />
                 <div className="flex flex-col items-center gap-2 min-[1800px]:gap-3">
                     <div className='flex h-[42px] w-[42px] items-center justify-center rounded-full bg-[#EBE9FE] min-[1800px]:h-[50px] min-[1800px]:w-[50px] min-[2200px]:h-[58px] min-[2200px]:w-[58px]' >
-                        <div className='flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#7A5AF8] text-white min-[1800px]:h-[28px] min-[1800px]:w-[28px] min-[2200px]:h-[32px] min-[2200px]:w-[32px]'>
+                        <div className='flex h-[22px] w-[22px] items-center justify-center rounded-full bg-[#EC6608] text-white min-[1800px]:h-[28px] min-[1800px]:w-[28px] min-[2200px]:h-[32px] min-[2200px]:w-[32px]'>
                             <Plus className='h-3 w-3 min-[1800px]:h-4 min-[1800px]:w-4 min-[2200px]:h-5 min-[2200px]:w-5' />
                         </div>
                     </div>

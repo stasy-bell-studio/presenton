@@ -91,17 +91,17 @@ export const TemplateListCard = memo(function TemplateListCard({
       aria-label={`${showArrow ? "Open" : "Select"} ${template.name} template`}
       className={cn(
         "relative transition-all duration-200 group overflow-hidden rounded-[22px] bg-white border outline-none",
-        "cursor-pointer hover:-translate-y-1 hover:border-[#7A5AF8] hover:ring-2 hover:ring-[#7A5AF8]/20 hover:shadow-[0_18px_40px_rgba(34,31,54,0.12)] focus-visible:-translate-y-1 focus-visible:border-[#7A5AF8] focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/30 focus-visible:shadow-[0_18px_40px_rgba(34,31,54,0.12)]",
+        "cursor-pointer hover:-translate-y-1 hover:border-[#EC6608] hover:ring-2 hover:ring-[#EC6608]/20 hover:shadow-[0_18px_40px_rgba(34,31,54,0.12)] focus-visible:-translate-y-1 focus-visible:border-[#EC6608] focus-visible:ring-2 focus-visible:ring-[#EC6608]/30 focus-visible:shadow-[0_18px_40px_rgba(34,31,54,0.12)]",
         isSelected
-          ? " border-[#7A5AF8] ring-2 ring-[#7A5AF8]/25 shadow-[0_14px_34px_rgba(34,31,54,0.12)]"
+          ? " border-[#EC6608] ring-2 ring-[#EC6608]/25 shadow-[0_14px_34px_rgba(34,31,54,0.12)]"
           : " border-[#E8E9EC]"
       )}
       onClick={onClick}
       onKeyDown={handleKeyDown}
     >
-      <div className="pointer-events-none absolute inset-0 z-30 rounded-[22px] bg-[#7A5AF8]/[0.04] opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100" />
+      <div className="pointer-events-none absolute inset-0 z-30 rounded-[22px] bg-[#EC6608]/[0.04] opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100" />
       {isSelected && (
-        <span className="absolute right-4 top-3.5 z-50 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#7A5AF8] text-white shadow-sm">
+        <span className="absolute right-4 top-3.5 z-50 inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#EC6608] text-white shadow-sm">
           <CheckCircle2 className="h-4 w-4" />
         </span>
       )}
@@ -141,7 +141,7 @@ export const TemplateListCard = memo(function TemplateListCard({
           )}
         </div>
         {showArrow && (
-          <ArrowUpRight className="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover:text-purple-600" />
+          <ArrowUpRight className="h-4 w-4 shrink-0 text-gray-400 transition-colors group-hover:text-orange-600" />
         )}
       </div>
     </Card>
@@ -202,7 +202,7 @@ export const ProcessingTemplateListCard = memo(
             style={{ width: overlayWidth }}
           />
           <div className="absolute right-8 top-8 z-30 inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/90 px-2.5 py-1.5 text-xs font-bold text-[#5146E5] shadow-sm backdrop-blur">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#7A5AF8]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-[#EC6608]" />
             {progressPercent}%
           </div>
           <div className="absolute inset-x-5 bottom-5 z-30 h-1.5 overflow-hidden rounded-full bg-white/70">

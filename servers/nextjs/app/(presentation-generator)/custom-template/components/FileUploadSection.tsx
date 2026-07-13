@@ -93,7 +93,7 @@ export const FileUploadSection: React.FC<FileUploadSectionProps> = ({
                   />
                   <div className='absolute inset-0 flex flex-col items-center justify-center'>
                     <div className='w-[42px] h-[42px] flex justify-center items-center rounded-full bg-[#EBE9FE]' >
-                      <div className='w-[22px] h-[22px] rounded-full bg-[#7A5AF8] flex items-center justify-center text-white'>
+                      <div className='w-[22px] h-[22px] rounded-full bg-[#EC6608] flex items-center justify-center text-white'>
                         <Plus className='w-3 h-3' />
                       </div>
                     </div>

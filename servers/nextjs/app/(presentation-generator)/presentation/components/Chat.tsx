@@ -2118,11 +2118,11 @@ const Chat = ({
             >
               <path
                 d="M19.1407 9.46542C16.5537 9.21616 14.5067 7.17009 14.2577 4.58528L13.8376 0.220703L13.4175 4.58528C13.1685 7.17053 11.1215 9.2166 8.53451 9.46542L4.1731 9.88521L8.53451 10.305C11.1215 10.5543 13.1685 12.6003 13.4175 15.1852L13.8376 19.5497L14.2577 15.1852C14.5067 12.5999 16.5537 10.5538 19.1407 10.305L23.5021 9.88521L19.1407 9.46542Z"
-                fill="#7A5AF8"
+                fill="#EC6608"
               />
               <path
                 d="M9.07681 16.8431C7.62808 16.7035 6.48175 15.5577 6.34232 14.1102L6.10707 11.666L5.87183 14.1102C5.7324 15.5579 4.58606 16.7037 3.13734 16.8431L0.694946 17.0781L3.13734 17.3132C4.58606 17.4528 5.7324 18.5986 5.87183 20.0461L6.10707 22.4903L6.34232 20.0461C6.48175 18.5984 7.62808 17.4526 9.07681 17.3132L11.5192 17.0781L9.07681 16.8431Z"
-                fill="#7A5AF8"
+                fill="#EC6608"
               />
             </svg>
             AI Assistant
@@ -2368,7 +2368,7 @@ const Chat = ({
         className={cn(
           "mx-4 mb-4 overflow-x-hidden rounded-[8px] border bg-white px-2.5 py-3 transition-colors",
           isDraggingAttachment
-            ? "border-[#7A5AF8] bg-[#F7F5FF]"
+            ? "border-[#EC6608] bg-[#F7F5FF]"
             : "border-[#F4F4F4]"
         )}
         style={{
@@ -2584,35 +2584,35 @@ const Chat = ({
                   <g clipPath="url(#clip0_6216_326)">
                     <path
                       d="M5.50008 10.0837C8.03139 10.0837 10.0834 8.03163 10.0834 5.50033C10.0834 2.96902 8.03139 0.916992 5.50008 0.916992C2.96878 0.916992 0.916748 2.96902 0.916748 5.50033C0.916748 8.03163 2.96878 10.0837 5.50008 10.0837Z"
-                      stroke={isFollowAgentEnabled ? "#7A5AF8" : "#000000"}
+                      stroke={isFollowAgentEnabled ? "#EC6608" : "#000000"}
                       strokeWidth="0.938667"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
                       d="M10.0833 5.5H8.25"
-                      stroke={isFollowAgentEnabled ? "#7A5AF8" : "#000000"}
+                      stroke={isFollowAgentEnabled ? "#EC6608" : "#000000"}
                       strokeWidth="0.938667"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
                       d="M2.75008 5.5H0.916748"
-                      stroke={isFollowAgentEnabled ? "#7A5AF8" : "#000000"}
+                      stroke={isFollowAgentEnabled ? "#EC6608" : "#000000"}
                       strokeWidth="0.938667"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
                       d="M5.5 2.75033V0.916992"
-                      stroke={isFollowAgentEnabled ? "#7A5AF8" : "#000000"}
+                      stroke={isFollowAgentEnabled ? "#EC6608" : "#000000"}
                       strokeWidth="0.938667"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                     <path
                       d="M5.5 10.0833V8.25"
-                      stroke={isFollowAgentEnabled ? "#7A5AF8" : "#000000"}
+                      stroke={isFollowAgentEnabled ? "#EC6608" : "#000000"}
                       strokeWidth="0.938667"
                       strokeLinecap="round"
                       strokeLinejoin="round"

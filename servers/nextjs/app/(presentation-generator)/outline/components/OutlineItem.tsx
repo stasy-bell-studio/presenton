@@ -289,7 +289,7 @@ export function OutlineItem({
                   onChange={handleTextareaChange}
                   onBlur={() => setIsEditing(false)}
                   placeholder="Enter markdown content here..."
-                  className={`min-h-[140px] resize-none overflow-hidden rounded-[8px] border-[#D8D8DF] bg-[#FBFBFC] px-3 py-3 font-mono text-[13px] leading-6 text-[#191919] shadow-none focus-visible:border-[#7A5AF8] focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/20 ${outlineTextWrapClass}`}
+                  className={`min-h-[140px] resize-none overflow-hidden rounded-[8px] border-[#D8D8DF] bg-[#FBFBFC] px-3 py-3 font-mono text-[13px] leading-6 text-[#191919] shadow-none focus-visible:border-[#EC6608] focus-visible:ring-2 focus-visible:ring-[#EC6608]/20 ${outlineTextWrapClass}`}
                 />
               ) : (
                 <div
@@ -304,7 +304,7 @@ export function OutlineItem({
                       setIsEditing(true);
                     }
                   }}
-                  className={`block min-h-[60px] w-full min-w-0 rounded-[8px] px-0 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#7A5AF8]/25 ${outlineTextWrapClass}`}
+                  className={`block min-h-[60px] w-full min-w-0 rounded-[8px] px-0 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#EC6608]/25 ${outlineTextWrapClass}`}
                 >
                   {previewHtml ? (
                     <div

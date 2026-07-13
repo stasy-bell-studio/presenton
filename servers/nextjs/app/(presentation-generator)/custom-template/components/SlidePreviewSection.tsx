@@ -80,7 +80,7 @@ export const SlidePreviewSection: React.FC<SlidePreviewSectionProps> = ({
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
                             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#EBE9FE] to-[#DDD6FE] flex items-center justify-center shadow-sm">
-                                <Images className="w-6 h-6 text-[#7A5AF8]" />
+                                <Images className="w-6 h-6 text-[#EC6608]" />
                             </div>
                             <div>
                                 <h2 className="text-xl font-semibold text-[#111827]">Slide Preview</h2>
@@ -161,7 +161,7 @@ export const SlidePreviewSection: React.FC<SlidePreviewSectionProps> = ({
                 <DialogContent className="sm:max-w-[480px]">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
-                            <Sparkles className="h-5 w-5 text-[#7A5AF8]" />
+                            <Sparkles className="h-5 w-5 text-[#EC6608]" />
                             Template details
                         </DialogTitle>
                         <DialogDescription>
